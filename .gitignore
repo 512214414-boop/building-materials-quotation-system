@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+*.db
+uploads/
+.uploads/
+screenshots/
+e2e_browser/screenshots/
+.DS_Store
+backup_*/

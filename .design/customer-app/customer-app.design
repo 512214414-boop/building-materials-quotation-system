@@ -1,0 +1,35 @@
+{
+  "data": [
+    {
+      "id": "page-gate",
+      "title": "客户准入",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783934633,
+      "canvasData": { "x": 0, "y": 0, "group": 0 },
+      "devMetadata": { "htmlSrc": "pages/gate.html" }
+    },
+    {
+      "id": "page-purchase-list",
+      "title": "采购清单",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1783934633,
+      "canvasData": { "x": 400, "y": 0, "group": 0 },
+      "devMetadata": { "htmlSrc": "pages/purchase-list.html" }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "mobile",
+    "projectName": "建材报价系统 - 客户端",
+    "designLibrary": {
+      "name": "TRAE",
+      "id": "dl_builtin_trae",
+      "version": "1.0.0",
+      "scope": "built-in-global",
+      "path": "/Users/mac/.trae-cn/design_libraries/dl_builtin_trae/TRAE(1)",
+      "versionSource": "library-consumption.json"
+    }
+  }
+}

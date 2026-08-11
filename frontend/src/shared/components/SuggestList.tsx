@@ -1,0 +1,362 @@
+// SuggestList — 通用匹配列表组件（v9.5 统一抽象）
+//
+// ============================================================
+// §A 顶层设计抽象（逻辑层面，非硬性参数获取）
+// ============================================================
+// 本组件是所有"输入框辅助快速输入实时匹配列表"的唯一列表实现。
+// 设计原则：能抽象的抽象（容器/定位/关闭/新建项统一），不能抽象的用参数配置
+//           （行内交互/填充规则/检索方式由调用方按设计规范实现）。
+//
+// ------------------------------------------------------------
+// A.1 能抽象统一的（代码层面，本组件已实现）
+// ------------------------------------------------------------
+//  ① 列表容器：宽度自适应锚点、高度自适应内容、最大高度限制、超出滚动
+//     - maxHeight 默认 280（ProductPicker 传 228）
+//     - overflowY auto + -webkit-overflow-scrolling: touch（iOS 触摸滚动）
+//  ② 行高/字体：padding 4px 8px + body-xs 字号 + lineHeight 1.4（可确定，全场景一致）
+//  ③ 面板定位：SuggestInput 用 getPopupContainer（约束父容器），
+//              ProductPicker 用 FloatPanel anchor（锚点定位）——定位策略由外壳决定
+//  ④ 关闭逻辑：选中/点击外部/ESC 关闭——SuggestInput 用 onDropdownVisibleChange，
+//              ProductPicker 用 FloatPanel onClose——关闭策略由外壳决定
+//  ⑤ 新建项显示/交互：keyword 非空 && allowCreate → 绿色背景 + "新建「kw」" + onCreate
+//
+// ------------------------------------------------------------
+// A.2 逻辑层面抽象（设计指导，非硬编码参数获取）
+// ------------------------------------------------------------
+//  ① 是否启用快速新建（allowCreate）的判断思路：
+//     - 关联引用字段（值来自关联表，需先建档拿 ID）→ 启用（如 category/supplier/priceType）
+//     - 当前表直接字段（值就是本表数据，不存在"先建档"问题）→ 不启用（如 specModel/remark）
+//     - 判断依据：字段的值来源是否是"需要先建档的关联表"
+//     - 注意：此判断条件无法从程序中自动取得（没有元数据表类型信息），
+//             靠开发者的逻辑判断，在调用 SuggestInput 时显式传 allowCreate
+//
+//  ② 填充规则（onSelect 回调）的设计思路：
+//     - 单列展示（默认）：onSelect 回调填一个字段（如分类只填 categoryId）
+//     - 多列展示（rowRender）：onSelect 回调填多个字段（如采购报价填 productId+brandId+unitId+price）
+//     - 判断依据：场景需要回填几个字段 → 单字段用 SuggestInput 默认行，多字段用 rowRender
+//     - 注意：填充哪些字段由调用方在 onSelect 内决定，SuggestList 只负责回调触发
+//
+//  ③ 匹配检索方式（options 数据来源）的设计思路：
+//     - 单字段检索：用 useSuggest hook（调 suggest API，返回 SuggestOption[]）
+//     - 多列检索：用自定义 fetcher（如 searchProducts API，返回 SkuRow[]）
+//     - 判断依据：场景需要检索什么数据 → 单字段用 suggest，多列用专用 search API
+//     - 注意：检索方式由调用方决定（useSuggest 或自定义），SuggestList 只接收 options 渲染
+//
+// ------------------------------------------------------------
+// A.3 新输入框快速启用指南
+// ------------------------------------------------------------
+//  为新输入框添加实时匹配列表时，按以下 3 步设计参数：
+//
+//  Step 1【是否新建】问自己：这个字段的值来源是"需要先建档的关联表"吗？
+//          是 → allowCreate=true + 提供 onCreate 建档函数
+//          否 → allowCreate=false（仅检索辅助 + 重复确认）
+//
+//  Step 2【填充几个字段】问自己：选中后需要回填几个字段？
+//          1 个 → 用 SuggestInput 默认行（单列 label + type 标签），onSelect 填一个字段
+//          多个 → 用 SuggestInput + rowRender（自定义多列行），onSelect 填多个字段
+//                 或用 ProductPicker（FloatPanel 模式 + rowRender + 二级面板）
+//
+//  Step 3【检索什么数据】问自己：需要检索什么数据？
+//          单字段去重 → useSuggest hook（suggest API）
+//          多列 SKU → 自定义 fetcher（searchProducts API）
+//
+//  示例：
+//    // 分类字段（关联引用，单字段填充，单字段检索）
+//    <SuggestInput field="category" allowCreate={true} onSelect={(item) => setCategoryId(item.id)} />
+//
+//    // 规格字段（当前表直接字段，单字段填充，单字段检索）
+//    <SuggestInput field="specModel" allowCreate={false} onSelect={(item) => setSpecModel(item.name)} />
+//
+//    // 采购报价产品选择（关联引用，多字段填充，多列检索）
+//    <ProductPicker ... rowRender={renderRow} onSelect={(row) => fillProductFields(row)} />
+//
+// ============================================================
+// §B 组件架构
+// ============================================================
+// SuggestList（本组件，唯一列表实现）
+//   ├── SuggestInput（表单字段入口，AutoComplete + dropdownRender）
+//   │     └── useSuggest hook（数据获取）→ SuggestList（列表渲染）
+//   └── ProductPicker（表格单元格入口，FloatPanel + rowRender）
+//         └── 自定义 fetcher（数据获取）→ SuggestList（列表渲染）
+//
+// 数据流：
+//   输入 keyword → 防抖 → fetcher(useSuggest/自定义) → options → SuggestList 渲染
+//   → 用户选中/新建 → onSelect/onCreate → 调用方填充字段
+//
+// ============================================================
+// §C 默认行渲染（单列模式）：左 label（ellipsis）+ 右 type 标签
+// ============================================================
+//   type 标签颜色：
+//     create（新建）→ var(--text-brand)（品牌绿，深色主题可读）
+//     default（默认）→ var(--text-tertiary)（灰色）
+//     existing（已有）→ var(--text-quaternary)（浅灰色）
+
+import { Fragment, type CSSProperties } from 'react';
+import { Spin } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import type { SuggestOption } from '../services/api/baseDataApi.js';
+
+// ============================================================
+// §1 类型定义
+// ============================================================
+
+/**
+ * SuggestList 是泛型组件，默认 T = SuggestOption（单字段场景）。
+ * ProductPicker 等多列场景传入自定义类型（如 SkuRow）+ rowRender。
+ */
+export interface SuggestListProps<T = SuggestOption> {
+  /** 列表数据（由调用方通过 useSuggest / 自定义 fetcher 获取） */
+  options: T[];
+  /** 是否加载中 */
+  loading: boolean;
+  /** 当前关键词（用于新建项显示和无匹配判断） */
+  keyword: string;
+  /** 是否允许快速新建（控制新建项是否显示） */
+  allowCreate: boolean;
+  /** 选中已有项/默认项回调 */
+  onSelect: (item: T) => void;
+  /** 新建回调（allowCreate=true 且 keyword 非空时显示新建项，点击触发） */
+  onCreate?: (name: string) => void;
+  /** 新建中（禁用新建项点击，显示 Spin） */
+  createLoading?: boolean;
+  /** 无匹配提示文案，默认"暂无匹配" */
+  emptyText?: string;
+  /** 列表最大高度，默认 280 */
+  maxHeight?: number;
+  /** 自定义行渲染（覆盖默认单列渲染，用于多列场景） */
+  rowRender?: (item: T, index: number) => React.ReactNode;
+  /** 自定义行 key */
+  rowKey?: (item: T, index: number) => string;
+  /** 自定义列表容器样式（覆盖默认） */
+  style?: CSSProperties;
+}
+
+// ============================================================
+// §2 样式常量
+// ============================================================
+
+const DEFAULT_MAX_HEIGHT = 280;
+
+/** 列表容器样式 */
+const LIST_CONTAINER_STYLE: CSSProperties = {
+  maxHeight: DEFAULT_MAX_HEIGHT,
+  overflowY: 'auto',
+  overflowX: 'auto',
+  WebkitOverflowScrolling: 'touch',
+  touchAction: 'pan-x pan-y',
+};
+
+/** 默认行样式（单列模式） */
+const DEFAULT_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  width: '100%',
+  padding: '4px 8px',
+  fontSize: 'var(--body-xs-font-size)',
+  lineHeight: 1.4,
+  color: 'var(--text-default)',
+  textAlign: 'left',
+  cursor: 'pointer',
+  borderBottom: '1px solid var(--border-neutral-l1)',
+  transition: 'background .12s ease',
+};
+
+/** 新建行样式 */
+const CREATE_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  width: '100%',
+  padding: '4px 8px',
+  background: 'var(--bg-brand-popup)',
+  color: 'var(--text-brand)',
+  fontSize: 'var(--body-xs-font-size)',
+  lineHeight: 1.4,
+  fontWeight: 500,
+  textAlign: 'left',
+  cursor: 'pointer',
+  borderBottom: '1px solid var(--border-neutral-l1)',
+  transition: 'background .12s ease',
+};
+
+/** type 标签映射 */
+const TYPE_TAG_MAP: Record<SuggestOption['type'], { text: string; color: string }> = {
+  create: { text: '新建', color: 'var(--text-brand)' },
+  default: { text: '默认', color: 'var(--text-tertiary)' },
+  existing: { text: '已有', color: 'var(--text-quaternary)' },
+};
+
+// ============================================================
+// §3 默认行渲染（单列模式）
+// ============================================================
+
+function DefaultRow({
+  opt,
+  onSelect,
+}: {
+  opt: SuggestOption;
+  onSelect: (opt: SuggestOption) => void;
+}) {
+  const tag = TYPE_TAG_MAP[opt.type] ?? TYPE_TAG_MAP.existing;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(opt)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(opt);
+        }
+      }}
+      style={DEFAULT_ROW_STYLE}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = 'var(--bg-overlay-l2)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = 'transparent';
+      }}
+    >
+      <span
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          minWidth: 0,
+        }}
+      >
+        {opt.label}
+      </span>
+      <span style={{ fontSize: 10, color: tag.color, flexShrink: 0 }}>{tag.text}</span>
+    </div>
+  );
+}
+
+// ============================================================
+// §3.5 类型守卫：判断 item 是否为 SuggestOption（用于默认行渲染）
+// ============================================================
+
+function isSuggestOption(item: unknown): item is SuggestOption {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'type' in item &&
+    'label' in item &&
+    'value' in item
+  );
+}
+
+// ============================================================
+// §4 SuggestList 主组件（泛型）
+// ============================================================
+
+export default function SuggestList<T = SuggestOption>({
+  options,
+  loading,
+  keyword,
+  allowCreate,
+  onSelect,
+  onCreate,
+  createLoading = false,
+  emptyText = '暂无匹配',
+  maxHeight = DEFAULT_MAX_HEIGHT,
+  rowRender,
+  rowKey,
+  style,
+}: SuggestListProps<T>) {
+  const trimmedKw = keyword.trim();
+  const showCreate = allowCreate && trimmedKw !== '' && !!onCreate;
+  const showEmpty = !loading && options.length === 0 && !showCreate && trimmedKw !== '';
+  const showList = !loading && options.length > 0;
+
+  return (
+    <div style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
+      {/* 新建项 */}
+      {showCreate && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (!createLoading) onCreate!(trimmedKw);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              if (!createLoading) onCreate!(trimmedKw);
+            }
+          }}
+          style={{
+            ...CREATE_ROW_STYLE,
+            cursor: createLoading ? 'wait' : 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            if (!createLoading) e.currentTarget.style.background = 'var(--bg-brand-disabled)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'var(--bg-brand-popup)';
+          }}
+        >
+          {createLoading ? (
+            <Spin size="small" />
+          ) : (
+            <PlusOutlined style={{ fontSize: 12, flexShrink: 0 }} />
+          )}
+          <span
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            新建「{trimmedKw}」
+          </span>
+        </div>
+      )}
+
+      {/* loading */}
+      {loading && (
+        <div style={{ padding: 20, textAlign: 'center' }}>
+          <Spin size="small" />
+        </div>
+      )}
+
+      {/* 无匹配 */}
+      {showEmpty && (
+        <div
+          style={{
+            padding: 12,
+            textAlign: 'center',
+            color: 'var(--text-tertiary)',
+            fontSize: 'var(--body-xs-font-size)',
+          }}
+        >
+          {emptyText}
+        </div>
+      )}
+
+      {/* 列表 */}
+      {showList &&
+        options.map((item, idx) => {
+          const key = rowKey
+            ? rowKey(item, idx)
+            : isSuggestOption(item)
+              ? (item.id ?? `${item.value}-${idx}`)
+              : `row-${idx}`;
+          if (rowRender) {
+            // rowRender 模式：调用方完全控制行渲染和交互（含 onClick/onKeyDown），
+            //   SuggestList 只负责列表容器 + 新建项 + loading + 无匹配
+            return <Fragment key={key}>{rowRender(item, idx)}</Fragment>;
+          }
+          // 默认行渲染：仅当 T = SuggestOption 时使用
+          if (isSuggestOption(item)) {
+            return <DefaultRow key={key} opt={item} onSelect={onSelect as (opt: SuggestOption) => void} />;
+          }
+          return null;
+        })}
+    </div>
+  );
+}

@@ -1,0 +1,158 @@
+/**
+ * 单据打印样式
+ * 用于浏览器打印（Ctrl+P）时隐藏非单据内容
+ */
+
+@media print {
+  /* 隐藏应用 UI */
+  .ds-app-shell-header,
+  .ds-app-shell-sub-nav,
+  .ds-app-shell-bottom-bar {
+    display: none !important;
+  }
+  
+  /* 隐藏单据工具栏 */
+  .doc-form-toolbar {
+    display: none !important;
+  }
+  
+  /* 隐藏更多菜单按钮 */
+  .doc-more-menu-btn {
+    display: none !important;
+  }
+  
+  /* 隐藏分页导航 */
+  .doc-page-nav {
+    display: none !important;
+  }
+  
+  /* 隐藏编辑提示 */
+  .doc-cell-edit-hint {
+    display: none !important;
+  }
+  
+  /* 页面设置 */
+  @page {
+    size: A5 portrait; /* 默认 A5 竖版，运行时动态设置 */
+    margin: 0;
+  }
+  
+  /* A4 竖版页面设置 */
+  @page a4-portrait {
+    size: A4 portrait;
+    margin: 0;
+  }
+  
+  /* A5 横版页面设置 */
+  @page a5-landscape {
+    size: A5 landscape;
+    margin: 0;
+  }
+  
+  /* 单据分页 */
+  .ds-document-page {
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+  
+  /* 最后一张单据不分页 */
+  .ds-document-page:last-child {
+    page-break-after: auto;
+  }
+  
+  /* 输入框转文本态 */
+  .doc-cell-input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    outline: none !important;
+  }
+  
+  /* 空白行下划线打印 */
+  .doc-empty-cell {
+    border-bottom: 1px solid var(--print-border-strong);
+    min-width: 20px;
+    display: inline-block;
+  }
+  
+  /* 签字栏下划线保留 */
+  .doc-signature-line {
+    border-bottom: 1px solid var(--print-border-strong);
+    display: inline-block;
+    min-width: 80px;
+  }
+  
+  /* 去除背景色（打印更清晰） */
+  body {
+    background: white !important;
+  }
+  
+  /* 单据容器重置 */
+  .doc-form-container {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+  }
+  
+  /* 连续预览模式：页间距取消 */
+  .doc-form-container.continuous .ds-document-page {
+    margin-bottom: 0 !important;
+  }
+  
+  /* 单据居中 */
+  .doc-form-container.single-page {
+    display: block !important;
+  }
+  
+  /* 纸张尺寸自适应 */
+  .ds-document-page {
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
+  
+  /* A5 横版特殊处理 */
+  .ds-document-page.a5-landscape {
+    width: 100% !important;
+    height: auto !important;
+  }
+  
+  /* 右侧宣传区保留（A5横版） */
+  .doc-sidebar-a5-land {
+    display: flex !important;
+  }
+  
+  /* 温馨提示保留 */
+  .doc-tip-text {
+    color: var(--print-text-tertiary) !important;
+    font-size: 9px !important;
+  }
+}
+
+/* 打印预览模式样式（屏幕显示，模拟打印效果） */
+.doc-form-container.preview-mode {
+  /* 隐藏工具栏 */
+  .doc-form-toolbar {
+    display: none !important;
+  }
+  
+  /* 隐藏更多菜单 */
+  .doc-more-menu-btn {
+    display: none !important;
+  }
+  
+  /* 隐藏编辑提示 */
+  .doc-cell-edit-hint {
+    display: none !important;
+  }
+  
+  /* 输入框转文本态 */
+  .doc-cell-input {
+    border: none !important;
+    background: transparent !important;
+  }
+  
+  /* 单据阴影保留（视觉区分） */
+  .ds-document-page {
+    box-shadow: var(--shadow-panel);
+  }
+}

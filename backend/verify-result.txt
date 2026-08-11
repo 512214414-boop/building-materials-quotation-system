@@ -1,0 +1,26 @@
+=== v5.0 seed 数据验证 ===
+
+✓ categories: 7 条（L1=1, L2=6）
+✓ brands: 9 条
+✓ suppliers: 12 条
+✓ product_categories: 35 条（全部 categoryId 必填: 是）
+✓ product_variants: 90 条（含 searchText: 90 条）
+✓ product_units: 100 条（isBase=true: 90, isDefault=true: 90, 含 toBaseFactor: 100）
+✓ product_sale_prices: 100 条
+✓ supplier_purchase_prices: 111 条（多供应商比价场景: 11 组）
+✓ product_search_index: 90 条
+✓ documents: 2 条
+✓ document_lines: 4 条（含 variantId: 4, brandId: 4, productCategoryId: 4, spec: 4）
+变体: PPR热水管 + 日丰 + DN25×3.5（6分）
+  单位: 根（isBase=false, toBaseFactor=4, isDefault=false）
+    供应商「甲建材批发」进价: ¥22
+    供应商「乙商贸」进价: ¥21.2
+  单位: 米（isBase=true, toBaseFactor=1, isDefault=true）
+    供应商「甲建材批发」进价: ¥5.5
+    供应商「乙商贸」进价: ¥5.3
+productName: PPR热水管
+brandName: 日丰
+spec: DN20×2.8（4分）
+searchText: PPR热水管 日丰 DN20×2.8（4分） 4分 20 2.8 4 DN20 DN 分
+
+=== 验证完成 ===

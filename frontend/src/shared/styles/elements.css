@@ -1,0 +1,1033 @@
+/**
+ * Trae Design System — Element Classes（v10.2 元素级 CSS 类）
+ *
+ * 设计原则：
+ *   1. design tokens（tokens.css）定义变量，elements.css 定义元素类
+ *   2. 组件层（DsInput/DsButton 等）封装行为 + 内联关键样式
+ *   3. elements.css 处理 antd 内部 DOM 无法通过 props 控制的样式（如 .ant-select-selector）
+ *   4. 相同类型的元素使用统一的 CSS 类，避免散落的 inline style
+ *
+ * 类命名规范：
+ *   .ds-<element>           基础元素类（如 .ds-input）
+ *   .ds-<element>-<variant> 变体类（如 .ds-input-price）
+ *   .ds-<element>-<state>   状态类（如 .ds-input-focused）
+ */
+
+/* ── SuggestInput（检索辅助输入框）─────────────────────────
+ * 内部用 antd AutoComplete（rc-select），无法通过 props 控制 .ant-select-selector 样式
+ * 通过 CSS 类统一视觉：暗色背景 + 边框 + brand 色 focus
+ * 关键：allowClear 清除叉号 hover 显示（rc-select 默认 hover 也显示，此处强制确保）
+ */
+.ds-suggest-input {
+  width: 100%;
+}
+
+/* SuggestInput 下拉面板
+ * v11.2：z-index 由全局 smartPopupContainer 统一管理，无需在此设
+ *   面板挂载到 .ant-modal-wrap 后自然在 Modal 内容之上 */
+
+/* v9.5：与 DsInput size="sm" 视觉统一（高度 20px / 字号 body-sm / padding 0 2px）
+ *   antd AutoComplete small 默认 24px/14px，与 DsInput sm 20px/12px 不一致
+ *   同一行混用时视觉割裂，此处强制对齐
+ */
+.ds-suggest-input .ant-select-selector {
+  background: var(--bg-base-tertiary) !important;
+  border-color: var(--border-neutral-l2) !important;
+  color: var(--text-default) !important;
+  border-radius: var(--radius-4) !important;
+  min-height: 20px !important;
+  padding: 0 2px !important;
+  font-size: var(--body-sm-font-size) !important;
+}
+
+.ds-suggest-input .ant-select-selector:hover {
+  border-color: var(--border-brand) !important;
+}
+
+.ds-suggest-input.ant-select-focused .ant-select-selector,
+.ds-suggest-input:focus-within .ant-select-selector {
+  border-color: var(--border-brand) !important;
+  background: var(--bg-base-secondary) !important;
+}
+
+/* 输入框文字颜色与字号（与 DsInput body-sm 一致） */
+.ds-suggest-input .ant-select-selection-search-input {
+  color: var(--text-default) !important;
+  font-size: var(--body-sm-font-size) !important;
+  height: 20px !important;
+}
+
+/* 清除叉号颜色 */
+.ds-suggest-input .ant-select-clear {
+  background: var(--bg-base-tertiary);
+  color: var(--text-tertiary);
+}
+
+.ds-suggest-input .ant-select-clear:hover {
+  color: var(--text-default);
+}
+
+/* ── 统一输入框清除按钮样式（v10.33）─────────────────────
+ * 所有 antd Input / Select 的清除叉号统一为纯文本×样式
+ * 视觉效果：无圆形背景，hover 变深色，与 CustomerPicker 自定义×一致
+ */
+.ant-input-clear-icon,
+.ant-select-clear {
+  background: transparent !important;
+  color: var(--text-tertiary) !important;
+  font-size: 14px !important;
+  line-height: 1 !important;
+  opacity: 1 !important;
+  transition: color 0.15s ease !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.ant-input-clear-icon:hover,
+.ant-select-clear:hover {
+  color: var(--text-default) !important;
+  background: transparent !important;
+}
+
+/* 去除 antd 清除按钮的 SVG 图标，用纯文本×替代 */
+.ant-input-clear-icon::before {
+  content: '×' !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+.ant-input-clear-icon svg {
+  display: none !important;
+}
+
+/* ── 通用网格表格行/表头（PriceMatrixTable 等自定义表格）──
+ * 用于非 UnifiedTable 的自定义 grid 表格（如 UnitPriceExpandPanel 的价格矩阵）
+ * 替代散落的 inline GRID_ROW_STYLE / GRID_HEADER_STYLE 常量
+ */
+.ds-grid-row {
+  display: grid;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  font-size: var(--body-xs-font-size);
+  border-bottom: 1px solid var(--border-neutral-l1);
+}
+
+.ds-grid-header {
+  display: grid;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px;
+  font-size: var(--body-xs-font-size);
+  color: var(--text-tertiary);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-neutral-l2);
+}
+
+/* ── 链接样式单元格（可点击弹窗型字段）──────────────────────
+ * 用于表格中可点击触发弹窗/抽屉的单元格
+ * 替代散落的 inline 链接样式
+ */
+.ds-cell-link {
+  color: var(--text-default);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 0.12s ease;
+}
+
+.ds-cell-link:hover {
+  color: var(--text-brand);
+}
+
+/* ── 价格单元格（默认值展示，可点击编辑）────────────────── */
+.ds-cell-price {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--body-xs-font-size);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--border-neutral-l2);
+  background: var(--bg-base-secondary);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.ds-cell-price:hover {
+  border-color: var(--border-brand);
+  background: var(--bg-base-tertiary);
+}
+
+.ds-cell-price-empty {
+  color: var(--text-quaternary);
+}
+
+.ds-cell-price-purchase {
+  color: var(--status-danger-default);
+}
+
+/* ── 段落区块容器（产品编辑弹窗等表单分区）──────────────────
+ * 替代散落的 SECTION_BOX_STYLE 常量
+ */
+.ds-section-box {
+  padding: 8px;
+  background: var(--bg-base-tertiary);
+  border-radius: var(--radius-4);
+  border: 1px solid var(--border-neutral-l1);
+  margin-bottom: 6px;
+}
+
+.ds-section-title {
+  font-size: var(--body-xs-font-size);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ds-field-label {
+  display: block;
+  font-size: var(--body-xs-font-size);
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+/* ── 画布层核心容器（v10.32 固定1200px画布后，此类仅用于客户端和表格内部）
+ * v10.32 变更：员工端骨架行统一迁移到 .ds-shell-row，
+ * 此类保留用于客户端页面和 UnifiedTable 内部表格区域
+ *
+ * 核心规则：
+ *   - width: max-content   → 宽度由内容撑开
+ *   - min-width: 100%      → 不小于视口（PC 端完整展示）
+ *   - flex-shrink: 0       → 不被压缩
+ *   - flex-wrap: nowrap    → 不换行
+ */
+.ds-canvas-row {
+  width: max-content;
+  min-width: 100%;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+}
+
+/* ── v10.32 全局骨架统一类（AppShell）──────────────────────
+ * 唯一逻辑轴心：用户最新指令「固定1200px画布 + 通用行div类 + 行高24px + 字号11px」
+ *
+ * 设计原理：
+ *   1. .ds-app-shell 作为最外层大 div，固定 1200px 画布宽度
+ *   2. 任意设备视觉一致：小于视口居中可滚，大于视口居中展示
+ *   3. 除内容区外所有行div使用 .ds-shell-row 通用基础类
+ *   4. 通用行：高度24px、字号11px、width auto自适应、超出可滚动
+ *   5. 一套代码两端通用（员工端/客户端）
+ *
+ * 层级结构（从上到下）：
+ *   <div class="ds-app-shell">
+ *     <header class="ds-shell-row ds-shell-header">...</header>
+ *     <nav class="ds-shell-row ds-shell-subnav">...</nav>
+ *     <div class="ds-shell-row ...">其他行</div>
+ *     <main class="ds-shell-main">内容区（高度不确定）</main>
+ *     <footer class="ds-shell-row ds-shell-bottom">...</footer>
+ *   </div>
+ */
+
+/* 大 div 包裹画布：固定1200px画布宽度，任意设备视觉一致
+ * 主容器自身居中（margin:0 auto），内边距2px+浅灰细边框确认边界
+ * 内部盒子最小宽度撑满主容器内容区，超出滚动，保证布局一致性 */
+.ds-app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  width: var(--shell-canvas-width);
+  margin: 0 auto;
+  padding: var(--shell-canvas-pad);
+  border: var(--shell-canvas-border) solid var(--border-neutral-l2);
+  box-sizing: border-box;
+  background: var(--bg-base-default);
+}
+
+/* ── .ds-shell-row 通用行盒子（两层嵌套）──────────────────────
+ * 唯一逻辑轴心：用户「容器内部所有行div使用同一个css类」指令
+ *
+ * 问题根源：
+ *   父容器 .ds-app-shell 是 flex-direction: column 的 flex 容器，
+ *   min-width + flex-shrink:0 时，任意一行内部撑开超 min-width，
+ *   整列 flex 父容器就被撑宽，全部行一起拓宽，单行滚动失效。
+ *
+ * 解决方案：两层嵌套
+ *   外层 ds-shell-row：对齐画布、固定可视窗口、overflow:hidden 禁止被撑开
+ *   内层 ds-shell-row-scroll：overflow-x:auto 隐藏滚动条、支持拖动滚动
+ *
+ * 核心规范：
+ *   - 高度24px + 字号11px（与导航栏行一致）
+ *   - 外层 width:100% + overflow:hidden → 固定可视窗口不被撑开
+ *   - 内层 overflow-x:auto + 隐藏滚动条 → 超出时单行独立滚动
+ *   - 鼠标拖动滚动（DsShellRow 组件实现）
+ *   - 居中是主容器居中，不是内部元素居中
+ *
+ * 使用方式：
+ *   <DsShellRow className="ds-shell-header">
+ *     {children}
+ *   </DsShellRow>
+ */
+.ds-shell-row {
+  width: 100%;
+  min-width: 100%;
+  height: var(--shell-row-h);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* 内层滚动壳：撑满外层、超出滚动、隐藏滚动条 */
+.ds-shell-row-scroll {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--shell-pad-x);
+  gap: var(--shell-gap);
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+  white-space: nowrap;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  /* 隐藏滚动条（Chrome/Safari/Edge/Firefox） */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.ds-shell-row-scroll::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Edge */
+}
+/* 拖动滚动时切换鼠标光标 */
+.ds-shell-row-scroll:active {
+  cursor: grabbing;
+}
+
+/* 头部行：三段式 space-between（标题 + 一级导航 + 用户中心）
+ * position/z-index 由 AppShell inline style 控制（sticky 定位需要） */
+.ds-shell-header {
+  background: var(--bg-base-secondary);
+  border-bottom: 1px solid var(--border-neutral-l1);
+}
+.ds-shell-header > .ds-shell-row-scroll {
+  justify-content: space-between;
+  padding-top: var(--safe-area-top);
+}
+
+.ds-shell-header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--shell-gap);
+  flex-shrink: 0;
+}
+
+.ds-shell-header-nav {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-shell-header-user {
+  display: flex;
+  align-items: center;
+  gap: var(--shell-gap);
+  flex-shrink: 0;
+}
+
+/* 二级子功能导航行
+ * position/z-index 由 AppShell inline style 控制 */
+.ds-shell-subnav {
+  background: var(--bg-base-tertiary);
+  border-bottom: 1px solid var(--border-neutral-l1);
+}
+
+/* 内容区：高度不确定，自动铺满剩余空间
+ * 水平 padding 必须为 0：
+ *   - 内容区内的行盒子（DsShellRow/ViewNavBar/StageActionBar 等）自身有 padding
+ *   - 若 .ds-shell-main 再加水平 padding，会让内容区行比头部/二级导航行短 2*pad
+ *   - 父子都加水平 padding 会导致内容起点错位、宽度不一致
+ * 垂直 padding 保留 8px 提供上下呼吸空间 */
+.ds-shell-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: var(--shell-inner-min-w);
+  padding: var(--spacer-8) 0;
+  padding-bottom: calc(var(--spacer-8) + var(--safe-area-bottom));
+}
+
+/* 底部上下文操作栏
+ * position/z-index 由 AppShell inline style 控制 */
+.ds-shell-bottom {
+  background: var(--bg-base-secondary);
+  border-top: 1px solid var(--border-neutral-l1);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.04);
+}
+.ds-shell-bottom > .ds-shell-row-scroll {
+  gap: var(--spacer-8);
+}
+
+/* ── 表格列宽占位（v10.30 信息密度优化）──────────────────────
+ * 表格实际宽度 < 内容区宽度时，右侧剩余空间用虚线占位
+ * v10.31 整改：占位与表格主体共享 .ds-table-shell 的外框，
+ *   内部用左侧虚线分隔视觉区分（不是独立边框），整体属于表格的一部分
+ * 保证表格区域稳定和信息密度，列宽方便随时调整 */
+/* v10.32 废除 .ds-table-placeholder：由表格内部弹性虚数列替代
+ * 弹性虚数列在 UnifiedTable.tsx 的 mergedColumns 末尾作为 __elastic 列实现
+ * 仅分配剩余空白空间，不挤压业务列，业务列拓宽时自动收缩归零 */
+
+/* ── DsNavButton 导航按钮（三级变体统一）──────────────────────
+ * 唯一逻辑轴心：DS_SHELL_INLINE_BTN 规范（高度20px / 字号11px / 内边距0 6px / 圆角4px）
+ *
+ * 三种变体：
+ *   .ds-nav-btn-primary  一级导航：底部品牌色下划线指示
+ *   .ds-nav-btn-sub      二级导航：品牌色背景+边框胶囊指示
+ *   .ds-nav-btn-view-tab 三级视图标签：与二级一致但更紧凑
+ *
+ * 激活态：叠加 .ds-nav-btn-active
+ */
+.ds-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--shell-row-h);
+  padding: 0 6px;
+  font-size: var(--body-sm-font-size);
+  font-weight: 400;
+  line-height: var(--body-sm-line-height);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-4);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+
+/* ── 一级导航按钮（底部下划线指示）── */
+.ds-nav-btn-primary {
+  padding: 0 8px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  transition: color .15s ease, border-color .15s ease;
+}
+.ds-nav-btn-primary.ds-nav-btn-active {
+  font-weight: 500;
+  color: var(--text-default);
+  border-bottom-color: var(--bg-brand);
+}
+.ds-nav-btn-primary:not(.ds-nav-btn-active) {
+  color: var(--text-secondary);
+}
+
+/* ── 二级导航按钮（胶囊指示）── */
+.ds-nav-btn-sub {
+  border: 1px solid transparent;
+  border-radius: var(--radius-6);
+}
+.ds-nav-btn-sub.ds-nav-btn-active {
+  font-weight: 500;
+  color: var(--text-brand);
+  background: var(--bg-brand-popup);
+  border-color: var(--border-brand);
+}
+.ds-nav-btn-sub:not(.ds-nav-btn-active) {
+  color: var(--text-secondary);
+}
+
+/* ── 三级视图标签按钮（与二级一致，更紧凑）── */
+.ds-nav-btn-view-tab {
+  border: 1px solid transparent;
+  border-radius: var(--radius-6);
+}
+.ds-nav-btn-view-tab.ds-nav-btn-active {
+  font-weight: 500;
+  color: var(--text-brand);
+  background: var(--bg-brand-popup);
+  border-color: var(--border-brand);
+}
+.ds-nav-btn-view-tab:not(.ds-nav-btn-active) {
+  color: var(--text-secondary);
+}
+
+/* ── DsNavLink（客户端 NavLink 包装，复用导航按钮样式）── */
+.ds-nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--shell-row-h);
+  padding: 0 6px;
+  font-size: var(--body-sm-font-size);
+  font-weight: 400;
+  line-height: var(--body-sm-line-height);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-6);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.ds-nav-link.ds-nav-link-active {
+  font-weight: 500;
+  color: var(--text-brand);
+  background: var(--bg-brand-popup);
+  border-color: var(--border-brand);
+}
+
+/* ── 采购单据工作台（DocumentPaperView）──────────────────────
+ * 唯一逻辑轴心：顶层设计规范理念 2/5/8 + 采购单据硬性落地准则
+ *   1. 统一圆角+轻质感弱化生硬方块（圆角+弱投影+淡渐变底色）
+ *   2. 依靠色彩区分层级，取消多余分割线（核心数据高饱和、次要信息弱化）
+ *   3. 全链路组件规范强制统一（行高24px、字号、按钮、输入框光晕、边距）
+ *
+ * 纸张本体保留白底黑字（打印所见即所得），编辑态 UI 元素全部使用设计令牌
+ * 工作区背景使用暗色令牌，与 AppShell 视觉一致
+ */
+
+/* 工作区：暗色背景，承载白纸 */
+.ds-paper-workspace {
+  background: var(--bg-base-default);
+  min-height: 100%;
+  padding: var(--spacer-16);
+  overflow: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacer-12);
+}
+
+/* 悬浮工具栏：圆角+弱投影+暗色面板 */
+.ds-paper-hover-toolbar {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gap);
+  background: var(--bg-base-secondary);
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-8);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+  padding: var(--spacer-4);
+}
+
+/* 悬浮工具栏按钮：复用 DS_SHELL_INLINE_BTN 规范，按语义色派生 */
+.ds-paper-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+  border-radius: var(--radius-4);
+  border: 1px solid var(--border-neutral-l2);
+  background: var(--bg-base-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease;
+}
+.ds-paper-toolbar-btn:hover:not(:disabled) {
+  background: var(--bg-base-tertiary);
+  color: var(--text-default);
+}
+.ds-paper-toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* 语义变体 */
+.ds-paper-toolbar-btn--brand {
+  border-color: var(--border-brand);
+  color: var(--text-brand);
+}
+.ds-paper-toolbar-btn--success {
+  border-color: var(--status-success-default);
+  color: var(--status-success-default);
+}
+.ds-paper-toolbar-btn--alert {
+  border-color: var(--status-alert-default);
+  color: var(--status-alert-default);
+}
+.ds-paper-toolbar-btn--danger {
+  border-color: var(--status-danger-default);
+  color: var(--status-danger-default);
+}
+
+/* ── 纸张本体（A5 竖版）──
+ * 白底黑字保留（打印所见即所得）
+ * 屏幕态：圆角+弱投影+柔和边框，弱化生硬方块
+ * 打印态：去阴影去圆角（print-documents.css 控制）
+ */
+.ds-document-page {
+  background: var(--print-bg-paper);
+  color: var(--print-text-primary);
+  border-radius: var(--radius-4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--border-neutral-l1);
+  padding: 12px;
+  margin: 0 auto;
+  display: inline-block;
+  text-align: left;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  position: relative;
+  transition: box-shadow .25s ease;
+}
+.ds-document-page:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--border-neutral-l2);
+}
+
+/* 纸张抬头：底部品牌色细线分隔（取消生硬 #333 粗线） */
+.ds-doc-header {
+  text-align: center;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--print-border-strong);
+}
+.ds-doc-header-company {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--print-text-primary);
+  letter-spacing: 0.02em;
+}
+.ds-doc-header-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 2px;
+  color: var(--print-text-primary);
+}
+.ds-doc-header-scope {
+  font-size: 10px;
+  color: var(--print-text-tertiary);
+  margin-top: 3px;
+}
+
+/* 纸张信息条：用淡灰底色区分层级，不靠粗分割线 */
+.ds-doc-contact-bar {
+  font-size: 11px;
+  color: var(--print-text-secondary);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--print-border-light);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* 订单+客户信息区：同组紧凑、模块间距拉开 */
+.ds-doc-meta-section {
+  font-size: 13px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--print-border-light);
+}
+.ds-doc-meta-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 3px;
+  align-items: center;
+}
+.ds-doc-meta-row:last-child {
+  margin-bottom: 0;
+}
+.ds-doc-meta-label {
+  color: var(--print-text-tertiary);
+  font-size: 11px;
+}
+.ds-doc-meta-value {
+  font-weight: 500;
+  color: var(--print-text-primary);
+  border-bottom: 1px solid var(--print-border-medium);
+  padding: 0 8px;
+  min-width: 40px;
+  display: inline-block;
+}
+
+/* ── 纸张表格区──
+ * 取消生硬全框线，仅保留水平细线（色彩区分层级）
+ * 轻质感：表格容器圆角+弱投影，单元格淡渐变底色
+ * 表头：淡灰底色 + 加粗
+ * 数据行：悬停高亮
+ */
+.ds-doc-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  margin: 4px 0;
+  border: 1px solid var(--print-border-lighter);
+  border-radius: var(--radius-4);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.ds-doc-table thead th {
+  background: linear-gradient(180deg, var(--print-bg-subtle) 0%, var(--print-bg-subtle) 100%);
+  color: var(--print-border-strong);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 4px 5px;
+  text-align: center;
+  border-bottom: 1.5px solid var(--print-border-strong);
+  white-space: nowrap;
+}
+.ds-doc-table tbody td {
+  padding: 2px 5px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 18px;
+  border-bottom: 1px solid var(--print-border-lighter);
+  color: var(--print-text-primary);
+  height: 24px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, var(--print-bg-paper) 0%, var(--print-bg-paper-alt) 100%);
+  transition: background .15s ease, border-color .15s ease;
+}
+.ds-doc-table tbody tr:hover {
+  background: var(--print-bg-subtle);
+}
+.ds-doc-table tbody tr:hover td {
+  background: linear-gradient(180deg, var(--print-bg-subtle) 0%, var(--print-bg-subtle) 100%);
+  border-bottom-color: var(--print-border-light);
+}
+.ds-doc-table tbody tr {
+  transition: background .15s ease;
+}
+.ds-doc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+/* 空行弱化 */
+.ds-doc-table tbody tr.ds-doc-empty-row td {
+  color: var(--print-text-placeholder);
+}
+/* 数字列等宽对齐 */
+.ds-doc-table .ds-doc-col-num {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── 纸张页脚合计区──
+ * 色彩区分层级：合计品牌色、优惠红色、应收加粗放大
+ * 取消粗分割线，用细线+留白区分
+ */
+.ds-doc-footer {
+  font-size: 13px;
+  border-top: 1.5px solid var(--print-border-strong);
+  padding-top: 5px;
+  margin-top: 4px;
+}
+.ds-doc-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.ds-doc-total-label {
+  font-weight: 600;
+  color: var(--print-text-primary);
+}
+.ds-doc-total-count {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--print-text-tertiary);
+  font-weight: 400;
+}
+.ds-doc-total-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+/* 扣减类字段红色（优惠） */
+.ds-doc-discount {
+  color: var(--status-discount-default);
+  font-weight: 500;
+}
+.ds-doc-discount-input {
+  width: 50px;
+  border: none;
+  border-bottom: 1px solid var(--print-border-light);
+  text-align: right;
+  font-size: 13px;
+  color: var(--status-discount-default);
+  background: transparent;
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  padding: 0 2px;
+  transition: border-bottom-color .15s ease;
+}
+.ds-doc-discount-input:focus {
+  outline: none;
+  border-bottom-color: var(--status-discount-default);
+}
+/* 应收金额：品牌色加粗放大（核心数据高饱和） */
+.ds-doc-payable {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--print-brand);
+}
+.ds-doc-tax {
+  color: var(--print-text-secondary);
+}
+.ds-doc-amount-cn {
+  font-size: 11px;
+  color: var(--print-text-tertiary);
+  margin-bottom: 4px;
+}
+.ds-doc-sign-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 6px;
+}
+.ds-doc-tip {
+  font-size: 11px;
+  color: var(--print-text-tertiary);
+  max-width: 60%;
+}
+.ds-doc-signature {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--print-border-strong);
+}
+.ds-doc-signature-line {
+  display: inline-block;
+  width: 80px;
+  border-bottom: 1px solid var(--print-border-strong);
+}
+
+/* ── 单元格编辑态（纸张内）──
+ * 输入框光晕使用品牌色，圆角统一
+ */
+.ds-doc-cell-input {
+  width: 100%;
+  border: none;
+  background: var(--bg-brand-popup);
+  outline: 1px solid var(--border-brand);
+  outline-offset: -1px;
+  border-radius: var(--radius-2);
+  font-size: inherit;
+  text-align: inherit;
+  padding: 0 2px;
+  color: var(--print-text-primary);
+  font-family: inherit;
+  transition: outline-color .15s ease, background .15s ease;
+}
+.ds-doc-cell-input:focus {
+  outline: 1px solid var(--bg-brand);
+  background: rgba(50, 240, 140, 0.18);
+}
+
+/* ── 识别订单弹窗──
+ * 暗色面板 + 圆角 + 弱投影 + 淡入动效
+ */
+@keyframes ds-recognize-fade-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.ds-recognize-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ds-recognize-fade-in .2s ease;
+}
+.ds-recognize-dialog {
+  background: var(--bg-base-secondary);
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-8);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: var(--spacer-16);
+  width: 480px;
+  max-height: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacer-12);
+  animation: ds-recognize-fade-in .22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ds-recognize-title {
+  font-size: var(--body-base-font-size);
+  font-weight: 600;
+  color: var(--text-default);
+  margin: 0;
+}
+.ds-recognize-textarea {
+  width: 100%;
+  height: 160px;
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  padding: var(--spacer-8);
+  font-size: var(--body-base-font-size);
+  color: var(--text-default);
+  background: var(--bg-base-tertiary);
+  resize: none;
+  font-family: inherit;
+}
+.ds-recognize-textarea:focus {
+  outline: none;
+  border-color: var(--border-brand);
+}
+.ds-recognize-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacer-8);
+}
+
+/* ── Ant Design 浮动面板：边框/箭头统一品牌色（v11.0.9）──────────
+ * 唯一逻辑轴心：用户「浮动面板下拉面板的边框颜色和指向箭头统一为品牌色，
+ *   灰黑的边框看不出边界」指令
+ *
+ * v11.2 修复【关键】：浮动面板背景色从 --bg-overlay-l1（4%透明度，穿透可见）
+ *   改为 --bg-base-tertiary（#2A2D31 实色不透明，遮盖下方内容）。
+ *   --bg-overlay-l1 是 hover/激活叠加层用的极淡色，不适用于浮动面板。
+ *   浮动面板必须实色不透明，否则用户看到面板"透明穿透"后方内容。
+ *
+ * v11.0.10 修复：
+ *   - 箭头变方框：原 `.ant-popover-arrow { border: 1px solid }` 让 Antd 5 的 SVG/伪元素
+ *     箭头容器整体带上边框，视觉上看像方框；改为只给 `.ant-popover-arrow-content`
+ *     设背景色（旋转 45° 的方块即箭头），移除 border
+ *   - SuggestInput 下拉被遮挡：移除 `.ant-select-dropdown { overflow: hidden }`，
+ *     让 SuggestList 内部自然展开（dropdown 圆角由 border-radius 配合外层即可）
+ *
+ * 覆盖范围：
+ *   1. Popover（分类管理面板等嵌入式 Popover）
+ *   2. Tooltip（标题提示）
+ *   3. AutoComplete/Select Dropdown（SuggestInput 下拉项）
+ *   4. Dropdown 菜单
+ */
+.ant-popover,
+.ant-popover-inner {
+  background: var(--bg-base-tertiary) !important;
+  border: 1px solid var(--border-brand) !important;
+  border-radius: var(--radius-4) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
+}
+
+.ant-popover-inner {
+  padding: 0 !important;
+  /* overflow: hidden 配合 border-radius 让圆角生效，内部 Popover content 单独 padding */
+  overflow: hidden;
+}
+
+/* Popover 箭头（Antd 6：.ant-popover-arrow 是 SVG 元素，颜色通过 color 控制 fill）
+ *   v11.0.12：用户「所有下拉的指向箭头颜色要和边框线一样，默认色看着像缺了一个口子」
+ *   修复：用 color: var(--border-brand) 让 SVG path 的 fill 与边框同色 */
+.ant-popover-arrow {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--border-brand) !important;
+}
+
+.ant-popover-arrow svg,
+.ant-popover-arrow path,
+.ant-popover-arrow::before,
+.ant-popover-arrow::after {
+  fill: var(--border-brand) !important;
+  color: var(--border-brand) !important;
+}
+
+/* Popover 内容区 padding 还原（被 inner padding:0 覆盖后需补回） */
+.ant-popover-inner-content {
+  padding: 8px !important;
+}
+
+/* Tooltip 内部容器 */
+.ant-tooltip-inner {
+  background: var(--bg-base-tertiary) !important;
+  border: 1px solid var(--border-brand) !important;
+  border-radius: var(--radius-4) !important;
+  color: var(--text-default) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24) !important;
+}
+
+/* Tooltip 箭头（Antd 6：SVG，color 控制 fill） */
+.ant-tooltip-arrow {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--border-brand) !important;
+}
+
+.ant-tooltip-arrow svg,
+.ant-tooltip-arrow path,
+.ant-tooltip-arrow-content::before,
+.ant-tooltip-arrow-content::after {
+  fill: var(--border-brand) !important;
+  color: var(--border-brand) !important;
+}
+
+/* AutoComplete / Select Dropdown（SuggestInput 下拉项）
+ *   v11.0.10：移除 overflow: hidden，避免 SuggestList 内部滚动/溢出元素被截断 */
+.ant-select-dropdown,
+.ant-auto-complete-dropdown {
+  background: var(--bg-base-tertiary) !important;
+  border: 1px solid var(--border-brand) !important;
+  border-radius: var(--radius-4) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24) !important;
+}
+
+/* v11.0.12：Select / AutoComplete 后缀箭头（点击展开下拉的箭头图标）
+ *   原 bug：默认灰色，与品牌色边框不一致，看着像「缺了一个口子」
+ *   修复：箭头图标 color 与边框同色 */
+.ant-select-arrow,
+.ant-select-suffix,
+.ant-picker-suffix,
+.ant-cascader-picker-label:hover .ant-cascader-picker-arrow,
+.ant-select-arrow .anticon,
+.ant-select-suffix .anticon {
+  color: var(--border-brand) !important;
+}
+
+.ant-select-arrow svg,
+.ant-select-suffix svg {
+  fill: var(--border-brand) !important;
+}
+
+/* Dropdown 菜单（如表格操作列展开菜单） */
+.ant-dropdown-menu {
+  background: var(--bg-base-tertiary) !important;
+  border: 1px solid var(--border-brand) !important;
+  border-radius: var(--radius-4) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24) !important;
+  padding: 4px !important;
+}
+
+/* Dropdown 菜单展开按钮的箭头（Antd 6 dropdown trigger 的箭头） */
+.ant-dropdown-trigger .anticon-down,
+.ant-dropdown-link .anticon-down {
+  color: var(--border-brand) !important;
+}
+
+.ant-dropdown-menu-item {
+  color: var(--text-default) !important;
+}
+
+.ant-dropdown-menu-item:hover,
+.ant-dropdown-menu-item-active {
+  background: var(--bg-overlay-l2) !important;
+  color: var(--text-brand) !important;
+}
+
+/* 选中项（AutoComplete 选中 / Select 选中） */
+.ant-select-item-option-active,
+.ant-select-item-option-selected {
+  background: var(--bg-overlay-l2) !important;
+  color: var(--text-brand) !important;
+  font-weight: 500;
+}
+

@@ -1,0 +1,206 @@
+@import './shared/styles/tokens.css';
+@import './shared/styles/elements.css';
+@import './shared/styles/print-documents.css';
+
+/* ── 全局基础样式 ────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+/* v11.18 真实物理大小保障：禁止浏览器自动调整文字大小——
+   iOS Safari / Android Chrome 在聚焦 input（font-size < 16px）时
+   会自动放大文字（text-size-adjust），导致"元素看到多大就是多大"
+   被破坏（输入框显示字数骤减）；全局锁死 100% */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+input, textarea, select, button {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg-base-default);
+  color: var(--text-default);
+  font-family: var(--font-family-default);
+  font-size: var(--body-base-font-size);
+  line-height: var(--body-base-line-height);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* v10.32 固定1200px画布模式：
+     - position: relative：FloatPanel 的 position: absolute 相对 body 定位
+     - overflow-x: auto：画布超出视口时，用户可横向拖动页面查看
+     - 居中由 .ds-app-shell 自身的 margin: 0 auto 完成
+     - 禁止在 body 上用 flex + justify-content:center 居中：
+       flex 居中存在溢出 bug，画布宽于视口时左侧会被裁切且无法滚动到
+     - 电脑端/移动端视觉完全一致，1200px固定画布不缩放不重排 */
+  position: relative;
+  overflow-x: auto;
+  /* 防止 iOS 输入框聚焦时自动放大（画布固定，不缩放） */
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  color: var(--text-brand);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--text-brand-hover);
+}
+
+/* ── 滚动条样式 ──────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-overlay-l3);
+  border-radius: var(--radius-4);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-overlay-l4);
+}
+
+/* ── Antd 暗色主题覆盖 ──────────────────────────────────── */
+.ant-config-provider {
+  height: 100%;
+}
+
+/* v10.26 ProductPicker 二级面板改用 FloatPanel（无箭头），原 Popover 箭头覆盖样式已废弃移除 */
+
+/* v11.16 独立模态「画布居中」（顶层设计更正：一切以画布为基准，替代 v11.10 视口居中）
+ * 用户更正：① 之前「弹窗相对视口居中」理解错误且过度扩散；② 现统一为——需要用户
+ *   交互确认的独立模态（确认/提示/编辑弹窗 Modal）相对**画布**居中（弹窗中心 = 画布中心）；
+ *   消息通知（toast）保持顶部位置，不参与画布居中；
+ *   FloatPanel 类定位型浮层（产品实时匹配/单位面板等）锚定触发元素原位，不参与居中。
+ * 定位由 canvasModalCentering（JS）统一接管：.ant-modal-wrap 设 flex 居中 + transform
+ *   平移至画布中心（弹窗 fixed 不随画布 zoom 缩放），.ant-modal margin:auto（超宽时
+ *   从两侧溢出可横向滚动查看完整内容）。以下 CSS 是双端兜底，与 JS inline 一致不冲突。 */
+.ant-modal-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ant-modal {
+  margin: auto !important;
+  flex: none !important;
+  /* v11.17：保持弹窗设计宽度（780px 等），不随视口压缩——设备大小不干预，
+     视口容不下时由 .ant-modal-wrap 横向滚动查看（全局生效，不分设备） */
+  max-width: none !important;
+  padding: 0 !important;
+}
+.ant-modal-content {
+  border-radius: var(--radius-4) !important;
+}
+
+/* v11.17：Drawer 保持固定宽度（DsDrawer 1200/1000/800 层级递减），不随设备全屏化；
+   视口容不下时由 wrap 横向滚动查看——设备大小不干预，滚动交由用户 */
+.ant-drawer-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Popover/Dropdown 允许纵向滚动（内容超高时滚动查看）——全局统一，不分设备 */
+.ant-popover-inner {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+.ant-select-dropdown {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* v11.10 画布缩放控件（body 层 fixed 右上角，不随画布缩放）
+ * 层级：高于画布头部/导航（shell-z-header 之下 900 内），低于弹窗/消息（1000+）
+ * 交互：− / ＋ 步进 0.1；百分比按钮点击恢复 100% */
+.ds-zoom-controls {
+  position: fixed;
+  /* v11.18：缩放控件从右上角移至界面底部右下角（用户指令：界面底部上下文植入
+     固定的放大缩小按钮）——底部操作栏内容靠左，右下角不重叠；不随画布缩放 */
+  bottom: calc(var(--safe-area-bottom, 0px) + 8px);
+  right: 8px;
+  z-index: 950;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-menu);
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  box-shadow: var(--shadow-float);
+  font-size: var(--body-xs-font-size);
+  line-height: 1;
+  user-select: none;
+}
+.ds-zoom-btn,
+.ds-zoom-value {
+  height: 18px;
+  min-width: 18px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--text-default);
+  font-size: var(--body-xs-font-size);
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+}
+.ds-zoom-btn:hover,
+.ds-zoom-value:hover {
+  background: var(--bg-overlay-l2);
+  color: var(--text-brand);
+}
+.ds-zoom-value {
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 安全区工具类 ────────────────────────────────────────── */
+.safe-area-top {
+  padding-top: var(--safe-area-top);
+}
+.safe-area-bottom {
+  padding-bottom: var(--safe-area-bottom);
+}
+.safe-area-all {
+  padding-top: var(--safe-area-top);
+  padding-bottom: var(--safe-area-bottom);
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+}
+
+/* ── FloatPanel 动画 ─────────────────────────────────────── */
+@keyframes float-panel-sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-panel-mask-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

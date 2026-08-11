@@ -1,0 +1,335 @@
+/**
+ * 退换售后视图服务
+ *
+ * 职责：
+ *  1. listByDocument：查所有 refund_lines JOIN document_lines（售价 unit_price）
+ *  2. addRefundLine：强制继承 document_lines.unit_price 计算 refund_amount；校验超退
+ *  3. updateRefundLine：更新 refund_qty + reason，重新计算 refund_amount，重新校验超退
+ *  4. removeRefundLine：删除单条
+ *
+ * 设计原则：
+ *  - 防超退：SUM(refund_lines.refund_qty WHERE line_id) ≤ document_lines.qty
+ *  - 强制继承：refund_amount = refund_qty * document_lines.unit_price（不接受前端传入金额）
+ */
+import { prisma } from '../config/prisma.js';
+import { Errors } from '../utils/errors.js';
+import { wsManager } from '../ws/index.js';
+import { logger } from '../utils/logger.js';
+import { round2 } from '../engines/pricing-engine.js';
+import type { refund_type } from '@prisma/client';
+
+export interface RefundLineCreateInput {
+  lineId: bigint;
+  refundType: refund_type;
+  refundQty: number;
+  reason?: string;
+}
+
+export interface RefundLineUpdateInput {
+  refundQty?: number;
+  reason?: string;
+}
+
+function broadcastRefundChanged(documentId: bigint) {
+  wsManager.broadcast(String(documentId), {
+    type: 'refund.updated',
+    documentId: String(documentId),
+    ts: Date.now(),
+  });
+}
+
+/**
+ * 查询单据的所有退换售后行。
+ */
+export async function listByDocument(documentId: bigint) {
+  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  if (!doc) throw Errors.notFound('单据不存在');
+
+  const refundLines = await prisma.refund_lines.findMany({
+    where: { document_line: { documentId } },
+    orderBy: { created_at: 'asc' },
+    include: {
+      document_line: {
+        select: {
+          id: true,
+          // v8.0：SKU 关联字段（brandId + productId + unitId，均可空）
+          brandId: true,
+          productId: true,
+          unitId: true,
+          // v8.0 快照字段
+          productRef: true,
+          spec: true,
+          unit: true,
+          categoryId: true,
+          thumbnailUrl: true,
+          qty: true,
+          documentId: true,
+          // v11.0 解耦：5 个独立快照字段（替代原 brand/unitLink/product 嵌套关联）
+          productName: true,
+          brandName: true,
+          categoryName: true,
+          specModel: true,
+          unitName: true,
+          unitPrice: true,
+          amount: true,
+        },
+      },
+    },
+  });
+
+  // 查所有相关 document_lines 的已退换总量，用于展示剩余可退换量
+  const lineIds = refundLines.map((r) => r.line_id);
+  const allRefundSums = await prisma.refund_lines.groupBy({
+    by: ['line_id'],
+    where: { line_id: { in: lineIds } },
+    _sum: { refund_qty: true },
+  });
+  const refundSumMap = new Map(allRefundSums.map((s) => [s.line_id, Number(s._sum.refund_qty ?? 0)]));
+
+  return refundLines.map((r) => {
+    const qty = Number(r.document_line.qty);
+    const unitPrice = Number(r.document_line.unitPrice);
+    const totalRefunded = refundSumMap.get(r.line_id) ?? 0;
+    const remainingRefundable = Math.max(0, qty - totalRefunded);
+
+    return {
+      id: r.id,
+      lineId: r.line_id,
+      documentId: r.document_line.documentId,
+      refundType: r.refund_type,
+      originalQty: Number(r.original_qty),
+      originalPrice: Number(r.original_price),
+      refundQty: Number(r.refund_qty),
+      refundAmount: Number(r.refund_amount),
+      refundStatus: r.refund_status,
+      refundAt: r.refund_at,
+      reason: r.reason,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      documentLine: {
+        lineId: r.document_line.id,
+        // v8.0：SKU 关联字段
+        brandId: r.document_line.brandId,
+        productId: r.document_line.productId,
+        unitId: r.document_line.unitId,
+        // v8.0 快照字段
+        productRef: r.document_line.productRef,
+        spec: r.document_line.spec,
+        unit: r.document_line.unit,
+        categoryId: r.document_line.categoryId,
+        thumbnailUrl: r.document_line.thumbnailUrl,
+        qty,
+        // v11.0 解耦：5 个独立快照字段（替代原 brand/unitLink/product 嵌套关联）
+        productName: r.document_line.productName,
+        brandName: r.document_line.brandName,
+        categoryName: r.document_line.categoryName,
+        specModel: r.document_line.specModel,
+        unitName: r.document_line.unitName,
+        unitPrice,
+        lineAmount: Number(r.document_line.amount),
+        totalRefunded,
+        remainingRefundable,
+      },
+    };
+  });
+}
+
+/**
+ * 添加退换售后行。
+ * 强制继承 document_lines.unit_price 计算 refund_amount。
+ * 校验 SUM(refund_qty) + input.refund_qty ≤ document_lines.qty。
+ */
+export async function addRefundLine(
+  documentId: bigint,
+  input: RefundLineCreateInput,
+  actor: { id: bigint; name: string },
+) {
+  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  if (!doc) throw Errors.notFound('单据不存在');
+
+  // 1. 校验 lineId 属于 documentId，并带出售价
+  const docLine = await prisma.document_lines.findUnique({
+    where: { id: input.lineId },
+    select: {
+      id: true,
+      qty: true,
+      documentId: true,
+      unitPrice: true,
+    },
+  });
+  if (!docLine || docLine.documentId !== documentId) {
+    throw Errors.badRequest(`物料行 ${input.lineId} 不属于单据 ${documentId}`, 42207);
+  }
+
+  // 2. 校验超退
+  const qty = Number(docLine.qty);
+  const existingRefunds = await prisma.refund_lines.findMany({
+    where: { line_id: input.lineId },
+    select: { refund_qty: true },
+  });
+  const totalRefunded = existingRefunds.reduce((s, r) => s + Number(r.refund_qty), 0);
+  if (totalRefunded + input.refundQty > qty) {
+    throw Errors.business(
+      `退换数量 ${input.refundQty} 超过剩余可退换量 ${qty - totalRefunded}`,
+      40001,
+    );
+  }
+
+  // 3. 强制继承 unitPrice 计算 refund_amount
+  const unitPrice = Number(docLine.unitPrice);
+  const refundAmount = round2(input.refundQty * unitPrice);
+
+  // 强继承：original_qty = document_lines.qty，original_price = document_lines.unitPrice
+  const created = await prisma.refund_lines.create({
+    data: {
+      line_id: input.lineId,
+      refund_type: input.refundType,
+      original_qty: docLine.qty,
+      original_price: docLine.unitPrice,
+      refund_qty: input.refundQty,
+      refund_amount: refundAmount,
+      reason: input.reason ?? null,
+      refund_at: new Date(),
+      created_by: actor.id,
+    },
+  });
+
+  broadcastRefundChanged(documentId);
+
+  logger.info('退换售后行创建', {
+    documentId: String(documentId),
+    lineId: String(input.lineId),
+    refundType: input.refundType,
+    refundQty: input.refundQty,
+    refundAmount,
+    actor: actor.name,
+  });
+
+  return {
+    id: created.id,
+    lineId: created.line_id,
+    refundType: created.refund_type,
+    originalQty: Number(created.original_qty),
+    originalPrice: Number(created.original_price),
+    refundQty: Number(created.refund_qty),
+    refundAmount: Number(created.refund_amount),
+    refundStatus: created.refund_status,
+    refundAt: created.refund_at,
+    reason: created.reason,
+    createdAt: created.created_at,
+    updatedAt: created.updated_at,
+  };
+}
+
+/**
+ * 更新单条退换售后行。
+ * 若修改 refund_qty，需重新校验超退，并重算 refund_amount。
+ */
+export async function updateRefundLine(
+  refundLineId: bigint,
+  input: RefundLineUpdateInput,
+  actor: { id: bigint; name: string },
+) {
+  const existing = await prisma.refund_lines.findUnique({
+    where: { id: refundLineId },
+    select: { id: true, line_id: true, refund_qty: true, reason: true },
+  });
+  if (!existing) throw Errors.notFound('退换售后行不存在');
+
+  const data: Record<string, unknown> = {};
+  if (input.reason !== undefined) data.reason = input.reason;
+
+  // 若修改 refund_qty，需重新校验超退，并重算 refund_amount
+  if (input.refundQty !== undefined && input.refundQty !== Number(existing.refund_qty)) {
+    const docLine = await prisma.document_lines.findUnique({
+      where: { id: existing.line_id },
+      select: {
+        id: true,
+        qty: true,
+        documentId: true,
+        unitPrice: true,
+      },
+    });
+    if (!docLine) throw Errors.notFound('关联物料行不存在');
+
+    const qty = Number(docLine.qty);
+    const otherRefunds = await prisma.refund_lines.findMany({
+      where: { line_id: existing.line_id, id: { not: refundLineId } },
+      select: { refund_qty: true },
+    });
+    const otherRefunded = otherRefunds.reduce((s, r) => s + Number(r.refund_qty), 0);
+    if (otherRefunded + input.refundQty > qty) {
+      throw Errors.business(
+        `退换数量 ${input.refundQty} 超过剩余可退换量 ${qty - otherRefunded}`,
+        40001,
+      );
+    }
+
+    const unitPrice = Number(docLine.unitPrice);
+    data.refund_qty = input.refundQty;
+    data.refund_amount = round2(input.refundQty * unitPrice);
+  }
+
+  const updated = await prisma.refund_lines.update({
+    where: { id: refundLineId },
+    data,
+  });
+
+  // 查 document_id 用于广播
+  const docLine = await prisma.document_lines.findUnique({
+    where: { id: existing.line_id },
+    select: { documentId: true },
+  });
+  if (docLine) {
+    broadcastRefundChanged(docLine.documentId);
+  }
+
+  logger.info('退换售后行更新', {
+    refundLineId: String(refundLineId),
+    fields: Object.keys(data),
+    actor: actor.name,
+  });
+
+  return {
+    id: updated.id,
+    lineId: updated.line_id,
+    refundType: updated.refund_type,
+    originalQty: Number(updated.original_qty),
+    originalPrice: Number(updated.original_price),
+    refundQty: Number(updated.refund_qty),
+    refundAmount: Number(updated.refund_amount),
+    refundStatus: updated.refund_status,
+    refundAt: updated.refund_at,
+    reason: updated.reason,
+    createdAt: updated.created_at,
+    updatedAt: updated.updated_at,
+  };
+}
+
+/**
+ * 删除单条退换售后行。
+ */
+export async function removeRefundLine(refundLineId: bigint, actor: { id: bigint; name: string }) {
+  const existing = await prisma.refund_lines.findUnique({
+    where: { id: refundLineId },
+    select: { id: true, line_id: true },
+  });
+  if (!existing) throw Errors.notFound('退换售后行不存在');
+
+  await prisma.refund_lines.delete({ where: { id: refundLineId } });
+
+  const docLine = await prisma.document_lines.findUnique({
+    where: { id: existing.line_id },
+    select: { documentId: true },
+  });
+  if (docLine) {
+    broadcastRefundChanged(docLine.documentId);
+  }
+
+  logger.info('退换售后行删除', {
+    refundLineId: String(refundLineId),
+    actor: actor.name,
+  });
+
+  return { id: refundLineId };
+}

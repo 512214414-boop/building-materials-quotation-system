@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: bm_quotation_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${DB_NAME:-bm_quotation}
+      MYSQL_USER: ${DB_USER:-bm_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-bm_password}
+    ports:
+      - "127.0.0.1:3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - db_data:/var/lib/mysql
+
+  api:
+    build: .
+    container_name: bm_quotation_api
+    restart: always
+    environment:
+      DATABASE_URL: mysql://${DB_USER:-bm_user}:${DB_PASSWORD:-bm_password}@db:3306/${DB_NAME:-bm_quotation}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-random-32-char-secret}
+      PORT: 3000
+      NODE_ENV: production
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma generate && npx prisma db push --skip-generate && npx prisma db seed && node dist/index.js"
+
+volumes:
+  db_data:
+  uploads:
