@@ -746,6 +746,7 @@ export function UnitPriceExpandPanel({
 
   return (
     <RecordExpandPanel
+      data-shared-badge="C20"
       tabs={[
         { key: 'sale', label: '售价明细' },
         { key: 'purchase', label: '进价明细' },

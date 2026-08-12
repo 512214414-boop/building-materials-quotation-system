@@ -98,6 +98,8 @@ export interface SuggestSelectItem {
 }
 
 export interface SuggestInputProps {
+  /** 共享组件编号标识（v15.4）：标识模式下高亮+悬浮显示，默认 C12，包装组件可覆盖 */
+  'data-shared-badge'?: string;
   /** 字段类型，决定检索接口和默认新建函数 */
   field: SuggestField;
   /** 输入值（受控） */
@@ -230,6 +232,7 @@ export function SuggestInput({
   allowClear = true,
   public: isPublic = false,
   autoFocus,
+  'data-shared-badge': badgeOverride,
 }: SuggestInputProps) {
   const [searchKw, setSearchKw] = useState('');
   const [open, setOpen] = useState(false);
@@ -302,10 +305,13 @@ export function SuggestInput({
   };
 
   const fontSize = FONT_SIZE_MAP[size];
+  // v15.4 共享组件编号：包装组件（DictRefCell 等）可覆盖，默认 C12
+  const badge = badgeOverride ?? 'C12';
 
   return (
     <AutoComplete
       className="ds-suggest-input"
+      data-shared-badge={badge}
       size={ANTD_SIZE_MAP[size]}
       value={value}
       onChange={onChange}

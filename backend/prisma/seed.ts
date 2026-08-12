@@ -605,7 +605,7 @@ async function main() {
     categoryMap[c.name] = cat.id;
     categoryCount++;
   }
-  console.log(`§6.1 ✓ ${categoryCount} 个扁平分类初始化完成（无父子层级，categoryId=0 表示未分类）`);
+  console.log(`§6.1 ✓ ${categoryCount} 个扁平分类初始化完成（无父子层级；「未分类」为 name 唯一真实记录，空分类由应用层 ensure）`);
 
   // ---- §6.2 导入供应商 supplier（v9.0：独立表，purchase_price 需引用 supplierId）----
   const supplierMap: Record<string, bigint> = {};

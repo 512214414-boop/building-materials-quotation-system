@@ -77,7 +77,7 @@ export function NameLinkCell({
   const fullName = tooltip ?? parts.map((s) => s.text).join(' ');
 
   return (
-    <Tooltip title={fullName} placement="topLeft">
+    <Tooltip title={fullName} placement="topLeft" data-shared-badge="C35">
       <a
         onClick={(e) => {
           e.stopPropagation();

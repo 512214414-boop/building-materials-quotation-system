@@ -234,6 +234,7 @@ export default function StageDocumentHeader({
 
   return (
     <DsShellRow
+      data-shared-badge="C49"
       style={{
         gap: 12,
         padding: '0 12px',

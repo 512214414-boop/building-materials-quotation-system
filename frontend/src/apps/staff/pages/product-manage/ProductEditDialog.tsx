@@ -57,7 +57,11 @@ import {
 import { DsDialog } from '../../../../shared/components/DsDialog.js';
 import DsButton from '../../../../shared/components/DsButton.js';
 import BatchAdjustDialog from './BatchAdjustDialog.js';
-import { SuggestInput, DsInput, DictRefField } from '../../../../shared/components/index.js';
+import { SuggestInput, DsInput, DictRefField, confirmFillsBeforeSave } from '../../../../shared/components/index.js';
+import {
+  QUICK_CREATE_LAYERS,
+  resolveFieldValue,
+} from '../../../../shared/config/quickCreateConfig.js';
 import { brandDict, categoryDict } from '../../../../shared/config/recordDicts.js';
 import UnitManagePanel, {
   type UnitManagePanelExtensions,
@@ -154,15 +158,12 @@ interface BrandItem {
 /** 常用单位列表（快速选择 chips） */
 const COMMON_UNITS = ['米', '根', '个', '桶', '捆', '箱', '吨', 'kg', '卷', '包'];
 
-/** 默认品牌名（新建产品时默认创建，中性名避免"无品牌"的劣质观感） */
-const DEFAULT_BRAND_NAME = '普通品牌';
-
-// v1.5.6.3：规格空值默认值（与后端 productService.DEFAULT_SPEC_MODEL 双端一致，
-//   简单产品可无规格，保存时前端/后端统一补「通用」，禁止只改一端）
-const DEFAULT_SPEC_MODEL = '通用';
-// v1.5.6.3：单位空值默认值（与后端 productService.DEFAULT_UNIT_NAME 双端一致，
-//   建档未添加单位时统一补「件」，禁止只改一端）
-const DEFAULT_UNIT_NAME = '件';
+// v15.3 配置驱动：缺省兜底值与字段清单统一来自 shared/config/quickCreateConfig.ts（SSOT），
+// 与后端 productService（DEFAULT_SPEC_MODEL / DEFAULT_UNIT_NAME / 普通品牌）双端同口径，
+// 本文件不再各自定义兜底常量——调整兜底值只改配置一处，保存兜底与确认弹窗同步生效
+const productLayer = QUICK_CREATE_LAYERS.product;
+/** 按字段 key 取配置（调用方声明层内的字段） */
+const fieldConfig = (key: string) => productLayer.fields.find((f) => f.key === key)!;
 
 // ============================================================
 // §3 通用样式
@@ -1171,20 +1172,14 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       // v14.0：从列表点击某规格的行进入时，initialSpecId 定位到该规格
       void loadProduct(productId, initialSpecId);
     } else {
-      // 新建模式：初始化空表单 + 一个默认品牌
+      // 新建模式：初始化空表单，品牌留空（v15.3：不预填「普通品牌」——输入框留空，
+      // 用户直接添加自己的品牌；保存时全空才兜底按值去重写入「普通品牌」）
       setProductName(initialKeyword ?? '');
       setSpecModel('');
       setCategoryId(0);
       setCategoryInput('');
       setUnits([]);
-      const initBrand: BrandItem = {
-        rowKey: genRowKey('brand'),
-        name: DEFAULT_BRAND_NAME,
-        remark: '',
-        images: [],
-        conversions: {},
-      };
-      setBrands([initBrand]);
+      setBrands([]);
       setCurrentBrandIdx(0);
       setSalePrices([]);
       setPurchasePrices([]);
@@ -1224,16 +1219,9 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       setCurrentSpecId(null);
       // 保留产品名和分类，清空规格、备注
       setSpecModel('');
-      // 重置单位、品牌、价格
+      // 重置单位、品牌、价格（v15.3：品牌留空，不预填「普通品牌」，保存时才兜底）
       setUnits([]);
-      const initBrand: BrandItem = {
-        rowKey: genRowKey('brand'),
-        name: DEFAULT_BRAND_NAME,
-        remark: '',
-        images: [],
-        conversions: {},
-      };
-      setBrands([initBrand]);
+      setBrands([]);
       setCurrentBrandIdx(0);
       setSalePrices([]);
       setPurchasePrices([]);
@@ -1410,6 +1398,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
             });
             // 调整当前选中品牌索引
             setCurrentBrandIdx((cur) => {
+              if (next.length === 0) return 0; // 品牌删空：归零（保存时兜底「普通品牌」）
               if (idx === cur) {
                 // 删除的是当前品牌，选最后一个或第一个
                 return Math.max(0, Math.min(idx, next.length - 1));
@@ -1420,18 +1409,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
               }
               return cur;
             });
-            // 至少保留一个品牌
-            if (next.length === 0) {
-              const fallback: BrandItem = {
-                rowKey: genRowKey('brand'),
-                name: DEFAULT_BRAND_NAME,
-                remark: '',
-                images: [],
-                conversions: {},
-              };
-              setCurrentBrandIdx(0);
-              return [fallback];
-            }
+            // v15.3：允许删到 0 个品牌（不兜底预填「普通品牌」——留空，保存时才按值去重写入）
             return next;
           });
         },
@@ -1450,7 +1428,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   //   另一场景：用户从已选分类「给水管」改为「排水管」（已有分类），未点下拉
   //             → categoryId 仍是旧的 5，保存到错误分类
   //   处理策略（与用户输入语义对齐，无需手动点新建）：
-  //     1. 输入为空（含空白）         → 0（未分类）
+  //     1. 输入为空（含空白）         → 未分类（传 0，后端按 name ensure「未分类」记录解析）
   //     2. 命中缓存                    → 返回缓存 ID（同一次保存多次调用）
   //     3. 输入与当前已选 ID 的名称严格相等 → 沿用 categoryId（无变化）
   //     4. 输入与已有分类同名          → 复用已有分类 ID（含用户改名换分类场景）
@@ -1523,20 +1501,27 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       savingRef.current = false;
       return;
     }
-    // v1.5.6.3：规格空值补默认「通用」（简单产品可无规格；与后端 DEFAULT_SPEC_MODEL 双端一致）
+    // v1.5.6.3：规格空值补默认「通用」（简单产品可无规格；兜底值来自 quickCreateConfig SSOT）
     //   不再阻止保存——真正必填只有产品名称，规格/分类/单位等空值统一补默认，随时可修正
-    const trimmedSpecModel = specModel.trim() || DEFAULT_SPEC_MODEL;
+    const trimmedSpecModel = specModel.trim() || fieldConfig('specModel').fallback;
     // v11.3：规格型号唯一性校验——同产品名下规格不允许重复
     if (specDuplicate) {
       message.warning('规格型号与同产品名下其他规格重复，请修改');
       savingRef.current = false;
       return;
     }
-    // v1.5.6.3：单位空时补默认「件」（与后端 DEFAULT_UNIT_NAME 双端一致，仅产品名必填）
+    // v1.5.6.3：单位空时补默认「件」（兜底值来自 quickCreateConfig SSOT，仅产品名必填）
     //   不再拦截保存——单位随时可修正；无基准单位时自动设第一个为基础
     const effectiveUnits =
       units.length === 0
-        ? [{ rowKey: genRowKey('unit'), unitName: DEFAULT_UNIT_NAME, isBase: true, isDisplay: true }]
+        ? [
+            {
+              rowKey: genRowKey('unit'),
+              unitName: fieldConfig('unitName').fallback,
+              isBase: true,
+              isDisplay: true,
+            },
+          ]
         : units.some((u) => u.isBase)
           ? units
           : units.map((u, i) => (i === 0 ? { ...u, isBase: true } : u));
@@ -1551,40 +1536,47 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       return;
     }
 
-    // v13.1：保存前收集「系统将自动补充的缺省值」清单，弹确认框让用户确认或取消
+    // v13.1 缺省值注册表确认（v15.3 配置驱动分层字段清单式）：声明「产品信息层 + 实际值」，
+    //   字段 label/兜底值由 quickCreateConfig 统一驱动；自动补充项标「自动补充」；
+    //   售价/进价行级补充以价格层说明行展示（兜底值来自 QUICK_CREATE_LAYERS.price 价格信息层）
     //   顶层规范：数据规范.md 缺省值注册表 —— 录入时随意，保存时透明
-    const fills: string[] = [];
-    if (!specModel.trim()) fills.push('规格型号未填 → 自动补充「通用」');
-    if (units.length === 0) fills.push('单位未填 → 自动补充「件」');
-    const nonEmptyBrandCount = brands.filter((b) => b.name.trim()).length;
-    if (nonEmptyBrandCount === 0) fills.push('品牌未填 → 自动补充「普通品牌」');
+    const presentBrandNames = brands.filter((b) => b.name.trim()).map((b) => b.name.trim());
     const saleNoTypeCount = salePrices.filter((p) => p.price.trim() && !p.priceTypeId).length;
-    if (saleNoTypeCount > 0) fills.push(`售价 ${saleNoTypeCount} 行未选价格类型 → 自动补充「零售价」`);
     const purNoSupCount = purchasePrices.filter((p) => p.price.trim() && !p.supplierId).length;
-    if (purNoSupCount > 0) fills.push(`进价 ${purNoSupCount} 行未选供应商 → 自动补充「面价渠道」`);
 
-    if (fills.length > 0) {
-      // 弹确认框：用户确认 → 用补全值保存；取消 → 返回继续编辑
-      const confirmed = await new Promise<boolean>((resolve) => {
-        modal.confirm({
-          title: '保存前请确认',
-          content: (
-            <div style={{ fontSize: 12, lineHeight: 1.8 }}>
-              <div style={{ marginBottom: 4 }}>以下必填项未填写，系统将自动补充：</div>
-              <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-tertiary)' }}>
-                {fills.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </div>
-          ),
-          okText: '确认保存',
-          cancelText: '返回继续编辑',
-          okButtonProps: { size: 'small' },
-          cancelButtonProps: { size: 'small' },
-          onOk: () => resolve(true),
-          onCancel: () => resolve(false),
-        });
+    const rawValues: Record<string, string> = {
+      productName,
+      category: categoryInput,
+      brand: presentBrandNames.join('、'),
+      specModel,
+      unitName: units.map((u) => u.unitName).join('、'),
+    };
+    const previewFields = productLayer.fields.map((f) => {
+      const resolved = resolveFieldValue(f, rawValues[f.key] ?? '');
+      return { label: f.label, value: resolved.value, auto: resolved.auto, required: f.required };
+    });
+
+    if (previewFields.some((f) => f.auto) || saleNoTypeCount > 0 || purNoSupCount > 0) {
+      const previewNotes: string[] = [];
+      // v15.4 价格信息层：行级缺省补充从 QUICK_CREATE_LAYERS.price 取兜底值（与字段配置统一结构）
+      const priceLayer = QUICK_CREATE_LAYERS.price;
+      const priceTypeCfg = priceLayer.fields.find((f) => f.key === 'priceType')!;
+      const supplierCfg = priceLayer.fields.find((f) => f.key === 'supplier')!;
+      if (saleNoTypeCount > 0) {
+        previewNotes.push(
+          `售价 ${saleNoTypeCount} 行自动补充价格类型「${priceTypeCfg.fallback}」`,
+        );
+      }
+      if (purNoSupCount > 0) {
+        previewNotes.push(
+          `进价 ${purNoSupCount} 行自动补充供应商「${supplierCfg.fallback}」`,
+        );
+      }
+
+      // v15.4 统一自动补充确认（单一入口）：有补充项才弹确认，确认 → 继续保存；取消 → 返回继续编辑
+      const confirmed = await confirmFillsBeforeSave(modal, {
+        groups: [{ title: productLayer.title, fields: previewFields }],
+        notes: previewNotes,
       });
       if (!confirmed) {
         savingRef.current = false;
@@ -1594,10 +1586,11 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
 
     const nonEmptyBrands = brands.filter((b) => b.name.trim());
     if (nonEmptyBrands.length === 0) {
-      // 自动补默认品牌"普通品牌"，保证用户不输入品牌名也能快速保存
+      // 兜底默认品牌（值来自 quickCreateConfig SSOT）：品牌留空保存时补「普通品牌」，
+      //   写入按值去重——全局档案已存在则复用关联，不存在才新建（不是种子数据）
       nonEmptyBrands.push({
         rowKey: genRowKey('brand'),
-        name: DEFAULT_BRAND_NAME,
+        name: fieldConfig('brand').fallback,
         remark: '',
         images: [],
         conversions: {},
@@ -2089,7 +2082,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                     <button
                       type="button"
                       onClick={() => handleDeleteBrand(bIdx)}
-                      disabled={brands.length === 1 || saving}
+                      disabled={brands.length === 0 || saving}
                       className="brand-tag-btn brand-tag-btn-del"
                       style={{
                         padding: '4px 6px',
@@ -2097,10 +2090,10 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                         borderLeft: '1px solid var(--border-neutral-l2)',
                         background: 'transparent',
                         color: 'var(--btn-color, var(--text-tertiary))',
-                        cursor: brands.length === 1 || saving ? 'not-allowed' : 'pointer',
+                        cursor: brands.length === 0 || saving ? 'not-allowed' : 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        opacity: brands.length === 1 ? 0.4 : undefined,
+                        opacity: brands.length === 0 ? 0.4 : undefined,
                       }}
                     >
                       <DeleteOutlined style={{ fontSize: 12 }} />

@@ -48,6 +48,7 @@ export function DsSegmented(props: DsSegmentedProps) {
   ensureStyles();
   return (
     <Segmented
+      data-shared-badge="C06"
       className={`ds-segmented${className ? ` ${className}` : ''}`}
       {...rest}
     />

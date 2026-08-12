@@ -40,7 +40,7 @@ const COLOR_STYLES: Record<DsTagColor, CSSProperties> = {
 export function DsTag(props: DsTagProps) {
   const { color = 'default', style, children, ...rest } = props;
   return (
-    <Tag style={{ ...COLOR_STYLES[color], ...style }} {...rest}>
+    <Tag data-shared-badge="C05" style={{ ...COLOR_STYLES[color], ...style }} {...rest}>
       {children}
     </Tag>
   );

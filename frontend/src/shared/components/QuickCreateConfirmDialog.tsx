@@ -26,15 +26,20 @@ import { App as AntdApp } from 'antd';
 import DsDialog from './DsDialog.js';
 import DsButton from './DsButton.js';
 import DsInput from './DsInput.js';
+import { confirmFillsBeforeSave } from './DefaultFillsPreview.js';
+import { QUICK_CREATE_LAYERS, resolveFieldValue } from '../config/quickCreateConfig.js';
 import {
   quickCreateProduct,
   type QuickCreateProductResult,
   type QuickCreateProductResponse,
 } from '../services/api/baseDataApi.js';
 
-// 缺省值注册表（v1.5.6.3 与后端 productService 同口径）：规格空 → 后端兜底「通用」、
-// 单位空 → 后端兜底「件」（前端只传用户显式填写的值）；品牌空 → 前端兜底「普通品牌」
-const DEFAULT_BRAND_NAME = '普通品牌';
+// v15.3 配置驱动：产品信息层字段（label/必填/兜底值/去重语义）统一定义在
+//   shared/config/quickCreateConfig.ts（SSOT），本弹窗只声明「层 + 实际值」，
+//   调整兜底值（普通品牌/通用/件）只改配置一处，全局生效
+const productLayer = QUICK_CREATE_LAYERS.product;
+/** 按字段 key 取配置（调用方声明层内的字段） */
+const fieldConfig = (key: string) => productLayer.fields.find((f) => f.key === key)!;
 
 const FIELD_LABEL_STYLE: React.CSSProperties = {
   display: 'block',
@@ -62,7 +67,9 @@ export default function QuickCreateConfirmDialog({
 }: QuickCreateConfirmDialogProps) {
   const { message, modal } = AntdApp.useApp();
   const [productName, setProductName] = useState(initialProductName);
-  const [brandName, setBrandName] = useState(DEFAULT_BRAND_NAME);
+  // v15.3：品牌不预填（输入框留空，用户直接输入；留空保存时按值去重写入「普通品牌」，
+  //   全局档案已存在则复用、不存在才新建——普通品牌不是种子数据，是保存时的兜底值）
+  const [brandName, setBrandName] = useState('');
   const [specModel, setSpecModel] = useState('');
   const [unitName, setUnitName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -71,10 +78,10 @@ export default function QuickCreateConfirmDialog({
     Array<QuickCreateProductResult & { matchScore: number }> | null
   >(null);
 
-  // 打开时重置为初始值（预填关键词 + 品牌缺省；规格/单位留空触发缺省提示）
+  // 打开时重置为初始值（预填关键词；品牌/规格/单位留空，保存时才兜底缺省值）
   const handleOpenReset = () => {
     setProductName(initialProductName);
-    setBrandName(DEFAULT_BRAND_NAME);
+    setBrandName('');
     setSpecModel('');
     setUnitName('');
     setSaving(false);
@@ -126,33 +133,25 @@ export default function QuickCreateConfirmDialog({
       return;
     }
 
-    // 缺省值二次确认：收集「系统将自动补充」清单（对齐缺省值注册表范式）
-    const fills: string[] = [];
-    if (!specModel.trim()) fills.push('规格型号未填 → 自动补充「通用」');
-    if (!unitName.trim()) fills.push('单位未填 → 自动补充「件」');
-    if (!brandName.trim()) fills.push('品牌未填 → 自动补充「普通品牌」');
+    // 缺省值二次确认（v15.3 配置驱动分层字段清单式）：声明「产品信息层 + 用户实际填的值」，
+    //   字段 label/兜底值由 quickCreateConfig 统一驱动；空输入保存时按值去重写入兜底值
+    //   （普通品牌/未分类不是种子数据——输入框留空，全局档案已存在则复用关联、不存在才新建）
+    const rawValues: Record<string, string> = {
+      productName,
+      category: '',
+      brand: brandName,
+      specModel,
+      unitName,
+    };
+    const previewFields = productLayer.fields.map((f) => {
+      const resolved = resolveFieldValue(f, rawValues[f.key] ?? '');
+      return { label: f.label, value: resolved.value, auto: resolved.auto, required: f.required };
+    });
 
-    if (fills.length > 0) {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        modal.confirm({
-          title: '保存前请确认',
-          content: (
-            <div style={{ fontSize: 12, lineHeight: 1.8 }}>
-              <div style={{ marginBottom: 4 }}>以下必填项未填写，系统将自动补充：</div>
-              <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-tertiary)' }}>
-                {fills.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </div>
-          ),
-          okText: '确认保存',
-          cancelText: '返回继续编辑',
-          okButtonProps: { size: 'small' },
-          cancelButtonProps: { size: 'small' },
-          onOk: () => resolve(true),
-          onCancel: () => resolve(false),
-        });
+    if (previewFields.some((f) => f.auto)) {
+      // v15.4 统一自动补充确认（单一入口）：有自动补充项才弹确认，确认 → 建档；取消 → 返回继续编辑
+      const confirmed = await confirmFillsBeforeSave(modal, {
+        groups: [{ title: productLayer.title, fields: previewFields }],
       });
       if (!confirmed) return; // 取消 → 返回继续编辑
     }
@@ -182,6 +181,7 @@ export default function QuickCreateConfirmDialog({
   return (
     <DsDialog
       open={open}
+      data-shared-badge="C30"
       title="快速新增产品"
       width={560}
       onCancel={onClose}
@@ -240,14 +240,14 @@ export default function QuickCreateConfirmDialog({
             style={{ width: '100%' }}
           />
         </div>
-        {/* 品牌（缺省「普通品牌」，可改） */}
+        {/* 品牌（留空保存时按值去重写入「普通品牌」） */}
         <div style={{ minWidth: 0 }}>
           <label style={FIELD_LABEL_STYLE}>品牌</label>
           <DsInput
             size="sm"
             value={brandName}
             onChange={(e) => setBrandName(e.target.value)}
-            placeholder="留空默认普通品牌"
+            placeholder={`留空默认${fieldConfig('brand').fallback}`}
             disabled={saving}
             style={{ width: '100%' }}
           />
@@ -259,7 +259,7 @@ export default function QuickCreateConfirmDialog({
             size="sm"
             value={specModel}
             onChange={(e) => setSpecModel(e.target.value)}
-            placeholder="留空默认通用"
+            placeholder={`留空默认${fieldConfig('specModel').fallback}`}
             disabled={saving}
             style={{ width: '100%' }}
           />
@@ -271,7 +271,7 @@ export default function QuickCreateConfirmDialog({
             size="sm"
             value={unitName}
             onChange={(e) => setUnitName(e.target.value)}
-            placeholder="留空默认件"
+            placeholder={`留空默认${fieldConfig('unitName').fallback}`}
             disabled={saving}
             style={{ width: '100%' }}
           />

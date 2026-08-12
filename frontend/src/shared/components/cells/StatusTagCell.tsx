@@ -28,7 +28,7 @@ export function StatusTagCell({ value, statusMap, emptyText = '—' }: StatusTag
   if (value == null || value === '') return <>{emptyText}</>;
   const entry = statusMap[String(value)];
   if (!entry) return <>{emptyText}</>;
-  return <DsTag color={entry.color}>{entry.text}</DsTag>;
+  return <DsTag color={entry.color} data-shared-badge="C40">{entry.text}</DsTag>;
 }
 
 export default StatusTagCell;

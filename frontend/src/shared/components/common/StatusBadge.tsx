@@ -21,5 +21,5 @@ interface StatusBadgeProps {
 export default function StatusBadge({ status }: StatusBadgeProps) {
   const label = DOCUMENT_STATUS_LABELS[status] ?? status;
   const color = STATUS_COLOR_MAP[status] ?? 'default';
-  return <Tag color={color}>{label}</Tag>;
+  return <Tag color={color} data-shared-badge="C59">{label}</Tag>;
 }

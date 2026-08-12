@@ -536,6 +536,7 @@ export default function DocumentPaperView(props: DocumentPaperViewProps) {
   return (
     <div
       className="ds-paper-workspace"
+      data-shared-badge="C52"
       style={{ padding: printMode ? 0 : undefined }}
       onMouseEnter={() => setShowHoverToolbar(true)}
       onMouseLeave={() => setShowHoverToolbar(false)}

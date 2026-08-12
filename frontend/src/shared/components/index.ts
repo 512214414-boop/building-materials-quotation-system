@@ -6,7 +6,9 @@ export type { DsButtonProps, DsButtonVariant, DsButtonSize } from './DsButton';
 
 export { default as DsInput } from './DsInput';
 export type { DsInputProps } from './DsInput';
-
+// 输入+下拉组合（C61）：显示态单行省略 / 编辑态 textarea 无感切换 / 下拉按钮 C01 常驻
+export { default as DsInputDropdown } from './DsInputDropdown';
+export type { DsInputDropdownProps } from './DsInputDropdown';
 // 数字列专用输入框（v9.4 §2.4：禁用 number 控件，统一 text+inputMode=decimal+mono+右对齐）
 export { default as DsNumberInput } from './DsNumberInput';
 export type { DsNumberInputProps } from './DsNumberInput';
@@ -123,3 +125,13 @@ export type { UnitManagePanelProps, UnitManageItem } from './UnitManagePanel';
 // 预置快速选项条（v1.9：数据补全·预置快速选项，通用 quickOptions 配置——不传不渲染）
 export { default as QuickOptionsBar } from './QuickOptionsBar';
 export type { QuickOptionsBarProps, QuickOption } from './QuickOptionsBar';
+
+// 保存前确认「完整档案字段清单」预览 + 统一自动补充确认流程（v15.3/15.4：所有保存路径统一走
+// confirmFillsBeforeSave——手动/失焦/静默保存只要涉及自动补充都必须先提示并确认）
+export { default as DefaultFillsPreview, confirmFillsBeforeSave } from './DefaultFillsPreview';
+export type {
+  DefaultFillsPreviewProps,
+  DefaultFillsPreviewField,
+  DefaultFillsPreviewGroup,
+  ConfirmFillsBeforeSaveOptions,
+} from './DefaultFillsPreview';

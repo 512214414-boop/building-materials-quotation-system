@@ -36,6 +36,7 @@ export function LongTextCell({
   return (
     <Popover
       trigger="click"
+      data-shared-badge="C38"
       placement="bottomLeft"
       open={open}
       onOpenChange={setOpen}

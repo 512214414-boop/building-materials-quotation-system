@@ -88,6 +88,7 @@ export function DsDrawer({
   return (
     <Drawer
       {...rest}
+      data-shared-badge="C08"
       open={rest.open}
       onClose={onClose}
       width={resolvedWidth}

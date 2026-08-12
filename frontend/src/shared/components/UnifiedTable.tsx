@@ -660,6 +660,7 @@ export function UnifiedTableInner<T extends Record<string, any>>(
   return (
     <div
       ref={containerRef}
+      data-shared-badge="C32"
       className={`${tableClassName} ds-table-shell`}
       style={{
         display: 'flex',

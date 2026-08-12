@@ -289,6 +289,7 @@ export function DictRefField<T extends { id: string | number; name: string } = D
 }: DictRefFieldProps<T>) {
   return (
     <div
+      data-shared-badge="C15"
       style={{
         display: 'flex',
         alignItems: 'center',

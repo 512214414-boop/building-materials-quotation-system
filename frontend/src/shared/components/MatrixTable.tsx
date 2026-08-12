@@ -260,7 +260,7 @@ export default function MatrixTable({
   );
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+    <div data-shared-badge="C29" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <div className="ds-grid-header" style={{ gridTemplateColumns: gridTemplate }}>
         {headerCells}
       </div>

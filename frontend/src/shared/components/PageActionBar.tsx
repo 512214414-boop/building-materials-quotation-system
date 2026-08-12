@@ -28,7 +28,7 @@ export default function PageActionBar({
   statusSlot,
 }: Props) {
   return (
-    <DsShellRow role="toolbar" aria-label="页面操作" style={{ position: 'sticky', bottom: 0, zIndex: 40, gap: 6, background: 'var(--bg-base-secondary)', borderTop: '1px solid var(--border-neutral-l1)', boxShadow: 'var(--shadow-bar-top)' }}>
+    <DsShellRow role="toolbar" data-shared-badge="C46" aria-label="页面操作" style={{ position: 'sticky', bottom: 0, zIndex: 40, gap: 6, background: 'var(--bg-base-secondary)', borderTop: '1px solid var(--border-neutral-l1)', boxShadow: 'var(--shadow-bar-top)' }}>
       <button
         type="button"
         onClick={onStepBack}

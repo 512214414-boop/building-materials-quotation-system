@@ -175,6 +175,7 @@ export function UnitManagePanel({
   return (
     // v1.9：单功能编辑面板紧凑（maxWidth 220 锁窄）；有拓展列（价格/基准）时不锁窄（编辑弹窗集合面板）
     <div
+      data-shared-badge="C19"
       style={{
         overflowX: 'auto',
         WebkitOverflowScrolling: 'touch',

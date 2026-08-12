@@ -86,6 +86,7 @@ export const DsButton = forwardRef<HTMLButtonElement, DsButtonProps>(function Ds
   return (
     <Button
       ref={ref}
+      data-shared-badge="C01"
       type="default"
       size={SIZE_MAP[size]}
       style={merged}

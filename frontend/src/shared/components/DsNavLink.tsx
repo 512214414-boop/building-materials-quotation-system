@@ -13,6 +13,7 @@ export interface DsNavLinkProps extends Omit<NavLinkProps, 'className'> {
 export function DsNavLink({ children, ...rest }: DsNavLinkProps) {
   return (
     <NavLink
+      data-shared-badge="C10"
       className={({ isActive }) =>
         isActive ? 'ds-nav-link ds-nav-link-active' : 'ds-nav-link'
       }

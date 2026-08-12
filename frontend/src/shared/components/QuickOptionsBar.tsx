@@ -39,6 +39,7 @@ export function QuickOptionsBar({
   if (!options.length) return null;
   return (
     <div
+      data-shared-badge="C27"
       style={{
         padding: '4px 0 0',
         display: 'flex',

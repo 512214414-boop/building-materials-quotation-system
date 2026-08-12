@@ -46,6 +46,8 @@ export interface RecordExpandSwitcherOption {
 }
 
 export interface RecordExpandPanelProps {
+  /** 共享组件编号标识（v15.4）：标识模式下高亮+悬浮显示，默认 C28，包装组件可覆盖 */
+  'data-shared-badge'?: string;
   /** 维度切换 Tab 列表（不传/空 = 单页模式，不渲染 Tab 直接渲染内容） */
   tabs?: RecordExpandTab[];
   /** 当前激活 Tab key（受控） */
@@ -80,6 +82,7 @@ export function RecordExpandPanel({
   renderTab,
   children,
   minWidth = 280,
+  'data-shared-badge': badgeOverride,
 }: RecordExpandPanelProps) {
   const hasTabs = !!tabs?.length;
   const [internalTab, setInternalTab] = useState<string | undefined>(activeTab);
@@ -110,6 +113,7 @@ export function RecordExpandPanel({
 
   return (
     <div
+      data-shared-badge={badgeOverride ?? 'C28'}
       style={{
         background: 'var(--bg-overlay-l1)',
         padding: '6px 8px',

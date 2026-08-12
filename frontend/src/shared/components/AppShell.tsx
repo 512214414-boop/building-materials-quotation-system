@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import DsShellRow from './DsShellRow.js';
+import SharedBadgeOverlay from './badge/SharedBadgeOverlay.js';
 
 export interface AppShellProps {
   /** 头部行：界面标题（左起点，自身宽度） */
@@ -87,7 +88,7 @@ export default function AppShell({
 
   return (
     <>
-      <div className="ds-app-shell" style={{ zoom }}>
+      <div className="ds-app-shell" data-shared-badge="C44" style={{ zoom }}>
         {/* ===== 头部行：标题 + 一级导航 + 用户中心 ===== */}
         <DsShellRow className="ds-shell-header" style={{ position: 'sticky', top: 0, zIndex: 'var(--shell-z-header)' }}>
           <div className="ds-shell-header-title">{title}</div>
@@ -147,6 +148,9 @@ export default function AppShell({
           ＋
         </button>
       </div>
+
+      {/* v15.4 共享组件标识模式（右下角开关：查看界面元素对应的共享组件编号/名称） */}
+      <SharedBadgeOverlay />
     </>
   );
 }

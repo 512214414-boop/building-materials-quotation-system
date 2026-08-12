@@ -15,7 +15,7 @@ export interface TextCellProps {
 
 /** 普通文本列：完整显示文本值，空值占位（—） */
 export function TextCell({ value, placeholder = '—' }: TextCellProps) {
-  return <>{value || placeholder}</>;
+  return <span data-shared-badge="C37">{value || placeholder}</span>;
 }
 
 export default TextCell;

@@ -424,7 +424,7 @@ export function DictListPanel({
   };
 
   return (
-    <div style={PANEL_STYLE}>
+    <div style={PANEL_STYLE} data-shared-badge="C17">
       {/* 标题 */}
       {title && (
         <div

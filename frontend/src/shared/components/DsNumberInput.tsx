@@ -64,6 +64,7 @@ export function DsNumberInput({
   return (
     <DsInput
       {...rest}
+      data-shared-badge="C03"
       type="text"
       inputMode="decimal"
       variant={variant}

@@ -198,7 +198,7 @@ export default function CustomerPicker({
 
   return (
     <>
-      <div ref={wrapRef} style={{ position: 'relative', width: style?.width ?? '100%' }}>
+      <div ref={wrapRef} data-shared-badge="C23" style={{ position: 'relative', width: style?.width ?? '100%' }}>
         <DsInput
           autoFocus={autoFocus}
           placeholder={placeholder}

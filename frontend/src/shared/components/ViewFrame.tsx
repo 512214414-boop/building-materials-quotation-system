@@ -66,7 +66,7 @@ export default function ViewFrame({
   dialogs,
 }: ViewFrameProps) {
   return (
-    <div style={FRAME_STYLE}>
+    <div data-shared-badge="C45" style={FRAME_STYLE}>
       <StageActionBar {...(actionBar ?? {})} />
       <StageBizStrip {...(bizStrip ?? {})} />
       {preContent}

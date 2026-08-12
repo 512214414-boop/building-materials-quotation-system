@@ -116,6 +116,7 @@ export function DictRefCell({
   return (
     <SuggestInput
       field={field}
+      data-shared-badge="C14"
       value={editValue}
       onChange={setEditValue}
       onSelect={(item) => {

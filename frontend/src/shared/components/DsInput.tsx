@@ -35,6 +35,8 @@ export type DsInputAlign = 'left' | 'center' | 'right';
 
 export interface DsInputProps
   extends Omit<InputProps, 'size' | 'variant' | 'onChange' | 'onFocus' | 'onBlur'> {
+  /** 共享组件编号标识（v15.4）：标识模式下高亮+悬浮显示，默认 C02，子组件可覆盖 */
+  'data-shared-badge'?: string;
   /** 尺寸：sm=20px / md=24px / lg=28px */
   size?: DsInputSize;
   /** 文本变更回调（单行 Input / 多行 TextArea 共用） */
@@ -266,8 +268,11 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
     onActivate,
     multiline = false,
     rows = 4,
+    'data-shared-badge': badgeOverride,
     ...rest
   } = props;
+  // v15.4 共享组件编号：子组件（如 DsNumberInput）可覆盖，默认 C02
+  const badge = badgeOverride ?? 'C02';
   const [focused, setFocused] = useState(false);
   const [editing, setEditing] = useState(false);
   const internalRef = useRef<InputRef>(null);
@@ -313,6 +318,7 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
     return (
       <TextArea
         {...textAreaProps}
+        data-shared-badge={badge}
         rows={rows}
         value={value}
         onChange={onChange}
@@ -355,6 +361,7 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
       return (
         <span
           className="ds-input ds-input-click-to-edit"
+          data-shared-badge={badge}
           onClick={(e) => {
             e.stopPropagation();
             setEditing(true);
@@ -397,7 +404,7 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
     }
     // 激活态：渲染 Input，brand 色边框
     return (
-      <span style={{ display: 'block', width: '100%' }}>
+      <span data-shared-badge={badge} style={{ display: 'block', width: '100%' }}>
         <Input
           ref={internalRef}
           size={SIZE_MAP[size]}
@@ -433,6 +440,7 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
   return (
     <Input
       ref={ref ?? internalRef}
+      data-shared-badge={badge}
       size={SIZE_MAP[size]}
       allowClear={allowClear}
       className={phClass}

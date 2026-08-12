@@ -13,7 +13,9 @@
 //      purchase_price: @@unique([brandId, unitId, supplierId])
 //   5. 价格分表存储：sale_price（售价，priceType 字符串）+ purchase_price（进价，supplierId 外键）
 //   6. SKU 检索宽表：product_sku_search 扁平宽表，含 specModel + 品牌优先排序
-//   7. 产品归属分类：product.categoryId DEFAULT 0（0=未分类）
+//   7. 产品归属分类：v15.3 统一引用类语义——分类空输入时由 resolveCategoryRef 按 name 唯一
+//      ensure「未分类」真实记录（存在复用/不存在新建），categoryId 总是应用层解析后的有效记录 id，
+//      DB 无 0 默认值、无「0=未分类」魔数语义
 //   8. 图片依附品牌：product_image.brandId → brand.id
 //   9. 单据行快照：document_lines 关联 brandId/unitId/productId（移除 specId）
 //  10. 所有新表字段加中文 COMMENT（Navicat 可见）
@@ -266,7 +268,7 @@ model customer_addresses {
 // 层级（用户「产品表下面有规格的变体表，品牌/单位挂在规格变体下面，层级不会改变」）：
 //   category（分类表，扁平无父子）
 //        ↓ 1:N
-//   product（产品表 = 纯产品名，如「PPR热水管」，categoryId DEFAULT 0 = 未分类）
+//   product（产品表 = 纯产品名，如「PPR热水管」，categoryId 指向真实分类记录，「未分类」为 ensure 记录）
 //        ↓ 1:N
 //   spec（规格变体表，如 dn25 / dn32，同一产品多个规格，每个规格品牌/单位独立）
 //        ↓ 1:N                          ↓ 1:N
@@ -296,7 +298,8 @@ model customer_addresses {
 // ============================================================
 
 /// 1. 分类表（v8.0：扁平结构，无父子层级，字段统一 camelCase）
-/// 产品分类，扁平结构。categoryId=0 表示「未分类」（产品归属，非分类节点）
+/// 产品分类，扁平结构。v15.3 统一引用类语义：「未分类」为真实分类记录（name 唯一），
+/// 产品分类空输入时由 resolveCategoryRef ensure「未分类」按名复用/建档，不再有 categoryId=0 魔数语义
 model category {
   id        Int      @id @default(autoincrement())
   /// 分类名称
@@ -311,6 +314,8 @@ model category {
   /// v8.0：产品归属分类（扁平，无父子层级）
   products product[]
 
+  /// v15.4：name 全局唯一（A 类全局字典去重键的数据库保障：registry 按名去重的 P2002 并发兜底依赖此约束）
+  @@unique([name])
   @@map("category")
 }
 
@@ -319,7 +324,7 @@ model category {
 ///   - product 只存产品名（如「PPR热水管」），规格（dn25/dn32）在 spec 表
 ///   - 同一产品多个规格，每个规格的品牌/单位独立
 ///   - 品牌为全局档案（brand），通过 spec_brand 关联到规格
-/// categoryId=0 表示「未分类」
+/// 「未分类」为 name='未分类' 的真实分类记录（空输入由 resolveCategoryRef 按 name ensure）
 model product {
   /// v11.0：产品ID 应用层时间戳生成（P+YYYYMMDD+HHmmss+SSS+RND）
   /// 保留 @default(autoincrement()) 仅作 DB 兜底（应用层 createProduct/saveProduct/quickCreateProduct 显式传入时间戳 ID 覆盖默认值）
@@ -328,8 +333,8 @@ model product {
   id         BigInt   @id @default(autoincrement())
   /// 产品名称（必填，如「PPR热水管」）
   name       String   @db.VarChar(200)
-  /// 分类ID，0表示「未分类」
-  categoryId Int      @default(0)
+  /// v15.3 分类ID：总是应用层解析后的有效分类记录 id（空输入由 resolveCategoryRef 按 name ensure「未分类」；无 DB 默认值）
+  categoryId Int
   /// 备注信息（别名、俗称，如「6分管」）
   remark     String   @default("") @db.VarChar(500)
   /// v11.0：状态 1启用 0停用（停用后搜索默认过滤，可恢复）
@@ -337,7 +342,7 @@ model product {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  /// v8.0：分类归属（扁平，0=未分类时不强制外键）
+  /// v8.0：分类归属（扁平，v15.3 统一引用类：分类空输入由应用层按 name ensure「未分类」记录）
   category category @relation(fields: [categoryId], references: [id])
   /// v14.0：规格变体（产品 → 规格 → 品牌/单位）
   specs    spec[]
@@ -600,8 +605,8 @@ model product_sku_search {
   specId               BigInt
   /// 规格型号（来自 spec.specModel）
   specModel            String   @db.VarChar(200)
-  /// 分类ID
-  categoryId           BigInt   @default(0)
+  /// v15.3 分类ID：总是应用层解析后的有效分类记录 id（宽表重建时取自 product.categoryId；无 DB 默认值）
+  categoryId           BigInt
   /// 分类名称
   categoryName         String   @default("未分类") @db.VarChar(100)
   /// v14.0：规格-品牌关联ID（原 brandId 改 specBrandId）

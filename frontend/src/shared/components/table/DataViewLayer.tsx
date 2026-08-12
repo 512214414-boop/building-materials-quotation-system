@@ -201,6 +201,7 @@ export default function DataViewLayer<T extends Record<string, any>>({
 
   return (
     <Table<T>
+      data-shared-badge="C33"
       columns={antdColumns}
       dataSource={rows}
       rowKey={rowKey}

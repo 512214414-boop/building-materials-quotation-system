@@ -68,6 +68,7 @@ export default function CreateDocumentModal({
   return (
     <DsDialog
       title="新建单据"
+      data-shared-badge="C53"
       open={open}
       onCancel={handleCancel}
       width={520}

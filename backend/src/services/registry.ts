@@ -1,20 +1,33 @@
 // registry — 通用档案注册抽象层（SSOT）
 //
 // 顶层逻辑（用户「后端也要有组件复用的思想，看顶层逻辑可扩展到全方面」）：
-//   所有「档案类表」（category/brand/supplier/price_type...）共享同一套注册语义：
-//     ① 按名称唯一建档（quickAdd：findFirst → create，同名幂等 + 并发 P2002 兜底）
-//     ② 事务内按名称解析引用（ensureByName：findUnique → create + P2002 兜底）
+//   所有「档案类表」（category/brand/supplier/price_type/product/spec/unit...）共享同一套注册语义：
+//     ① 按唯一键去重建档（quickAdd：findFirst → create，同名幂等 + 并发 P2002 兜底）
+//     ② 事务内按唯一键解析引用（ensureByName / ensureByParent：findUnique → create + P2002 兜底）
 //     ③ 引用解析（resolveRef：id 校验真实 → name 复用/建档 → 空值补系统默认）
 //   差异（表名/业务名/建档默认值/附加字段合并）全部通过 RegistryDef 配置表达，
 //   禁止各 service 重复手写「find → create + P2002」样板（曾散落 5+ 份重复实现）。
+//
+// 去重键分类（v15.4 用户「规格按名称去重会出错，能统一规则吗」调研结论）：
+//   - A 类：全局字典（name 全局唯一）→ uniqueKey { type: 'global' }
+//     brand / supplier / price_type / category（v15.4 补 name 唯一索引）/ contact_method
+//   - B 类：父级从属实体（父级 id + 名称唯一）→ uniqueKey { type: 'parent', parentField, nameField }
+//     product（categoryId+name）/ spec（productId+specModel）/ unit（specId+unitName）/ spec_brand（specId+brandId）
+//     注意：纯名称去重对 B 类不成立（不同产品的同名规格是独立记录），必须携带父级上下文
+//   - C 类：引用记录（多列组合唯一，如 sale_price / purchase_price / brand_unit_conversion）
+//     由各自 service 用 Prisma 复合唯一键 findUnique 幂等，不进本注册表
+//   P2002 并发兜底的前提是数据库存在对应唯一约束（A 类 name、B 类 父级+名称），缺约束则兜底失效。
 //
 // 覆盖现状：
 //   - quickAddCategory / quickAddBrand / quickAddSupplier → quickAdd
 //   - ensureGlobalBrand / findOrCreateSupplier           → ensureByName
 //   - resolveSupplierRef / resolvePriceTypeRef           → resolveRef
+//   - quickCreateProduct 的 spec 幂等                    → ensureByParent（v15.4 收敛）
 // 特例（非纯 name 唯一建档，保留独立实现）：
 //   - customer（业务唯一键 customer_code，phone/name 双字段冲突处理）
 //   - warehouse（首个仓库自动主仓互斥事务）
+//   - unit（resolveUnitInSpec 含 isBase/isDisplay 首单位业务，与 ensureByParent 同构）
+//   - product（generateProductId 应用层主键 + status/remark，与 ensureByParent 同构）
 
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Errors } from '../utils/errors.js';
@@ -22,11 +35,22 @@ import { Errors } from '../utils/errors.js';
 /** 事务客户端 / 全局客户端通用（结构兼容） */
 export type RegistryDb = Prisma.TransactionClient | PrismaClient;
 
+/**
+ * 唯一键策略（去重依据，v15.4）：
+ *   - global：name 全局唯一（A 类全局字典）→ 纯名称去重
+ *   - parent：父级 id + 名称唯一（B 类父级从属实体）→ 必须携带父级上下文
+ */
+export type RegistryUniqueKey =
+  | { type: 'global' }
+  | { type: 'parent'; parentField: string; nameField: string };
+
 export interface RegistryDef {
   /** Prisma model 名（动态访问，如 'brand' / 'category'） */
   model: string;
   /** 业务名（错误/日志提示，如「品牌」「分类」） */
   label: string;
+  /** 唯一键策略（去重依据；决定 quickAdd/ensureByName/ensureByParent 的查重键） */
+  uniqueKey: RegistryUniqueKey;
   /** 建档默认值（name 之外的字段；可依 name 计算） */
   defaults?: (name: string) => Record<string, unknown>;
   /**
@@ -50,14 +74,18 @@ function hasUpdateFields(data: Record<string, unknown>): boolean {
 }
 
 /**
- * ① 按名称唯一建档（同名幂等 + 并发 P2002 回查复用）
+ * ① 按唯一键建档（同名幂等 + 并发 P2002 回查复用）
  * 对应原 quickAddCategory / quickAddBrand / quickAddSupplier 等
+ * 仅适用于全局唯一档案（uniqueKey.type='global'）；父级从属实体走 ensureByParent
  */
 export async function quickAdd(
   db: RegistryDb,
   def: RegistryDef,
   name: string,
 ): Promise<{ id: bigint; name: string }> {
+  if (def.uniqueKey.type !== 'global') {
+    throw new Error(`quickAdd 仅支持全局唯一档案；「${def.label}」为父级从属实体，请走 ensureByParent`);
+  }
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable(`${def.label}名称不能为空`);
   const existing = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
@@ -80,6 +108,7 @@ export async function quickAdd(
 /**
  * ② 事务内按名称解析引用（同名幂等 + P2002 兜底 + 附加字段合并）
  * 对应原 ensureGlobalBrand / findOrCreateSupplier
+ * 仅适用于全局唯一档案（uniqueKey.type='global'）；父级从属实体走 ensureByParent
  */
 export async function ensureByName(
   db: RegistryDb,
@@ -87,6 +116,9 @@ export async function ensureByName(
   name: string,
   extra?: unknown,
 ): Promise<{ id: bigint; name: string }> {
+  if (def.uniqueKey.type !== 'global') {
+    throw new Error(`ensureByName 仅支持全局唯一档案；「${def.label}」为父级从属实体，请走 ensureByParent`);
+  }
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable(`${def.label}名称不能为空`);
   const existing = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
@@ -112,6 +144,42 @@ export async function ensureByName(
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
       const again = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
+      if (again) return { id: again.id, name: again.name };
+    }
+    throw e;
+  }
+}
+
+/**
+ * ②′ 父级从属实体按「父级 id + 名称」去重（B 类：product/spec/unit/spec_brand）
+ * 对应 quickCreateProduct 中 spec 的幂等（v15.4 收敛，替换手写 findUnique→create 样板）
+ * 注意：纯名称去重对 B 类不成立——不同父级下的同名记录是独立实体，必须携带父级上下文。
+ * 数据库保障：父级+名称的复合唯一约束（如 spec(productId,specModel)）驱动 P2002 并发兜底。
+ */
+export async function ensureByParent(
+  db: RegistryDb,
+  def: RegistryDef,
+  parentId: bigint | number,
+  name: string,
+): Promise<{ id: bigint; name: string }> {
+  if (def.uniqueKey.type !== 'parent') {
+    throw new Error(`ensureByParent 仅支持父级从属档案；「${def.label}」为全局唯一档案，请走 ensureByName`);
+  }
+  const { parentField, nameField } = def.uniqueKey;
+  const trimmed = name.trim();
+  if (!trimmed) throw Errors.unprocessable(`${def.label}名称不能为空`);
+  const where = { [parentField]: parentId, [nameField]: trimmed };
+  const existing = await delegate(db, def.model).findFirst({ where });
+  if (existing) return { id: existing.id, name: existing.name };
+  try {
+    const created = await delegate(db, def.model).create({
+      data: { [parentField]: parentId, [nameField]: trimmed, ...(def.defaults?.(trimmed) ?? {}) },
+    });
+    return { id: created.id, name: created.name };
+  } catch (e) {
+    // P2002：并发下同父级同名创建竞争 → 回查复用（幂等兜底）
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      const again = await delegate(db, def.model).findFirst({ where });
       if (again) return { id: again.id, name: again.name };
     }
     throw e;
@@ -164,10 +232,11 @@ export async function resolveRef(
 // §2 档案注册表（各档案的差异配置，单一信息源）
 // ============================================================
 
-/** 供应商档案（缺省注册表：进价供应商可空 → 系统默认「面价渠道」） */
+/** 供应商档案（A 类全局字典：name 全局唯一；缺省注册表：进价供应商可空 → 系统默认「面价渠道」） */
 export const SUPPLIER_REGISTRY: RegistryDef = {
   model: 'supplier',
   label: '供应商',
+  uniqueKey: { type: 'global' },
   defaults: () => ({ status: 1, remark: '待完善' }),
   extraToData: (extra) => {
     const e = extra as { contacts?: unknown; businessScope?: string | null; address?: string | null; remark?: string | null } | null | undefined;
@@ -180,23 +249,37 @@ export const SUPPLIER_REGISTRY: RegistryDef = {
   },
 };
 
-/** 分类档案（categoryId=0 未分类为系统约定缺省，非名称缺省） */
+/** 分类档案（A 类全局字典：name 全局唯一，v15.4 补唯一索引；
+ *   v15.3 统一引用类语义：分类空 → 缺省名「未分类」，ensure 幂等 + 按名称唯一复用/建档，
+ *   与品牌/供应商/价格类型完全同构；历史特例「categoryId=0 未分类不建记录」废除） */
 export const CATEGORY_REGISTRY: RegistryDef = {
   model: 'category',
   label: '分类',
+  uniqueKey: { type: 'global' },
   defaults: () => ({ sortOrder: 0, status: 1 }),
 };
 
-/** 品牌全局档案（name 全局唯一） */
+/** 品牌全局档案（A 类全局字典：name 全局唯一） */
 export const BRAND_REGISTRY: RegistryDef = {
   model: 'brand',
   label: '品牌',
+  uniqueKey: { type: 'global' },
   defaults: () => ({ status: 1 }),
 };
 
-/** 价格类型字典（缺省注册表：售价类型可空 → 系统默认「零售价」） */
+/** 价格类型字典（A 类全局字典：name 全局唯一；缺省注册表：售价类型可空 → 系统默认「零售价」） */
 export const PRICE_TYPE_REGISTRY: RegistryDef = {
   model: 'price_type',
   label: '价格类型',
+  uniqueKey: { type: 'global' },
   defaults: () => ({ sortOrder: 0, status: 1 }),
+};
+
+/** 规格变体（B 类父级从属：productId + specModel 唯一；快速建档 spec 幂等走 ensureByParent）
+ *   注意：不同产品的同名规格（如 DN25）是独立记录，不能纯名称去重 */
+export const SPEC_REGISTRY: RegistryDef = {
+  model: 'spec',
+  label: '规格',
+  uniqueKey: { type: 'parent', parentField: 'productId', nameField: 'specModel' },
+  defaults: () => ({}),
 };

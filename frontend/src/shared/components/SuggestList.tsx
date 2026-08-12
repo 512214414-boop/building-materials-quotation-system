@@ -272,7 +272,7 @@ export default function SuggestList<T = SuggestOption>({
   const showList = !loading && options.length > 0;
 
   return (
-    <div style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
+    <div data-shared-badge="C13" style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
       {/* 新建项 */}
       {showCreate && (
         <div

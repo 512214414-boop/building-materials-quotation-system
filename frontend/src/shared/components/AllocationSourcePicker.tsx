@@ -253,6 +253,7 @@ export default function AllocationSourcePicker({
     <>
       <DsSelect
         size={size === 'small' ? 'sm' : size === 'large' ? 'lg' : 'md'}
+        data-shared-badge="C26"
         value={value || undefined}
         onChange={handleChange}
         onSearch={setKeyword}

@@ -1584,6 +1584,7 @@ export default function ProductPicker({
       <DsInput
         ref={inputRef}
         variant="embedded"
+        data-shared-badge="C22"
         size="sm"
         placeholder="搜索产品…"
         value={keyword}

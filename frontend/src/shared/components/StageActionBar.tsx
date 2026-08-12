@@ -25,6 +25,7 @@ export default function StageActionBar({
 }: StageActionBarProps) {
   return (
     <DsShellRow
+      data-shared-badge="C47"
       style={{
         justifyContent: 'space-between',
         gap: 12,

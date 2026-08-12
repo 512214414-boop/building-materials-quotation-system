@@ -45,7 +45,7 @@ router.post(
 // 层级：
 //   category（分类表，扁平无父子层级）
 //        ↓ 1:N
-//   product（产品主体【SPU = name + specModel】，categoryId DEFAULT 0 = 未分类）
+//   product（产品主体【SPU = name + specModel】，分类空输入由后端按 name ensure「未分类」记录）
 //        ↓ 1:N                    ↓ 1:N
 //   brand（品牌，单字段 name）   unit（单位，挂 SPU，含 isBase/isDisplay）
 //        ↓                          ↓
@@ -70,7 +70,7 @@ router.delete('/staff/categories/:id', requireStaff, requireViewPermission('prod
 router.post('/staff/categories/quick-add', requireStaff, requireViewPermission('product_manage', 'rw'), asyncHandler(productCtrl.quickAddCategoryHandler));
 
 // 2. 产品主体（product，SPU = name + specModel）
-// v9.0：产品名称 + 规格型号合并为一条 SPU 记录，categoryId=0 表示「未分类」
+// v9.0：产品名称 + 规格型号合并为一条 SPU 记录；「未分类」为 name 唯一真实记录（空分类由后端 ensure）
 // @@unique([categoryId, name, specModel]) 同分类下 (name, specModel) 不重复
 // v11.0：产品ID 应用层时间戳生成，支持物理删除（即便被单据引用）+ 停用/启用
 // 注意：具体子路径（search/sku/options/suggest/save/quick-create/convert-qty）必须在 :id 之前注册

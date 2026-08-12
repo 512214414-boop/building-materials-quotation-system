@@ -194,6 +194,7 @@ export default function BatchStandardizeDialog({
   return (
     <DsDialog
       title={`补全产品档案（${nonStandardLines.length} 行未关联）`}
+      data-shared-badge="C55"
       open={open}
       onCancel={onClose}
       width={680}

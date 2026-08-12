@@ -345,6 +345,7 @@ export default function DocumentView({
   return (
     <div
       className="document-view"
+      data-shared-badge="C51"
       style={{
         background: printMode ? 'var(--print-bg-paper)' : 'var(--print-bg-subtle)',
         padding: printMode ? '0' : '24px',

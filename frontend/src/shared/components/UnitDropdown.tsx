@@ -203,6 +203,7 @@ export function UnitDropdown({
   return (
     <Popover
       content={dropdownContent}
+      data-shared-badge="C18"
       trigger="click"
       open={open}
       onOpenChange={handleOpenChange}

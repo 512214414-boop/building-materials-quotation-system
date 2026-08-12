@@ -68,6 +68,7 @@ export function DsSelect(props: DsSelectProps) {
   return (
     <Select
       size={SIZE_MAP[size]}
+      data-shared-badge="C04"
       className={`ds-select${className ? ` ${className}` : ''}`}
       // antd 6：popupClassName 已弃用 → classNames.popup.root
       classNames={{

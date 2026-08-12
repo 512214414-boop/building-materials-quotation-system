@@ -250,6 +250,7 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
 
   return (
     <DsShellRow
+      data-shared-badge="C50"
       style={{
         gap: 6,
         padding: '0 12px',

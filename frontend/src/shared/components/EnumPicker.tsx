@@ -61,6 +61,7 @@ export default function EnumPicker<V extends string>({
       <input
         type="text"
         readOnly
+        data-shared-badge="C24"
         value={current?.label ?? ''}
         placeholder={placeholder}
         style={{

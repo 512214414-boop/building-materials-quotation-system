@@ -46,6 +46,8 @@ import {
 } from './PanelTree.js';
 
 export interface FloatPanelProps {
+  /** 共享组件编号标识（v15.4）：标识模式下高亮+悬浮显示，默认 C60，包装组件可覆盖 */
+  'data-shared-badge'?: string;
   visible?: boolean;
   open?: boolean;
   anchorRef: React.RefObject<HTMLElement | null>;
@@ -190,6 +192,7 @@ export function FloatPanel({
   className,
   allowFocusInside = true,
   parentId = null,
+  'data-shared-badge': badgeOverride,
 }: FloatPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   // v10.34：position/panelSize 改 ref，避免 state 变化触发重渲染循环
@@ -445,6 +448,7 @@ export function FloatPanel({
       className={`float-panel${className ? ` ${className}` : ''}`}
       style={panelStyle}
       data-panel-id={panelIdRef.current || undefined}
+      data-shared-badge={badgeOverride ?? 'C60'}
     >
       {title && (
         <div

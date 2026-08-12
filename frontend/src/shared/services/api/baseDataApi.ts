@@ -13,7 +13,7 @@
 //      purchase_price: @@unique([brandId, unitId, supplierId])
 //   5. 价格分表存储：sale_price（售价，priceType 字符串）+ purchase_price（进价，supplierId 外键 + isDefault）
 //   6. SKU 检索宽表：product_sku_search 扁平宽表，含 specModel + 品牌优先排序
-//   7. 产品归属分类：product.categoryId DEFAULT 0（0=未分类）
+//   7. 产品归属分类：v15.3 统一引用类语义——分类空输入由后端按 name ensure「未分类」真实记录（存在复用/不存在新建）
 //   8. 图片依附品牌：product_image.brandId → brand.id
 //
 // v9.0 相对 v8.0 的变化：
@@ -55,7 +55,7 @@ import type { PaginationResult } from '../request.js';
 
 // v1.5.6.3 快速建档默认值（与后端 productService.DEFAULT_SPEC_MODEL / DEFAULT_UNIT_NAME 双端一致）
 //   用户「边用边录真正必填只有产品名称，空值补默认」指令：
-//   - 规格型号空 → 「通用」；单位空 → 「件」；分类空 → 0（未分类，既有规则）
+//   - 规格型号空 → 「通用」；单位空 → 「件」；分类空 → 后端按 name ensure「未分类」记录
 //   前端与后端同口径补默认，禁止只改一端
 export const DEFAULT_SPEC_MODEL = '通用';
 export const DEFAULT_UNIT_NAME = '件';
@@ -85,13 +85,13 @@ export interface CategoryView {
  * 产品 → 规格变体 → 品牌/单位 三级层级：
  *   - product 只存产品名（如「PPR热水管」），规格型号在 spec 表
  *   - 同一产品多个规格（specs），每个规格的品牌/单位独立
- * categoryId=0 表示「未分类」（product.categoryId DEFAULT 0）。
+ * categoryId 为有效分类记录 id：分类空输入时由后端按 name ensure「未分类」记录（存在复用/不存在新建）。
  */
 export interface ProductView {
   /** BigInt 序列化为 string */
   id: string;
   name: string;
-  /** 分类 ID（Int，0=未分类） */
+  /** 分类 ID（有效记录 id；「未分类」按 name 解析，无 0 魔数） */
   categoryId: number;
   /** v8.0：备注信息（别名、俗称，如「6分管」） */
   remark: string;
@@ -510,7 +510,7 @@ export interface CreateProductInput {
   name: string;
   /** v14.0：规格型号（可空，创建产品时一并创建首个规格；后端补默认「通用」） */
   specModel?: string;
-  /** 分类 ID（0=未分类） */
+  /** 分类 ID（有效记录 id；「未分类」按 name 解析，无 0 魔数） */
   categoryId?: number;
   /** v8.0：备注信息 */
   remark?: string;
@@ -725,7 +725,7 @@ export interface SaveProductInput {
   name: string;
   /** v8.0：规格型号（必填） */
   specModel: string;
-  /** 分类 ID（0=未分类） */
+  /** 分类 ID（有效记录 id；「未分类」按 name 解析，无 0 魔数） */
   categoryId?: number;
   /** v8.0：备注信息 */
   remark?: string;
@@ -750,7 +750,7 @@ export interface QuickCreateProductInput {
   unitName?: string;
   /** v8.0：品牌名称（单字段，可选，空则「无品牌」） */
   brandName?: string;
-  /** 分类 ID（0=未分类） */
+  /** 分类 ID（有效记录 id；「未分类」按 name 解析，无 0 魔数） */
   categoryId?: number;
   isBase?: boolean;
   isDisplay?: boolean;
@@ -1593,7 +1593,7 @@ export interface ProductImageLibraryItem {
   productName: string;
   /** v1.5.5：所属产品规格型号 */
   specModel: string;
-  /** v1.5.5：所属产品分类 ID（0=未分类） */
+  /** v1.5.5：所属产品分类 ID（有效记录 id；「未分类」按 name 解析） */
   categoryId: number;
   /** v1.5.5：所属产品分类名 */
   categoryName: string;
@@ -1803,7 +1803,7 @@ export function saveProduct(data: SaveProductInput): Promise<ProductView> {
 // §15 快速建档（/api/staff/products/quick-create）—— v8.0 新增
 // 最小必填：产品名 + 规格型号 + 一个单位
 // 幂等：同名产品/同品牌/同单位均不重复创建
-// 自动：未指定分类 → 0（未分类）；未指定品牌 → 「无品牌」
+// 自动：未指定分类 → 按 name ensure「未分类」记录；未指定品牌 → 「普通品牌」
 // 返回 { product, brand, unit }（v8.0：无 spec）
 // ============================================================
 

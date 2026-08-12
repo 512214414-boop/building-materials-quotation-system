@@ -254,7 +254,7 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
   }
 
   return (
-    <FloatPanel open={open} anchorRef={anchorRef} onClose={onClose} maxHeight={540} offset={2} style={{ padding: 0 }}>
+    <FloatPanel open={open} anchorRef={anchorRef} onClose={onClose} data-shared-badge="C54" maxHeight={540} offset={2} style={{ padding: 0 }}>
       <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ flex: 1, fontWeight: 600, fontSize: 'var(--body-sm-font-size)' }}>报销开单（代采）</span>
         <DsButton size="sm" variant="ghost" onClick={() => setShowHistory(true)}>

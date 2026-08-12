@@ -107,7 +107,7 @@ export default function DsShellRow({ children, className, style, ...rest }: DsSh
   }, []);
 
   return (
-    <div className={`ds-shell-row${className ? ` ${className}` : ''}`} style={outerStyle} {...rest}>
+    <div data-shared-badge="C11" className={`ds-shell-row${className ? ` ${className}` : ''}`} style={outerStyle} {...rest}>
       <div
         className="ds-shell-row-scroll"
         ref={scrollRef}

@@ -14,6 +14,7 @@ export function DsDialog(props: DsDialogProps) {
   const { title, closeIcon, styles, style, width, ...rest } = props;
   return (
     <Modal
+      data-shared-badge="C07"
       title={title}
       closeIcon={
         closeIcon ?? <CloseOutlined style={{ color: 'var(--text-secondary)' }} />

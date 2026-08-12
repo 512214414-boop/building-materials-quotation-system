@@ -74,6 +74,7 @@ export default function StageBizStrip({ left, right, readonly, style }: StageBiz
   void readonly;
   return (
     <DsShellRow
+      data-shared-badge="C48"
       style={{
         gap: 12,
         padding: '0 12px',

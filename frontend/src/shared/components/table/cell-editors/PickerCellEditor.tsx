@@ -6,28 +6,25 @@
 //
 // 职责边界：
 //   - pickerTrigger='cell'：点击整个单元格激活 Picker（适用于价格等字段）
-//   - pickerTrigger='dropdown'：文本区自由编辑 + 下拉箭头触发面板
-//     · 文本区点击进入自由编辑态（输入即提交后端）
-//     · 下拉箭头点击以当前值为 initialKeyword 激活 Picker 面板
+//   - pickerTrigger='dropdown'：输入+下拉组合（DsInputDropdown 共享组件 C61）
+//     · 输入区：显示态单行省略（不换行、不破坏布局）/ 编辑态 textarea 无感切换（未超宽单行、
+//       超宽自动展开多行，样式与显示态一致，文字不跳动）——点击进入自由编辑态（输入即提交后端）
+//     · 下拉按钮：C01 控件（DsButton）常驻稳定，点击以当前输入值为 initialKeyword 激活 Picker 面板
+//     · 清除按钮：仅编辑（聚焦）时显示，不常驻占位
 //     · 非标数据（未匹配档案）：InfoCircleOutlined 提示
 //   - 激活态：渲染 column.renderEditor 返回的 Picker 面板（FloatPanel）
 //   - 原子更新（v11.0.11）：内容未变化时不提交
-//   - 一键清除（v11.0.12）：CloseCircleFilled 清空内容
 //   - 零业务逻辑（onCommit 上抛交付层）
 //   - 零后端调用
 
-import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useContext, useState } from 'react';
 import { Tooltip } from 'antd';
-import {
-  DownOutlined,
-  UpOutlined,
-  InfoCircleOutlined,
-  CloseCircleFilled,
-} from '@ant-design/icons';
+import { InfoCircleOutlined, UpOutlined } from '@ant-design/icons';
 import type { CellEditorProps } from './CellEditor.types.js';
-import { CELL_TEXT_STYLE, CELL_INPUT_FOCUS_STYLE } from './CellEditor.types.js';
+import { CELL_TEXT_STYLE } from './CellEditor.types.js';
 import { PickerCellContext } from '../InteractionLayer.js';
 import { useActiveCell } from '../../FocusBus.js';
+import DsInputDropdown from '../../DsInputDropdown.js';
 
 const PickerCellEditor = memo<CellEditorProps>(
   ({ value, record, rowIndex, colIdx, column, isDisabled, anchorRef, onCommit }) => {
@@ -40,21 +37,11 @@ const PickerCellEditor = memo<CellEditorProps>(
 
     // ── dropdown 模式专用状态 ──
     const isDropdown = column.pickerTrigger === 'dropdown';
-    const [freeTextEditing, setFreeTextEditing] = useState(false);
     const [isMatchedFilled, setIsMatchedFilled] = useState(false);
-    const freeTextInputRef = useRef<HTMLInputElement>(null);
     // v11.4：下拉箭头展开面板时携带的初始关键词（编辑态当前输入值），
     //   优先于 record 值传给 renderEditor，解决「有值重新输入 → 展开面板丢失当前输入值」；
     //   提交/关闭面板后清空，回到非激活态用记录显示值
     const [pickerKeyword, setPickerKeyword] = useState<string | null>(null);
-
-    // 自由编辑态焦点稳定化
-    useEffect(() => {
-      if (freeTextEditing && freeTextInputRef.current) {
-        freeTextInputRef.current.focus();
-        freeTextInputRef.current.select();
-      }
-    }, [freeTextEditing]);
 
     // 非标判定
     const isStandard =
@@ -64,46 +51,14 @@ const PickerCellEditor = memo<CellEditorProps>(
     const isNonStandard = isDropdown && !isStandard && displayValue !== '';
 
     // ── 原子更新辅助 ──
-    const isUnchanged = useCallback(
-      (val: string) => val === displayValue,
-      [displayValue],
-    );
-
     const commitOrSkip = useCallback(
       (val: string): boolean => {
-        if (isUnchanged(val)) {
-          setFreeTextEditing(false);
-          return false;
-        }
+        if (val === displayValue) return false;
         setIsMatchedFilled(false);
         onCommit(rowIndex, colIdx, val);
-        setFreeTextEditing(false);
         return true;
       },
-      [rowIndex, colIdx, onCommit, isUnchanged],
-    );
-
-    // ── 一键清除 ──
-    const handleClearAll = useCallback(() => {
-      if (isDisabled) return;
-      if (freeTextInputRef.current) {
-        freeTextInputRef.current.value = '';
-        freeTextInputRef.current.focus();
-      }
-      if (displayValue !== '') {
-        setIsMatchedFilled(false);
-        onCommit(rowIndex, colIdx, '');
-      }
-    }, [isDisabled, displayValue, rowIndex, colIdx, onCommit]);
-
-    const handleClearAllInactive = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (isDisabled || displayValue === '') return;
-        setIsMatchedFilled(false);
-        onCommit(rowIndex, colIdx, '');
-      },
-      [isDisabled, displayValue, rowIndex, colIdx, onCommit],
+      [rowIndex, colIdx, onCommit, displayValue],
     );
 
     // ── 激活 Picker 面板 ──
@@ -119,10 +74,6 @@ const PickerCellEditor = memo<CellEditorProps>(
     // ============================================================
     if (isActive && column.renderEditor) {
       return (
-        // v11.1 修复：锚点从 display:none 改为可见包装 div（包裹输入框 + 面板）。
-        //   ① FloatPanel 定位用可见 rect，不再落左上角（原"面板定位左上角"问题）；
-        //   ② FloatPanel 的焦点丢失关闭检查 anchorRef.contains(焦点元素)——输入框在 div 内，
-        //      autoFocus 的 focusin 不再被误判为"面板外焦点"→ 面板打开即被关闭（选品打不开）。
         <div
           data-cell-row={rowIndex}
           data-cell-col={colIdx}
@@ -135,14 +86,8 @@ const PickerCellEditor = memo<CellEditorProps>(
             height: '100%',
           }}
         >
-          {/* v11.18 修复：输入框必须撑满单元格「原本大小」——收起按钮改为绝对定位
-              悬浮，不再占据流式宽度（原 flex 兄弟节点占位 ~18px，导致编辑态输入框
-              视觉窄于文本态，用户感知"进入编辑态列宽变窄"）。右侧仅留最小防遮挡
-              间距（6px），input 撑满整格（206px+，仍大于文本态文字 183px，绝不变窄）。 */}
           <div style={{ flex: 1, minWidth: 0, height: '100%', paddingRight: 6 }}>
             {column.renderEditor(
-              // v11.4：优先用下拉箭头携带的当前输入值作为面板初始关键词（编辑态输入不丢失）；
-              //   非激活态/常规展开时 pickerKeyword 为 null，回退记录显示值
               pickerKeyword ?? value,
               record,
               rowIndex,
@@ -181,100 +126,6 @@ const PickerCellEditor = memo<CellEditorProps>(
               ctx?.cancelAndClose();
             }}
             title="收起"
-          />
-        </div>
-      );
-    }
-
-    // ============================================================
-    // dropdown 模式：自由编辑态
-    // v11.18 修复：input 必须撑满单元格「原本大小」——右侧图标（清空/下拉箭头）
-    //   改为绝对定位悬浮，不再作为流式兄弟节点挤压 input（原布局下 input 仅
-    //   ~179px，单元格 220px，用户感知"进入编辑态列宽变窄"）。
-    // ============================================================
-    if (isDropdown && freeTextEditing) {
-      return (
-        <div
-          data-cell-row={rowIndex}
-          data-cell-col={colIdx}
-          style={{
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            width: '100%',
-            height: '100%',
-          }}
-        >
-          <input
-            ref={freeTextInputRef}
-            defaultValue={displayValue}
-            onClick={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              commitOrSkip((e.target as HTMLInputElement).value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                const val = (e.target as HTMLInputElement).value;
-                // v11.4：Enter 只提交保存，不再自动展开选品面板。
-                //   第一遍录入多为简略信息（先快录后核对），输入即弹面板会打断节奏；
-                //   需要检索档案时由用户主动点下拉箭头展开
-                commitOrSkip(val);
-              } else if (e.key === 'Escape') {
-                e.preventDefault();
-                setFreeTextEditing(false);
-              }
-            }}
-            style={{
-              ...CELL_INPUT_FOCUS_STYLE,
-              width: '100%',
-              height: '100%',
-              // 右侧预留图标悬浮空间（清空 + 箭头），文字不被遮挡
-              paddingRight: displayValue !== '' ? 32 : 18,
-            }}
-          />
-          {displayValue !== '' && (
-            <CloseCircleFilled
-              style={{
-                position: 'absolute',
-                right: 16,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                cursor: 'pointer',
-                color: 'var(--text-quaternary)',
-                fontSize: 11,
-                padding: 2,
-              }}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClearAll();
-              }}
-              title="清空全部"
-            />
-          )}
-          <DownOutlined
-            style={{
-              position: 'absolute',
-              right: 2,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              cursor: 'pointer',
-              color: 'var(--text-tertiary)',
-              fontSize: 10,
-              padding: 2,
-            }}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isDisabled) return;
-              // v11.4：展开面板并携带当前输入值作为初始关键词。
-              //   不再 commitOrSkip —— 输入中的文字只是「检索关键词」，不应覆盖行内已保存值；
-              //   选中档案后由 onCommit 整行更新（行值 = 档案全名 + 关联 ID）
-              setPickerKeyword(freeTextInputRef.current?.value ?? displayValue);
-              setFreeTextEditing(false);
-              activatePicker();
-            }}
           />
         </div>
       );
@@ -321,96 +172,53 @@ const PickerCellEditor = memo<CellEditorProps>(
     }
 
     // ============================================================
-    // dropdown 模式：非激活态（文本区 + 非标提示 + 清除 + 箭头）
+    // dropdown 模式：输入+下拉组合（DsInputDropdown 共享组件 C61）
+    //   - 显示态单行省略（不换行不撑行高）/ 编辑态 textarea 无感切换（未超宽单行、超宽自动多行）
+    //   - 下拉按钮 C01 常驻稳定；清除按钮仅编辑态显示（不常驻占位）
     // ============================================================
+    // v11.4：展开面板携带当前输入值作为初始关键词（编辑态输入不丢失）
     return (
       <div
         data-cell-row={rowIndex}
         data-cell-col={colIdx}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '100%',
-          height: '100%',
-        }}
+        style={{ width: '100%', height: '100%' }}
       >
-        <span
-          style={{
-            flex: 1,
-            cursor: 'text',
-            ...CELL_TEXT_STYLE,
-            // v11.19：wrap 列（如产品名称/规格）跟随列级换行规则——文本态超长自动换行完整可见，
-            //   覆盖 CELL_TEXT_STYLE 的 nowrap+ellipsis 默认（内联样式优先于列级 CSS，必须在此覆盖）
-            ...(column.wrap
-              ? {
-                  whiteSpace: 'normal',
-                  overflow: 'visible',
-                  textOverflow: 'clip',
-                  wordBreak: 'break-word',
-                  justifyContent: 'flex-start',
-                  lineHeight: 1.4,
-                }
-              : {}),
-          }}
-          onClick={() => {
-            if (!isDisabled) setFreeTextEditing(true);
-          }}
-        >
-          {column.render ? (
-            column.render(value, record, rowIndex)
-          ) : displayValue ? (
-            displayValue
-          ) : (
-            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+        <DsInputDropdown
+          value={displayValue}
+          disabled={isDisabled}
+          renderText={(v) => (
+            <>
+              {column.render
+                ? column.render(value, record, rowIndex)
+                : v || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+              {/* 非标数据提示：未匹配档案记录 */}
+              {isNonStandard && (
+                <Tooltip title="待确认：未匹配档案记录，点击修正">
+                  <InfoCircleOutlined
+                    style={{
+                      flexShrink: 0,
+                      cursor: 'pointer',
+                      color: 'var(--status-star-default)',
+                      fontSize: 10,
+                      marginLeft: 4,
+                      marginRight: 2,
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isDisabled) activatePicker();
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </>
           )}
-        </span>
-        {isNonStandard && (
-          <Tooltip title="待确认：未匹配档案记录，点击修正">
-            <InfoCircleOutlined
-              style={{
-                flexShrink: 0,
-                cursor: 'pointer',
-                color: 'var(--status-star-default)',
-                fontSize: 10,
-                marginRight: 2,
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!isDisabled) activatePicker();
-              }}
-            />
-          </Tooltip>
-        )}
-        {displayValue !== '' && !isDisabled && (
-          <CloseCircleFilled
-            style={{
-              flexShrink: 0,
-              cursor: 'pointer',
-              color: 'var(--text-quaternary)',
-              fontSize: 11,
-              padding: '0 2px',
-            }}
-            onClick={handleClearAllInactive}
-            title="清空全部"
-          />
-        )}
-        <DownOutlined
-          style={{
-            flexShrink: 0,
-            cursor: 'pointer',
-            color: 'var(--text-tertiary)',
-            fontSize: 10,
-            padding: '0 2px',
+          onDropdownClick={(cur) => {
+            if (isDisabled) return;
+            setPickerKeyword(cur ?? '');
+            activatePicker();
           }}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!isDisabled) {
-              // v11.4：非激活态展开用记录显示值作为初始关键词（清空编辑态残留的关键词缓存）
-              setPickerKeyword(null);
-              activatePicker();
-            }
-          }}
+          onCommit={(val) => commitOrSkip(val)}
+          onChange={() => setIsMatchedFilled(false)}
         />
       </div>
     );

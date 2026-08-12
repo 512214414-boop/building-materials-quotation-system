@@ -39,7 +39,7 @@ export function DsNavButton({
     .join(' ');
 
   return (
-    <button className={cls} {...rest}>
+    <button className={cls} {...rest} data-shared-badge="C09">
       {children}
     </button>
   );

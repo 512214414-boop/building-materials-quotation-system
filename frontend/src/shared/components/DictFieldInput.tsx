@@ -64,7 +64,7 @@ export default function DictFieldInput({
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+    <div data-shared-badge="C16" style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
       {suggestField ? (
         <SuggestInput
           field={suggestField}

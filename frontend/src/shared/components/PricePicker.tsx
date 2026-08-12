@@ -190,6 +190,7 @@ export default function PricePicker({
   return (
     <>
       <div
+        data-shared-badge="C21"
         style={{
           position: 'relative',
           width: '100%',

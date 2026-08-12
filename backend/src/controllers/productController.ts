@@ -14,7 +14,7 @@
 //      purchase_price: @@unique([brandId, unitId, supplierId])
 //   6. 价格分表存储：sale_price（售价，priceTypeId 外键关联 price_type 字典表）+ purchase_price（进价，supplierId 外键）
 //   7. SKU 检索宽表：product_sku_search 扁平宽表，含 specModel + 品牌优先排序
-//   8. 产品归属分类：product.categoryId DEFAULT 0（0=未分类）
+//   8. 产品归属分类：v15.3 统一引用类语义——分类空输入由后端按 name ensure「未分类」记录
 //   9. 图片依附品牌：product_image.brandId → brand.id
 //
 // 章节：
@@ -48,7 +48,7 @@ import * as productSvc from '../services/productService.js';
 
 // ============================================================
 // §1 分类管理 Handler（category，扁平结构）
-// v9.0：扁平无父子层级，categoryId=0 表示「未分类」（产品归属，非分类节点）
+// v9.0：扁平无父子层级；「未分类」为 name 唯一真实记录，空分类由应用层 ensure
 // ============================================================
 
 export async function listCategoriesHandler(_req: Request, res: Response) {
@@ -113,8 +113,8 @@ export async function quickAddCategoryHandler(req: Request, res: Response) {
 
 // ============================================================
 // §2 产品管理 Handler（product，SPU 主体 = name + specModel）
-// v9.0：产品名称 + 规格型号 = SPU
-// categoryId=0 表示「未分类」，@@unique([categoryId, name, specModel]) 同分类下 (name, specModel) 不重复
+// v9.0：产品名称 + 规格型号 = SPU；「未分类」为 name 唯一真实记录（空分类由应用层 ensure）
+// @@unique([categoryId, name, specModel]) 同分类下 (name, specModel) 不重复
 // ============================================================
 
 export async function listProductsHandler(req: Request, res: Response) {

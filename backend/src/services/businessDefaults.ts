@@ -16,24 +16,32 @@
 // 合法替代值策略（统一适用，禁止每次灵活分析）：
 //   - 引用类字段   → 系统默认记录（ensure 幂等；按名称唯一复用/合并）
 //   - 字符串类字段 → 默认常量（规格→「通用」、单位→「件」）
-//   - ID 类字段    → 系统约定 0（分类→0 未分类，schema DEFAULT 0）
 //   - 数值类字段   → NUMERIC_PLACEHOLDER = 9999（一眼识别「未设置」，配合字体颜色标记）
+//
+// v15.3 分类统一（用户「统一就建记录关联，怎么还会留多个不同的方式」）：
+//   - 历史特例「categoryId=0 未分类（ID 类→0 魔数，不建记录）」废除
+//   - 分类与供应商/价格类型/品牌同构：均为引用类字段 → 系统默认记录「未分类」
+//     （ensure 幂等 + 按名称唯一复用/建档），product.categoryId 永远指向真实分类记录
+//   - 全系统对「未分类」的引用统一为 name='未分类' 的那条记录，不再有 0 魔数语义
 //
 // 当前注册表：
 //   - purchase_price.supplierId  → 面价渠道（进价供应商可空，业务重点案例）
 //   - sale_price.priceTypeId     → 零售价（售价类型可空）
+//   - product.categoryId         → 未分类（ensure 幂等，按名称唯一复用；v15.3 统一引用类）
 //   - product.specModel          → 通用（productService.DEFAULT_SPEC_MODEL）
 //   - unit.unitName              → 件（productService.DEFAULT_UNIT_NAME）
-//   - product.categoryId         → 0 未分类（schema DEFAULT 0）
 //
 // 实现收敛：引用解析（① id 校验 → ② name 复用/建档 → ③ 空值系统默认）与
 // 按名称唯一建档/复用（P2002 兜底 + 附加字段合并）统一走 registry.ts 通用抽象
-// （SUPPLIER_REGISTRY / PRICE_TYPE_REGISTRY），本模块只保留缺省名常量与对外签名。
+// （CATEGORY_REGISTRY / SUPPLIER_REGISTRY / PRICE_TYPE_REGISTRY），本模块只保留缺省名常量与对外签名。
 
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
+import { Errors } from '../utils/errors.js';
 import {
   resolveRef,
+  ensureByName,
+  CATEGORY_REGISTRY,
   SUPPLIER_REGISTRY,
   PRICE_TYPE_REGISTRY,
 } from './registry.js';
@@ -43,6 +51,9 @@ export const DEFAULT_SUPPLIER_NAME = '面价渠道';
 
 /** 售价类型为空时的系统默认价格类型名（ensure 幂等，保证真实存在于 price_type 表） */
 export const DEFAULT_PRICE_TYPE_NAME = '零售价';
+
+/** 分类为空时的系统默认分类名（ensure 幂等，保证真实存在于 category 表；v15.3 统一引用类语义） */
+export const DEFAULT_CATEGORY_NAME = '未分类';
 
 /** 数值类必填但无有效值时的占位大值（一眼识别「未设置」，配合字体颜色标记） */
 export const NUMERIC_PLACEHOLDER = 9999;
@@ -122,12 +133,45 @@ export async function resolvePriceTypeRef(
   });
 }
 
+export interface ResolveCategoryRefOptions {
+  /** 已提供的分类 id（可选；0/空 → 系统默认「未分类」；明确引用必须真实，不存在报错） */
+  id?: number | null;
+  /** 已提供的分类名（可选；id 为空时优先按名复用/创建） */
+  name?: string | null;
+}
+
+/**
+ * 解析产品分类引用（业务补全，v15.3 与品牌/供应商/价格类型同构）：
+ *   1. id 有效（非 0） → 校验存在后返回（明确引用必须真实，不存在报错）
+ *   2. id 空/0 + name 有效 → 按名称唯一复用/创建
+ *   3. 均空 → ensure 系统默认分类「未分类」（幂等，按名称唯一复用/建档）
+ * 历史特例废除：不再有「categoryId=0 未分类」魔数语义——「未分类」就是按名称 ensure 的真实分类记录。
+ * 注意：category 主键为 Int（number），与其他档案（BigInt）不同，id 分支在本函数内独立处理。
+ */
+export async function resolveCategoryRef(
+  db: RefDb,
+  opts: ResolveCategoryRefOptions,
+): Promise<{ id: number; name: string }> {
+  // id=0 视同未指定（0 是历史魔数，未来「未分类」记录 id 迁移后仍按名称解析，杜绝 0 依赖）
+  const realId = opts.id != null && Number(opts.id) !== 0 ? Number(opts.id) : null;
+  if (realId != null) {
+    const found = await db.category.findUnique({ where: { id: realId } });
+    if (found) return { id: found.id, name: found.name };
+    throw Errors.unprocessable('分类不存在，请先建档');
+  }
+  const name = opts.name?.trim() || DEFAULT_CATEGORY_NAME;
+  const ensured = await ensureByName(db, CATEGORY_REGISTRY, name);
+  return { id: Number(ensured.id), name: ensured.name };
+}
+
 /**
  * 系统缺省记录预置（服务启动时调用，幂等）：
+ *   - 「未分类」分类（分类为空时的缺省引用；v15.3 统一引用类语义，ensure 幂等）
  *   - 「面价渠道」供应商（进价供应商为空时的缺省引用，保证供应商列表始终可见可选）
  *   - 「零售价」价格类型（售价类型为空时的缺省引用）
  */
 export async function ensureSystemDefaults(): Promise<void> {
+  await resolveCategoryRef(prisma, {});
   await resolveSupplierRef(prisma, {});
   await resolvePriceTypeRef(prisma, {});
 }

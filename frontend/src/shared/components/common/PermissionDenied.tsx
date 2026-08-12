@@ -22,7 +22,7 @@ export function PermissionDenied({ kind = 'none', featureLabel, minHeight = '40v
     padding: 'var(--spacer-32)',
   };
   return (
-    <div style={wrap}>
+    <div data-shared-badge="C56" style={wrap}>
       <div
         style={{
           width: '56px',

@@ -38,7 +38,7 @@ import {
 import { UnifiedTable } from '../../../shared/components/UnifiedTable.js';
 import type { UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
-import { DsInput, SuggestInput } from '../../../shared/components/index.js';
+import { DsInput, SuggestInput, confirmFillsBeforeSave } from '../../../shared/components/index.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
@@ -56,6 +56,7 @@ import ProductEditDialog from './product-manage/ProductEditDialog.js';
 import BatchAdjustDialog from './product-manage/BatchAdjustDialog.js';
 import { DictRecordManagePanel } from '../../../shared/components/DictRefField.js';
 import { categoryDict } from '../../../shared/config/recordDicts.js';
+import { QUICK_CREATE_LAYERS } from '../../../shared/config/quickCreateConfig.js';
 import {
   type SalePriceItem,
   type PurchasePriceItem,
@@ -238,6 +239,27 @@ export default function ProductManage() {
       return { units, conversions, salePrices, purchasePrices };
     },
     savePrices: async (ctx, salePrices, purchasePrices, skuOptions) => {
+      // v15.4 统一自动补充确认：列表价格保存（失焦/关闭静默触发）只要涉及自动补充
+      //   （售价行未选价格类型 → 零售价、进价行未选供应商 → 面价渠道），保存前必须提示并确认
+      const priceLayer = QUICK_CREATE_LAYERS.price;
+      const priceTypeCfg = priceLayer.fields.find((f) => f.key === 'priceType')!;
+      const supplierCfg = priceLayer.fields.find((f) => f.key === 'supplier')!;
+      const saleNoTypeCount = salePrices.filter((p) => p.price.trim() && !p.priceTypeId).length;
+      const purNoSupCount = purchasePrices.filter((p) => p.price.trim() && !p.supplierId).length;
+      const notes: string[] = [];
+      if (saleNoTypeCount > 0) {
+        notes.push(`售价 ${saleNoTypeCount} 行自动补充价格类型「${priceTypeCfg.fallback}」`);
+      }
+      if (purNoSupCount > 0) {
+        notes.push(`进价 ${purNoSupCount} 行自动补充供应商「${supplierCfg.fallback}」`);
+      }
+      const confirmed = await confirmFillsBeforeSave(modal, {
+        groups: [],
+        notes,
+        contentTitle: '保存时将自动补充以下缺省值：',
+      });
+      if (!confirmed) return; // 取消 → 不保存（返回继续编辑）
+
       await saveRowPricesCtx(
         ctx.specBrandId,
         ctx.specId,
@@ -930,9 +952,10 @@ export default function ProductManage() {
           const catName = record.sku.categoryName;
           return (
             <EnumInlineEditCell
-              // v1.8：categoryId=0（未分类）按空值处理，触发 emptyWarning 系统补全语义色
-              //   （后端会把空分类填充为「未分类」字符串，不能依赖文本判断空值）
-              value={Number(record.sku.categoryId ?? 0) === 0 ? '' : catName}
+              // v15.3：未分类按空值处理，触发 emptyWarning 系统补全语义色。
+              //   「未分类」是 name='未分类' 的真实分类记录（宽表冗余 categoryName），
+              //   以文本判断而非 categoryId=0 魔数——未分类记录 id 由 name 解析，不预设 0
+              value={catName === '未分类' ? '' : catName}
               emptyText="未分类"
               emptyWarning
               suggestField="category"
@@ -1178,8 +1201,10 @@ export default function ProductManage() {
                     value={filterCatKeyword}
                     onChange={setFilterCatKeyword}
                     onSelect={(item) => {
-                      // 未分类（默认）项无 id → 按 categoryId=0 过滤（后端支持）
-                      setFilterCategoryId(item.id ? Number(item.id) : 0);
+                      // v15.3：所有筛选项（含「未分类」默认项）均带真实分类 id（后端 ensure 按名解析），
+                      //   无 0 兜底——无 id 项（如新建）不触发筛选
+                      if (!item.id) return;
+                      setFilterCategoryId(Number(item.id));
                       setFilterCategoryName(item.name || '未分类');
                       setPage(1);
                       setFilterCatOpen(false);

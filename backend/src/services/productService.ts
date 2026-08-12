@@ -18,7 +18,7 @@
 //      purchase_price: @@unique([specBrandId, unitId, supplierId])
 //   6. 价格分表存储：sale_price（售价，priceTypeId 外键关联 price_type 字典表）+ purchase_price（进价，supplierId 外键）
 //   7. SKU 检索宽表：product_sku_search 扁平宽表，每「规格×品牌」一行（specBrandId 唯一），含 specModel + 品牌优先排序
-//   8. 产品归属分类：product.categoryId DEFAULT 0（0=未分类）；@@unique([categoryId, name]) 同分类下产品名不重复
+//   8. 产品归属分类：v15.3 统一引用类语义——分类空输入由 resolveCategoryRef 按 name ensure「未分类」记录；@@unique([categoryId, name]) 同分类下产品名不重复
 //   9. 图片依附规格×品牌：product_image.specBrandId → spec_brand.id
 //
 // 章节：
@@ -46,7 +46,7 @@ import { logger } from '../utils/logger.js';
 import { Prisma } from '@prisma/client';
 import { generateProductId } from '../utils/code-generator.js';
 import { cleanupImageVersions } from '../utils/imageProcessor.js';
-import { resolveSupplierRef, resolvePriceTypeRef } from './businessDefaults.js';
+import { resolveCategoryRef, resolveSupplierRef, resolvePriceTypeRef, DEFAULT_CATEGORY_NAME } from './businessDefaults.js';
 import * as registry from './registry.js';
 
 // v1.5.6.3 快速建档默认值策略（用户「边用边录真正必填只有产品名称，空值补默认」指令）
@@ -70,7 +70,7 @@ import {
 
 // ============================================================
 // §1 分类管理（category）
-// v9.0：扁平结构（无父子层级），categoryId=0 表示「未分类」（产品归属，非分类节点）
+// v9.0：扁平结构（无父子层级）；「未分类」为 name 唯一真实记录，空分类由应用层 resolveCategoryRef ensure
 // ============================================================
 
 export interface CategoryCreateInput {
@@ -202,7 +202,7 @@ export async function quickAddCategory(name: string) {
 // ============================================================
 // §2 产品管理（product，v14.0：纯产品名，规格在 spec 表）
 // v14.0：产品 → 规格变体（spec）→ 品牌（全局档案）+ 单位
-// categoryId=0 表示「未分类」
+// 「未分类」为 name 唯一真实记录（空分类由 resolveCategoryRef ensure）
 // @@unique([categoryId, name]) 同分类下产品名不重复
 // ============================================================
 
@@ -441,11 +441,9 @@ export async function createProduct(data: {
   remark?: string;
   status?: number;
 }) {
-  const categoryId = data.categoryId ?? 0;
-  if (categoryId !== 0) {
-    const cat = await prisma.category.findUnique({ where: { id: categoryId } });
-    if (!cat) throw Errors.unprocessable('请选择有效的所属分类');
-  }
+  // v15.3 分类统一引用类语义：空/0 → ensure 系统默认「未分类」（按名称唯一复用/建档）；
+  //   明确指定 id → 校验真实存在。与品牌/供应商/价格类型同构，不再有 0 魔数路径
+  const { id: categoryId } = await resolveCategoryRef(prisma, { id: data.categoryId ?? null });
   // v1.5.6.3：规格空值补默认「通用」（产品下首个规格变体）
   const specModel = (data.specModel ?? '').trim() || DEFAULT_SPEC_MODEL;
   // v14.0：同分类下产品名唯一（规格变体拆至 spec 表）
@@ -491,18 +489,19 @@ export async function updateProduct(
   if (data.name !== undefined) update.name = data.name;
   if (data.remark !== undefined) update.remark = data.remark;
   if (data.status !== undefined) update.status = data.status;
+  // v15.3 分类统一引用类语义：变更分类时先解析目标分类（空/0 → ensure「未分类」），
+  //   update 写入与唯一性校验共用同一解析结果，杜绝 0 魔数路径
+  let resolvedCategoryId: number | undefined;
   if (data.categoryId !== undefined && data.categoryId !== existing.categoryId) {
-    if (data.categoryId !== 0) {
-      const c = await prisma.category.findUnique({ where: { id: data.categoryId } });
-      if (!c) throw Errors.unprocessable('请选择有效的所属分类');
-    }
-    update.category = { connect: { id: data.categoryId } };
+    const resolved = await resolveCategoryRef(prisma, { id: data.categoryId });
+    resolvedCategoryId = resolved.id;
+    update.category = { connect: { id: resolvedCategoryId } };
   }
 
   // v14.0 唯一性校验：(categoryId, name)
   if ((data.name !== undefined && data.name !== existing.name) ||
       (data.categoryId !== undefined && data.categoryId !== existing.categoryId)) {
-    const finalCategoryId = data.categoryId ?? existing.categoryId;
+    const finalCategoryId = resolvedCategoryId ?? existing.categoryId;
     const finalName = data.name ?? existing.name;
     const conflict = await prisma.product.findUnique({
       where: { categoryId_name: { categoryId: finalCategoryId, name: finalName } },
@@ -2887,9 +2886,13 @@ export async function suggest(
     case 'unit':
       result.push({ type: 'default', label: '个（默认）', value: '个' });
       break;
-    case 'category':
-      result.push({ type: 'default', label: '未分类（默认）', value: '未分类' });
+    case 'category': {
+      // v15.3 统一引用类语义：默认项带真实 id（name='未分类' 记录，ensure 幂等），
+      //   前端引用/筛选直接使用该 id，不再有「未分类无 id → categoryId=0 兜底」的魔数路径
+      const cat = await registry.ensureByName(prisma, registry.CATEGORY_REGISTRY, DEFAULT_CATEGORY_NAME);
+      result.push({ type: 'default', label: '未分类（默认）', value: '未分类', id: Number(cat.id) });
       break;
+    }
     case 'priceType':
     case 'supplier':
     case 'remark':
@@ -3226,11 +3229,9 @@ export async function saveProduct(input: SaveProductInput) {
   return prisma.$transaction(async (tx) => {
     // 1. 创建/更新 product（纯产品名）
     let product: Prisma.productGetPayload<{}>;
-    const categoryId = input.categoryId ?? 0;
-    if (categoryId !== 0) {
-      const cat = await tx.category.findUnique({ where: { id: categoryId } });
-      if (!cat) throw Errors.unprocessable('请选择有效的所属分类');
-    }
+    // v15.3 分类统一引用类语义：空/0 → ensure 系统默认「未分类」（按名称唯一复用/建档）；
+    //   明确指定 id → 校验真实存在。与品牌/供应商/价格类型同构，不再有 0 魔数路径
+    const { id: categoryId } = await resolveCategoryRef(tx, { id: input.categoryId ?? null });
 
     if (input.id) {
       // 编辑（categoryId + name 唯一，v14.0）
@@ -3867,13 +3868,11 @@ export async function quickCreateProduct(
   const unitName = (input.unitName ?? '').trim() || DEFAULT_UNIT_NAME;
   // v14.0：品牌缺省值「普通品牌」（v13.1 缺省值注册表统一）
   const brandName = input.brandName?.trim() || '普通品牌';
-  const categoryId = input.categoryId ?? 0;
 
   return prisma.$transaction(async (tx): Promise<QuickCreateProductResponse> => {
-    if (categoryId !== 0) {
-      const cat = await tx.category.findUnique({ where: { id: categoryId } });
-      if (!cat) throw Errors.unprocessable('指定的分类不存在');
-    }
+    // v15.3 分类统一引用类语义：空/0 → ensure 系统默认「未分类」（按名称唯一复用/建档）；
+    //   明确指定 id → 校验真实存在。与品牌 ensureGlobalBrand 同构，不再有 0 魔数路径
+    const { id: categoryId } = await resolveCategoryRef(tx, { id: input.categoryId ?? null });
 
     // ============================================================
     // v11.6 宽表组合去重（核心）：
@@ -3982,7 +3981,7 @@ export async function quickCreateProduct(
       }
     }
 
-    // 1. 查找或创建 product（纯产品名，categoryId=0 表示未分类）
+    // 1. 查找或创建 product（纯产品名；分类已在事务头按 name ensure「未分类」解析为有效 id）
     let product = await tx.product.findUnique({
       where: { categoryId_name: { categoryId, name: input.productName } },
     });
@@ -4000,15 +3999,10 @@ export async function quickCreateProduct(
       });
     }
 
-    // 2. 查找或创建 spec（规格变体，同产品下规格唯一）
-    let spec = await tx.spec.findUnique({
-      where: { productId_specModel: { productId: product.id, specModel } },
-    });
-    if (!spec) {
-      spec = await tx.spec.create({
-        data: { productId: product.id, specModel },
-      });
-    }
+    // 2. 查找或创建 spec（规格变体，同产品下规格唯一——B 类父级去重，走 registry.ensureByParent；
+    //    v15.4 收敛：不同产品的同名规格是独立记录，必须携带 productId 父级上下文，不能纯名称去重）
+    const ensuredSpec = await registry.ensureByParent(tx, registry.SPEC_REGISTRY, product.id, specModel);
+    const spec = await tx.spec.findUniqueOrThrow({ where: { id: ensuredSpec.id } });
 
     // 3. 品牌全局档案（name 唯一，无则快捷新增）+ 规格×品牌关联（spec_brand）
     const brandId = await ensureGlobalBrand(tx, brandName);

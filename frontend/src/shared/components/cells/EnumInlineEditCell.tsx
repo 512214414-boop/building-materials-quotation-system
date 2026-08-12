@@ -54,6 +54,7 @@ export function EnumInlineEditCell({
   return (
     <Popover
       trigger="click"
+      data-shared-badge="C41"
       placement="bottomLeft"
       open={open}
       onOpenChange={(o) => {

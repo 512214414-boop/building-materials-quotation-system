@@ -488,7 +488,7 @@ export default function UnitPicker({
 
   return (
     <>
-      <div ref={innerWrapRef} style={{ position: 'relative', width: '100%' }}>
+      <div ref={innerWrapRef} data-shared-badge="C25" style={{ position: 'relative', width: '100%' }}>
         <DsInput
           variant="embedded"
           size={size}

@@ -79,6 +79,7 @@ export function ImageThumbCell({
     // v1.5.4 性能：loading=lazy + decoding=async 减少列表首屏图片请求
     <Image
       src={resolveImageUrl(thumb)}
+      data-shared-badge="C36"
       width={24}
       height={24}
       preview={{ src: resolveImageUrl(url || thumb) }}
