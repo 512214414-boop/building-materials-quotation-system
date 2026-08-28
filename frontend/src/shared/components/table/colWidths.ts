@@ -61,7 +61,7 @@ export const COL_WIDTHS = {
   CELL_FIT_CHROME: 24,
 
   /** 选品/档案确认浮层：看全文够用；说明换行，不按整句把面板撑开 */
-  CONFIRM: 380,
+  CONFIRM: 320,
 
   // ---- 时间/日期（等宽字体，nowrap）----
   TIME: 68,   // MM/DD HH:mm
