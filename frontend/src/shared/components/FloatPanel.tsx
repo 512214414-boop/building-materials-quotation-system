@@ -345,7 +345,7 @@ export function FloatPanel({
     <div
       ref={panelRef}
       className={`float-panel${className ? ` ${className}` : ''}`}
-      style={panelStyle}
+      style={{ ...panelStyle, touchAction: 'pan-x pan-y' }}
       data-panel-id={panelId}
       data-parent-panel-id={parentId || undefined}
       data-shared-badge={badgeOverride ?? 'C60'}
@@ -374,6 +374,8 @@ export function FloatPanel({
           width: 'max-content',
           minWidth: '100%',
           WebkitOverflowScrolling: 'touch',
+          // 横向手势让给 body 原生滚动（移动端浮层上拖动画布）
+          touchAction: 'pan-y',
         }}
       >
         {children}

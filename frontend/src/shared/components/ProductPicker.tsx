@@ -2957,6 +2957,31 @@ export default function ProductPicker({
       className={SPEC_PANEL_CLASS}
     >
       {renderPanelHead(['规格', '单位', '换算率', '售价', '进价', ''], SPEC_ROW_GRID)}
+      {entryView !== 'spec' && (
+        <button
+          type="button"
+          title="切换到规格检索：直接定位到最细规格"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEntryViewChange('spec');
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '2px 8px',
+            border: 'none',
+            borderBottom: '1px solid var(--border-neutral-l1)',
+            background: 'var(--bg-brand-disabled)',
+            color: 'var(--text-brand)',
+            cursor: 'pointer',
+            fontSize: 'var(--body-xs-font-size)',
+            whiteSpace: 'nowrap',
+            width: '100%',
+          }}
+        >
+          规格检索→ 直接定位到最细规格
+        </button>
+      )}
       {brand.rows.map((r) => renderRow(r))}
       {canEdit && (
         <div style={{ padding: '4px 8px' }}>
@@ -3218,6 +3243,30 @@ export default function ProductPicker({
                   </FloatPanel>
                 )}
               </span>
+            )}
+            {entryView !== 'brand' && (
+              <button
+                type="button"
+                title="切换到品牌检索"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEntryViewChange('brand');
+                }}
+                style={{
+                  flex: '0 0 auto',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0 4px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-tertiary)',
+                  cursor: 'pointer',
+                  fontSize: 'var(--body-xs-font-size)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                品牌检索→
+              </button>
             )}
             {canEdit && (
               <span style={{ flex: '0 0 auto', minWidth: 56 }}>
