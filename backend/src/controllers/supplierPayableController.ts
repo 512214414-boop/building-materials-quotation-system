@@ -18,6 +18,12 @@ export async function settlePayableHandler(req: Request, res: Response) {
   return ok(res, updated, '已结算');
 }
 
+/** 应付账龄 */
+export async function apAgingHandler(req: Request, res: Response) {
+  const result = await payableSvc.apAging();
+  return ok(res, result);
+}
+
 /** 导出对账单 CSV（仅 pending） */
 export async function exportPayablesHandler(req: Request, res: Response) {
   const rows = await payableSvc.listPayablesForExport();

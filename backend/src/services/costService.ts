@@ -189,29 +189,29 @@ export async function syncCostLinesTx(
 /**
  * v12.0 构建 SKU → 最低进价映射（进价 = 面价 × 点位）
  * 点位按「供应商 + 品牌名 + 分类名」匹配 supplier_point_rule，无规则默认 1
- * v14.0：SKU 维度升级为 spec_brand + unit（purchase_price.specBrandId）
- * 供预设成本锚点使用：preset_unit_cost = min(进价 WHERE specBrandId + unitId)
+ * v22：SKU 维度为 spec + unit（purchase_price.specId）
+ * 供预设成本锚点使用：preset_unit_cost = min(进价 WHERE specId + unitId)
  */
-async function buildLowestPurchasePriceMap(specBrandIds: bigint[], unitIds: bigint[]): Promise<Map<string, number>> {
+async function buildLowestPurchasePriceMap(specIds: bigint[], unitIds: bigint[]): Promise<Map<string, number>> {
   const purchases = await prisma.purchase_price.findMany({
-    where: { specBrandId: { in: specBrandIds }, unitId: { in: unitIds } },
-    select: { specBrandId: true, unitId: true, supplierId: true, price: true },
+    where: { specId: { in: specIds }, unitId: { in: unitIds } },
+    select: { specId: true, unitId: true, supplierId: true, price: true },
   });
   if (purchases.length === 0) return new Map();
 
-  const specBrands = await prisma.spec_brand.findMany({
-    where: { id: { in: [...new Set(purchases.map((p) => p.specBrandId))] } },
+  const specs = await prisma.spec.findMany({
+    where: { id: { in: [...new Set(purchases.map((p) => p.specId))] } },
     include: {
       brand: { select: { name: true } },
-      spec: { include: { product: { select: { category: { select: { name: true } } } } } },
+      product: { select: { category: { select: { name: true } } } },
     },
   });
-  const brandNameMap = new Map<string, string>(specBrands.map((b) => [b.id.toString(), b.brand.name]));
+  const brandNameMap = new Map<string, string>(specs.map((b) => [b.id.toString(), b.brand.name]));
   const catNameMap = new Map<string, string>(
-    specBrands.map((b) => [b.id.toString(), b.spec.product.category?.name ?? '未分类']),
+    specs.map((b) => [b.id.toString(), b.product.category?.name ?? '未分类']),
   );
-  const brandNames = specBrands.map((b) => b.brand.name);
-  const catNames = specBrands.map((b) => b.spec.product.category?.name ?? '未分类');
+  const brandNames = specs.map((b) => b.brand.name);
+  const catNames = specs.map((b) => b.product.category?.name ?? '未分类');
   const rules = brandNames.length
     ? await prisma.supplier_point_rule.findMany({
         where: { brandName: { in: brandNames }, categoryName: { in: catNames } },
@@ -223,11 +223,11 @@ async function buildLowestPurchasePriceMap(specBrandIds: bigint[], unitIds: bigi
 
   const groupMap = new Map<string, number[]>();
   for (const p of purchases) {
-    const brandName = brandNameMap.get(p.specBrandId.toString()) ?? '';
-    const categoryName = catNameMap.get(p.specBrandId.toString()) ?? '未分类';
+    const brandName = brandNameMap.get(p.specId.toString()) ?? '';
+    const categoryName = catNameMap.get(p.specId.toString()) ?? '未分类';
     const point = ruleMap.get(`${p.supplierId}|${brandName}|${categoryName}`) ?? 1;
     const eff = round2(Number(p.price) * point);
-    const key = `${p.specBrandId}_${p.unitId}`;
+    const key = `${p.specId}_${p.unitId}`;
     const arr = groupMap.get(key) ?? [];
     arr.push(eff);
     groupMap.set(key, arr);
@@ -446,7 +446,7 @@ export async function batchUpdate(
     select: {
       id: true,
       unitId: true,
-      // v14.0：SKU 维度（specId + brandId → spec_brand 解析 specBrandId）
+      // v22：document_lines.specId 即为 SKU 规格行 id
       specId: true,
       // v8.0：brandId 用于关联 purchase_price 查询预设成本
       brandId: true,
@@ -455,39 +455,17 @@ export async function batchUpdate(
   });
   const docLineMap = new Map(docLines.map((l) => [l.id, l]));
 
-  // v14.0：通过 document_lines.specId + brandId 解析 spec_brand → specBrandId
-  const skuAnchorIds = new Set<string>();
-  for (const l of docLines) {
-    if (l.specId !== null && l.brandId !== null && l.unitId !== null) {
-      skuAnchorIds.add(`${l.specId}_${l.brandId}`);
-    }
-  }
-  const specBrandOfAnchor = new Map<string, bigint>();
-  if (skuAnchorIds.size > 0) {
-    const anchors = await prisma.spec_brand.findMany({
-      where: { OR: Array.from(skuAnchorIds).map((k) => {
-        const [specId, brandId] = k.split('_');
-        return { specId: BigInt(specId), brandId: BigInt(brandId) };
-      }) },
-      select: { id: true, specId: true, brandId: true },
-    });
-    for (const sb of anchors) specBrandOfAnchor.set(`${sb.specId}_${sb.brandId}`, sb.id);
-  }
-
-  // v12.0：查 purchase_price 最低进价作 preset_unit_cost（进价 = 面价 × 点位）
-  // 通过 document_lines.specBrandId + unitId 关联 purchase_price（SKU = 规格×品牌 + 单位）
-  // 取该 SKU 下所有供应商的最低进价作为预设成本锚点
+  // v22：document_lines.specId 直接关联 purchase_price.specId
   const skuPairs = docLines
     .filter((l) => l.specId !== null && l.brandId !== null && l.unitId !== null)
     .map((l) => ({
-      specBrandId: specBrandOfAnchor.get(`${l.specId}_${l.brandId}`),
+      specId: l.specId as bigint,
       unitId: l.unitId as bigint,
-    }))
-    .filter((p): p is { specBrandId: bigint; unitId: bigint } => p.specBrandId !== undefined);
+    }));
   const purchasePriceMap =
     skuPairs.length > 0
       ? await buildLowestPurchasePriceMap(
-          [...new Set(skuPairs.map((p) => p.specBrandId))],
+          [...new Set(skuPairs.map((p) => p.specId))],
           [...new Set(skuPairs.map((p) => p.unitId))],
         )
       : new Map<string, number>();
@@ -520,10 +498,10 @@ export async function batchUpdate(
     // v1.7.0 分层数量口径：外部超额段 = over_qty，其余段 = alloc_qty
     const costQty = item.costSegment === 'external_excess' ? Number(al.over_qty) : Number(al.alloc_qty);
     // v8.0：预设成本优先取 purchase_price 最低进价，无进价记录时按源数据带出
-    // v14.0：SKU = specBrandId + unitId
+    // v22：SKU = specId + unitId
     const presetUnitCost =
       docLine.specId !== null && docLine.brandId !== null && docLine.unitId !== null
-        ? (purchasePriceMap.get(`${specBrandOfAnchor.get(`${docLine.specId}_${docLine.brandId}`)}_${docLine.unitId}`) ?? Number(al.unit_cost ?? 0))
+        ? (purchasePriceMap.get(`${docLine.specId}_${docLine.unitId}`) ?? Number(al.unit_cost ?? 0))
         : Number(al.unit_cost ?? 0);
     const costAdjust = round2(item.unitCost - presetUnitCost);
     const costAmount = calcCostLine(item.unitCost, item.freight, costQty);

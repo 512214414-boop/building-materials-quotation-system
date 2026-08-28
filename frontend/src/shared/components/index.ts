@@ -6,7 +6,7 @@ export type { DsButtonProps, DsButtonVariant, DsButtonSize } from './DsButton';
 
 export { default as DsInput } from './DsInput';
 export type { DsInputProps } from './DsInput';
-// 输入+下拉组合（C61）：显示态单行省略 / 编辑态 textarea 无感切换 / 下拉按钮 C01 常驻
+// 输入+下拉组合（C61）：短字段单行锁高；换行列同一套 textarea 完整显示
 export { default as DsInputDropdown } from './DsInputDropdown';
 export type { DsInputDropdownProps } from './DsInputDropdown';
 // 数字列专用输入框（v9.4 §2.4：禁用 number 控件，统一 text+inputMode=decimal+mono+右对齐）
@@ -16,12 +16,27 @@ export type { DsNumberInputProps } from './DsNumberInput';
 export { default as DsSelect } from './DsSelect';
 export type { DsSelectProps } from './DsSelect';
 
+export { default as ValueChangePair, ValueChip } from './ValueChangePair';
+export type { ValueChipTone } from './ValueChangePair';
+
 export { default as DsDialog } from './DsDialog';
 export type { DsDialogProps } from './DsDialog';
 
 // 统一表格组件（三层架构：UnifiedTable = DataViewLayer + InteractionLayer + CellEditor）
 export { default as UnifiedTable } from './UnifiedTable';
 export type { UnifiedTableProps } from './UnifiedTable';
+export { default as ArchiveListPage } from './ArchiveListPage';
+export type { ArchiveListPageProps, ArchiveListSelectionProps, ArchiveListFilters, ArchiveListFilterChip } from './ArchiveListPage';
+export { default as ArchiveSlotHost } from './archive/ArchiveSlotHost';
+export type { ArchiveEntityDef, ArchiveSlot } from './archive/archiveSlotTypes';
+export { HeaderCascadeFilter } from './archive/HeaderCascadeFilter';
+export {
+  ArchiveFilterChip,
+  DebouncedKeywordInput,
+  ARCHIVE_ENABLED_STATUS_OPTIONS,
+} from './archive/ArchiveListFilters';
+export { default as ArchiveContactMatrixEditor } from './archive/ArchiveContactMatrixEditor';
+export { ArchiveDialogField, ArchiveDialogFieldSkeleton } from './archive/ArchiveDialogField';
 // 表格三层架构子组件（供业务页面自定义组合）
 export { default as DataViewLayer } from './table/DataViewLayer';
 export type { DataViewLayerProps } from './table/DataViewLayer';
@@ -64,6 +79,9 @@ export type {
   CategorySelectResult,
 } from './table/Picker.types';
 
+export { default as PickerTreeViewBar } from './PickerTreeViewBar';
+export type { PickerTreeViewBarProps } from './PickerTreeViewBar';
+
 export { default as DsTag } from './DsTag';
 export type { DsTagProps, DsTagColor } from './DsTag';
 
@@ -77,15 +95,31 @@ export type { SuggestInputProps, SuggestSelectItem } from './SuggestInput';
 export { default as DictRefCell } from './DictRefCell';
 export type { DictRefCellProps } from './DictRefCell';
 
-// 配货来源选择器（v9.4 形态C：混合列表+本地过滤+Modal 新建）
+// 配货来源选择器（C26：一框检索 + 两列分区，仓/渠道各选各的）
 export { default as AllocationSourcePicker } from './AllocationSourcePicker';
 export type { AllocationSourcePickerProps } from './AllocationSourcePicker';
+export { default as SupplierPicker } from './SupplierPicker';
+export type { SupplierPickerProps, SupplierPickerValue } from './SupplierPicker';
+export { default as SoldLinePicker } from './SoldLinePicker';
+export type { SoldLinePickerProps, RefundSourceDoc } from './SoldLinePicker';
+export { default as DocumentSourcePicker } from './DocumentSourcePicker';
+export type { DocumentSourcePickerProps } from './DocumentSourcePicker';
+export {
+  composeSkuSearchText,
+  displayProductName,
+  skuLineDraftToPatch,
+  SKU_LINE_SPLIT_KEYS,
+} from './product-picker/skuLineSplit';
+export type { SkuLineDraftPatch, SkuLineSplitKey } from './product-picker/skuLineSplit';
 
 // 价格列编辑器（§2.2 价格字段无约束 + 档案为空时「+ 新建补全价格」入口）
 export { default as PricePicker } from './PricePicker';
 export type { PricePickerProps } from './PricePicker';
 
 // 实体/字典列表管理面板（v1.7.1.6：分类/规格/字典项列表面板统一形态，配置驱动）
+export { default as DictMultiSelectPanel } from './DictMultiSelectPanel';
+export type { DictMultiSelectPanelProps } from './DictMultiSelectPanel';
+
 export { default as DictListPanel } from './DictListPanel';
 export type { DictListPanelProps, DictListPanelItem } from './DictListPanel';
 
@@ -121,6 +155,15 @@ export type { RecordExpandPanelProps, RecordExpandTab, RecordExpandSwitcherOptio
 // 单位管理面板（v1.5：单位枚举完整承载——可编辑+换算率+默认/删除/新增+本地态切换）
 export { default as UnitManagePanel } from './UnitManagePanel';
 export type { UnitManagePanelProps, UnitManageItem } from './UnitManagePanel';
+
+// 浮层表网格基座（C65）：MatrixTable / UnitManagePanel 的适配器基座，不改变二者呈现
+export { default as EntityPanel } from './EntityPanel';
+export type { EntityPanelProps, EntityPanelRow } from './EntityPanel';
+
+// C16：供应商联系方式「方式」列仍走此组件（SuggestInput + DictListPanel）。
+// 不要改成 C15 DictRefField，呈现不同；也不要删。
+export { default as DictFieldInput } from './DictFieldInput';
+export type { DictFieldItem, DictFieldConfig } from './DictFieldInput';
 
 // 预置快速选项条（v1.9：数据补全·预置快速选项，通用 quickOptions 配置——不传不渲染）
 export { default as QuickOptionsBar } from './QuickOptionsBar';

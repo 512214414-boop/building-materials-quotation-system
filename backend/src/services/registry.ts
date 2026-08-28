@@ -12,7 +12,7 @@
 //   - A 类：全局字典（name 全局唯一）→ uniqueKey { type: 'global' }
 //     brand / supplier / price_type / category（v15.4 补 name 唯一索引）/ contact_method
 //   - B 类：父级从属实体（父级 id + 名称唯一）→ uniqueKey { type: 'parent', parentField, nameField }
-//     product（categoryId+name）/ spec（productId+specModel）/ unit（specId+unitName）/ spec_brand（specId+brandId）
+//     product（categoryId+name）/ spec（productId+brandId+specModel）/ unit（specId+unitName）/ product_brand（productId+brandId）
 //     注意：纯名称去重对 B 类不成立（不同产品的同名规格是独立记录），必须携带父级上下文
 //   - C 类：引用记录（多列组合唯一，如 sale_price / purchase_price / brand_unit_conversion）
 //     由各自 service 用 Prisma 复合唯一键 findUnique 幂等，不进本注册表
@@ -239,11 +239,8 @@ export const SUPPLIER_REGISTRY: RegistryDef = {
   uniqueKey: { type: 'global' },
   defaults: () => ({ status: 1, remark: '待完善' }),
   extraToData: (extra) => {
-    const e = extra as { contacts?: unknown; businessScope?: string | null; address?: string | null; remark?: string | null } | null | undefined;
+    const e = extra as { remark?: string | null } | null | undefined;
     const data: Record<string, unknown> = {};
-    if (e?.contacts !== undefined) data.contacts = e.contacts as Prisma.InputJsonValue;
-    if (e?.businessScope !== undefined) data.businessScope = e.businessScope;
-    if (e?.address !== undefined) data.address = e.address;
     if (e?.remark !== undefined) data.remark = e.remark;
     return data;
   },
@@ -275,11 +272,18 @@ export const PRICE_TYPE_REGISTRY: RegistryDef = {
   defaults: () => ({ sortOrder: 0, status: 1 }),
 };
 
-/** 规格变体（B 类父级从属：productId + specModel 唯一；快速建档 spec 幂等走 ensureByParent）
- *   注意：不同产品的同名规格（如 DN25）是独立记录，不能纯名称去重 */
+/** 规格（B 类父级从属：productId + brandId + specModel 唯一；v22 已含品牌维度） */
 export const SPEC_REGISTRY: RegistryDef = {
   model: 'spec',
   label: '规格',
   uniqueKey: { type: 'parent', parentField: 'productId', nameField: 'specModel' },
   defaults: () => ({}),
+};
+
+/** 产品×品牌关联（B 类：productId + brandId 唯一；ensure 需携带 brandId 上下文，见 specBrand 服务） */
+export const PRODUCT_BRAND_REGISTRY: RegistryDef = {
+  model: 'product_brand',
+  label: '产品品牌',
+  uniqueKey: { type: 'parent', parentField: 'productId', nameField: 'brandId' },
+  defaults: () => ({ sortOrder: 0, status: 1 }),
 };

@@ -19,6 +19,20 @@ export async function listRefundLinesHandler(req: Request, res: Response) {
   return ok(res, list);
 }
 
+export async function searchSoldLinesHandler(req: Request, res: Response) {
+  const q = req.query as Record<string, unknown>;
+  const raw = String(q.documentIds ?? '');
+  const ids = raw
+    .split(/[,，\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s))
+    .slice(0, 30)
+    .map((s) => BigInt(s));
+  const keyword = String(q.keyword ?? q.q ?? '');
+  const list = await refundSvc.searchSoldLines(keyword, ids);
+  return ok(res, list);
+}
+
 export async function addRefundLineHandler(req: Request, res: Response) {
   const documentId = BigInt(req.params.id);
   const parsed = refundLineCreateSchema.safeParse(req.body);
@@ -31,6 +45,7 @@ export async function addRefundLineHandler(req: Request, res: Response) {
       refundType: parsed.data.refundType,
       refundQty: parsed.data.refundQty,
       reason: parsed.data.reason,
+      restock: parsed.data.restock,
     },
     { id: req.user!.userId, name: req.user!.realName ?? req.user!.username },
   );

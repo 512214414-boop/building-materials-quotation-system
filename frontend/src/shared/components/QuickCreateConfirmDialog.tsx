@@ -22,12 +22,12 @@
 // 交互：弹窗右上角「保存」→ 校验 + 缺省提示 → 建档；候选出现时 → 复用 or 仍要新建
 
 import { useState } from 'react';
-import { App as AntdApp } from 'antd';
 import DsDialog from './DsDialog.js';
 import DsButton from './DsButton.js';
 import DsInput from './DsInput.js';
 import { confirmFillsBeforeSave } from './DefaultFillsPreview.js';
 import { QUICK_CREATE_LAYERS, resolveFieldValue } from '../config/quickCreateConfig.js';
+import { useCanvasApp } from '../hooks/useCanvasApp.js';
 import {
   quickCreateProduct,
   type QuickCreateProductResult,
@@ -65,7 +65,7 @@ export default function QuickCreateConfirmDialog({
   onClose,
   onSaved,
 }: QuickCreateConfirmDialogProps) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const [productName, setProductName] = useState(initialProductName);
   // v15.3：品牌不预填（输入框留空，用户直接输入；留空保存时按值去重写入「普通品牌」，
   //   全局档案已存在则复用、不存在才新建——普通品牌不是种子数据，是保存时的兜底值）

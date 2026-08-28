@@ -26,6 +26,7 @@ import {
   type DocumentStatus,
   type StageStatus,
 } from '../../../shared/types/index.js';
+import { formatCustomerInfo } from '../../../shared/utils/customerInfo.js';
 
 const STATUS_OPTIONS: { label: string; value: string }[] = [
   { label: '全部状态', value: '' },
@@ -117,7 +118,7 @@ export default function DocumentList() {
       ),
     },
     {
-      title: '标题',
+      title: '单据标题',
       dataIndex: 'title',
       key: 'title',
       minWidth: 220,
@@ -125,9 +126,7 @@ export default function DocumentList() {
       linkStyle: true,
       ellipsis: true,
       render: (_value: any, record: StaffDocumentListItem) => {
-        // v11.0 解耦：使用 customerName/customerPhone 快照字段替代 customer 嵌套对象
-        const fallback = record.customerName || record.customerPhone || record.documentNo;
-        const display = record.title || fallback;
+        const display = record.title || record.note || record.documentNo;
         return (
           <a
             onClick={() => navigate(`/staff/workbench/${record.id}`)}
@@ -139,16 +138,14 @@ export default function DocumentList() {
       },
     },
     {
-      title: '客户',
+      title: '客户信息',
       key: 'customer',
-      minWidth: 160,
+      minWidth: 180,
       renderMode: 'custom',
       ellipsis: true,
       render: (_v: any, record: StaffDocumentListItem) => {
-        // v11.0 解耦：使用 customerName/customerPhone 快照字段
-        if (!record.customerName && !record.customerPhone) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
-        const phoneStr = record.customerPhone || '未填写';
-        const label = record.customerName ? `${record.customerName} (${phoneStr})` : phoneStr;
+        const label = formatCustomerInfo(record.customerName, record.customerPhone, record.customerContactMethod);
+        if (!label) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
         return <span style={{ color: 'var(--text-default)' }}>{label}</span>;
       },
     },
@@ -214,7 +211,7 @@ export default function DocumentList() {
         left: (
           <>
             <DsInput
-              placeholder="搜索单据号 / 客户名 / 标题"
+              placeholder="搜索单据号 / 单据标题 / 客户信息"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               onPressEnter={() => {

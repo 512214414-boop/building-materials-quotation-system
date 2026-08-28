@@ -1,15 +1,11 @@
-// v9.2 产品建档/编辑弹窗（SPU 信息行 + 品牌切换区 + 单位区 + 售价矩阵区 + 进价矩阵区 + 产品图片区）
+// v14.1 产品建档/编辑弹窗
 //
-// v9.0 弹窗结构（自上而下，对齐 §8.4.1 整体布局）：
-//   §A SPU 信息行：分类(suggest) | 产品名称(suggest) | 规格型号(suggest) | 备注(suggest)
-//   §B 品牌切换区：[品牌1 ▾] [品牌2] [+ 新增品牌]，点击切换当前编辑品牌
-//   §C 单位区（SPU 级共享）：添加单位输入框 + 单位列表表格
-//      - 单位挂 SPU，换算率从 brand_unit_conversion 按当前品牌独立展示和编辑
-//   §D 售价矩阵区（当前品牌 × 所有单位）：priceType 字典(行) × unit(列)
-//      - v9.2：行 = 全局 price_type 字典全展开（status=1），不再从 salePrices 过滤
-//   §E 进价矩阵区（当前品牌 × 所有单位）：supplierId(行) × unit(列) + isDefault
-//   §F 产品图片区（依附当前品牌）
-//   §G 保存/取消
+// 弹窗层级（v22：product → product_brand → spec，交互顺序 产品名 → 品牌 → 系列/规格）：
+//   §A 产品信息：分类 | 产品名称 | 备注
+//   §B 品牌切换：全局品牌 tab（同产品各规格 union）+ 品牌备注
+//   §C 系列/规格：当前品牌下的规格变体（spec.specModel，语义含系列/色号等私有属性）
+//   §D 单位 + 售价/进价矩阵（当前 spec×brand）
+//   §E 产品图片（当前 spec×brand）
 //
 // 数据流（v9.2）：
 //   - 加载：getProduct(id) → ProductView（含 brands + units + salePrices + purchasePrices）
@@ -35,42 +31,31 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  App as AntdApp,
-  Image,
   Popover,
   Spin,
   Tooltip,
-  Upload,
 } from 'antd';
 import {
   DeleteOutlined,
   DownOutlined,
-  PictureOutlined,
   PlusOutlined,
-  UploadOutlined,
-  StarFilled,
-  StarOutlined,
   EditOutlined,
   CheckOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { DsDialog } from '../../../../shared/components/DsDialog.js';
 import DsButton from '../../../../shared/components/DsButton.js';
-import BatchAdjustDialog from './BatchAdjustDialog.js';
-import { SuggestInput, DsInput, DictRefField, confirmFillsBeforeSave } from '../../../../shared/components/index.js';
+import { ArchiveDialogField, ArchiveDialogFieldSkeleton, confirmFillsBeforeSave } from '../../../../shared/components/index.js';
+import { ArchiveFieldCell } from '../../../../shared/components/product-picker/PickerInlineCells.js';
 import {
   QUICK_CREATE_LAYERS,
   resolveFieldValue,
 } from '../../../../shared/config/quickCreateConfig.js';
 import { brandDict, categoryDict } from '../../../../shared/config/recordDicts.js';
-import UnitManagePanel, {
-  type UnitManagePanelExtensions,
-} from '../../../../shared/components/UnitManagePanel.js';
 import {
   getProduct,
   getSiblingSpecs,
   saveProduct,
-  uploadProductImage,
   listPriceTypes,
   listCategories,
   createCategory,
@@ -80,83 +65,24 @@ import {
   type ProductSalePriceInput,
   type ProductPurchasePriceInput,
   type ProductImageView,
-  type ProductImageLibraryItem,
   type PriceTypeView,
   type SiblingSpec,
 } from '../../../../shared/services/api/baseDataApi.js';
 import {
-  UnitPriceExpandPanel,
   type SalePriceItem,
   type PurchasePriceItem,
   genRowKey,
 } from '../../../../shared/components/UnitPriceExpandPanel.js';
 import { SpecListPanel } from './SpecListPanel.js';
-import { compressImage } from '../../../../shared/utils/imageCompress.js';
-import { resolveImageUrl } from '../../../../shared/utils/resolveImageUrl.js';
-import { smartPopupContainer, PANEL_POPPER_Z_INDEX } from '../../../../shared/utils/smartPopupContainer.js';
-import { calcEffectivePrice } from '../../../../shared/utils/format.js';
-import { resolveUnitPriceDisplay } from '../../../../shared/engines/pricing-engine.js';
-import ProductImageLibraryPicker from './ProductImageLibraryPicker.js';
-
-// ============================================================
-// §1 表单项类型
-// ============================================================
-
-/** 单位项（挂 SPU，所有品牌共享，v9.0：换算率移至 BrandItem.conversions） */
-interface UnitItem {
-  rowKey: string;
-  /** 编辑时已有单位 ID（BigInt 序列化 string） */
-  id?: string;
-  unitName: string;
-  isBase: boolean;
-  isDisplay: boolean;
-}
-
-/** 图片项（依附品牌；v11.0 生产级：多版本 + 元数据） */
-interface ImageItem {
-  rowKey: string;
-  /** 编辑时已有图片 ID */
-  id?: string;
-  /** 主图 URL（原图 1280px，详情页用） */
-  imageUrl: string;
-  /** v11.0：中图 URL（600x600，编辑弹窗用） */
-  mediumUrl?: string;
-  /** v11.0：缩略图 URL（200x200，列表卡片用） */
-  thumbnailUrl?: string;
-  /** v11.0：原图宽（px） */
-  width?: number;
-  /** v11.0：原图高（px） */
-  height?: number;
-  /** v11.0：原图字节数 */
-  size?: number;
-  /** v11.0：SHA-256 内容寻址 hash */
-  hash?: string;
-  sortOrder: number;
-  /** 是否主图 */
-  isMain: boolean;
-}
-
-/** 品牌项（v14.0：全局档案引用，通过 spec_brand 中间表挂规格；v9.0：新增 conversions） */
-interface BrandItem {
-  rowKey: string;
-  /** 编辑时已有品牌关联 ID（spec_brand.id，规格内品牌关联的唯一键） */
-  id?: string;
-  /** v14.2：全局品牌档案 ID（brand.id，name 唯一）——选择复用/快捷新建/失焦解析后显式绑定 */
-  brandId?: string;
-  name: string;
-  /** v1.4：品牌级备注（执行标准/层数等，不同品牌各自独立；备注从 product 挪到 brand） */
-  remark: string;
-  images: ImageItem[];
-  /** v9.0：品牌单位换算率（key=unitRowKey, value=conversionRate 字符串） */
-  conversions: Record<string, string>;
-}
+import { smartPopupContainer } from '../../../../shared/utils/smartPopupContainer.js';
+import { UnitSection } from './UnitSection.js';
+import { BrandImages } from './BrandImages.js';
+import type { UnitItem, ImageItem, BrandItem } from './productEditTypes.js';
+import { useCanvasApp } from '../../../../shared/hooks/useCanvasApp.js';
 
 // ============================================================
 // §2 工具函数与常量
 // ============================================================
-
-/** 常用单位列表（快速选择 chips） */
-const COMMON_UNITS = ['米', '根', '个', '桶', '捆', '箱', '吨', 'kg', '卷', '包'];
 
 // v15.3 配置驱动：缺省兜底值与字段清单统一来自 shared/config/quickCreateConfig.ts（SSOT），
 // 与后端 productService（DEFAULT_SPEC_MODEL / DEFAULT_UNIT_NAME / 普通品牌）双端同口径，
@@ -170,19 +96,13 @@ const fieldConfig = (key: string) => productLayer.fields.find((f) => f.key === k
 // ============================================================
 
 const SECTION_BOX_STYLE: React.CSSProperties = {
-  padding: 8,
+  padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
   background: 'var(--bg-base-tertiary)',
   borderRadius: 'var(--radius-4)',
   border: '1px solid var(--border-neutral-l1)',
   marginBottom: 6,
 };
 
-const FIELD_LABEL_STYLE: React.CSSProperties = {
-  display: 'block',
-  fontSize: 'var(--body-xs-font-size)',
-  color: 'var(--text-tertiary)',
-  marginBottom: 2,
-};
 
 // v10.1.6：品牌标签区 + 单位区按钮 hover 效果
 // v11.x 收敛：使用 CSS 变量级联替代 !important，消除全部 !important hack
@@ -219,440 +139,6 @@ const DIALOG_CSS = `
 //      - 不需要快速新建 → 用普通 Input 或 SuggestInput allowCreate=false 仅检索辅助
 // ============================================================
 
-// ============================================================
-// §6 单位区（SPU 级共享，独立一区）
-// 添加单位输入框 + 单位列表表格（单位/换算系数(按品牌)/基准/默认/删除）
-// v9.0：换算率从 brand_unit_conversion 按当前品牌独立展示和编辑
-// ============================================================
-
-interface UnitSectionProps {
-  units: UnitItem[];
-  onUnitsChange: (units: UnitItem[]) => void;
-  /** v9.0：当前品牌的单位换算率（key=unitRowKey, value=conversionRate 字符串） */
-  currentBrandConversions: Record<string, string>;
-  /** v9.0：当前品牌换算率变更回调 */
-  onConversionsChange: (conversions: Record<string, string>) => void;
-  /** 当前品牌索引（新增价格时写入） */
-  brandIdx: number;
-  /** 当前品牌的所有售价（用于显示最低价和展开明细） */
-  salePrices: SalePriceItem[];
-  onSalePricesChange: (prices: SalePriceItem[]) => void;
-  /** 当前品牌的所有进价（用于显示最低价和展开明细） */
-  purchasePrices: PurchasePriceItem[];
-  onPurchasePricesChange: (prices: PurchasePriceItem[]) => void;
-  /** v9.2：全局价格类型字典 */
-  priceTypes: PriceTypeView[];
-  /** v9.2：价格类型字典变更回调 */
-  onPriceTypesChange: (priceTypes: PriceTypeView[]) => void;
-  /** v11.3：点位点击 → 批量调整进价（上下文由父组件在回调内自行组装） */
-  onEditPoint?: (pp: PurchasePriceItem) => void;
-  /**
-   * v1.5.5：切换基准单位回调（父组件实现：全品牌换算率按各自新基准归一化）
-   * 基准单位 SPU 级共享，但换算率品牌独立——仅归一化当前品牌会导致其他品牌相对关系错乱
-   */
-  onSetBase?: (idx: number) => void;
-  disabled?: boolean;
-}
-
-function UnitSection({
-  units,
-  onUnitsChange,
-  currentBrandConversions,
-  onConversionsChange,
-  brandIdx,
-  salePrices,
-  onSalePricesChange,
-  purchasePrices,
-  onPurchasePricesChange,
-  priceTypes,
-  onPriceTypesChange,
-  onEditPoint,
-  onSetBase,
-  disabled,
-}: UnitSectionProps) {
-  // v10.4：重构面板状态管理，修复三大问题
-  //   问题1：原 activeUnitIdx:number|null 被售价/进价两个 Popover 共用，点击任一单元格两个面板同时弹出
-  //   问题2：原 unitIdx={idx} 固定，面板内切换单位后 props 未联动，价格不刷新
-  //   问题3：defaultTab 仅首次挂载生效，重开面板 Tab 未重置
-  //   修复：activePanel 携带 {unitIdx, tab} 双维度，精确控制单个面板开合
-  //         unitIdx 联动 activePanel.unitIdx，切换单位即时刷新价格
-  //         brandIdx 在传入前过滤 salePrices/purchasePrices，避免品牌间数据混洧
-  const [activePanel, setActivePanel] = useState<{ unitIdx: number; tab: 'sale' | 'purchase' } | null>(null);
-
-  // v10.4：按当前品牌过滤价格数据，避免不同品牌价格混洧
-  //   UnitPriceExpandPanel 内部仅按 unitIdx 过滤（列表场景单品牌数据），编辑弹窗场景需在此预过滤
-  const currentBrandSalePrices = useMemo(
-    () => salePrices.filter((p) => p.brandIdx === brandIdx),
-    [salePrices, brandIdx],
-  );
-  const currentBrandPurchasePrices = useMemo(
-    () => purchasePrices.filter((p) => p.brandIdx === brandIdx),
-    [purchasePrices, brandIdx],
-  );
-  // 过滤后价格的变更回调需还原 brandIdx 后再写回全量数组
-  const handleCurrentBrandSalePricesChange = useCallback(
-    (next: SalePriceItem[]) => {
-      // 合并：保留其他品牌的价格 + 当前品牌的新价格（next 已含 brandIdx）
-      const others = salePrices.filter((p) => p.brandIdx !== brandIdx);
-      const currentBrandNext = next.map((p) => ({ ...p, brandIdx }));
-      onSalePricesChange([...others, ...currentBrandNext]);
-    },
-    [salePrices, brandIdx, onSalePricesChange],
-  );
-  const handleCurrentBrandPurchasePricesChange = useCallback(
-    (next: PurchasePriceItem[]) => {
-      const others = purchasePrices.filter((p) => p.brandIdx !== brandIdx);
-      const currentBrandNext = next.map((p) => ({ ...p, brandIdx }));
-      onPurchasePricesChange([...others, ...currentBrandNext]);
-    },
-    [purchasePrices, brandIdx, onPurchasePricesChange],
-  );
-
-  const handleUnitNameChange = (idx: number, val: string) => {
-    onUnitsChange(units.map((u, i) => (i === idx ? { ...u, unitName: val } : u)));
-  };
-
-  // v9.0：换算率从 brand_unit_conversion 按品牌独立编辑
-  const handleRateChange = (unitRowKey: string, val: string) => {
-    onConversionsChange({
-      ...currentBrandConversions,
-      [unitRowKey]: val,
-    });
-  };
-
-  // v1.5.5：切换基准单位
-  //   优先走父组件 onSetBase（全品牌换算率按各自新基准归一化，基准单位 SPU 级共享）
-  //   兜底（独立使用场景）：仅归一化当前品牌 + 更新单位标记
-  const handleSetBase = (idx: number) => {
-    if (onSetBase) {
-      onSetBase(idx);
-      return;
-    }
-    const unit = units[idx];
-    const factor = parseFloat(currentBrandConversions[unit.rowKey] ?? '');
-    const validFactor = !isNaN(factor) && factor > 0;
-    const nextConversions = { ...currentBrandConversions };
-    if (validFactor) {
-      units.forEach((u) => {
-        const v = parseFloat(nextConversions[u.rowKey] ?? '');
-        if (!isNaN(v)) {
-          nextConversions[u.rowKey] = String(Math.round((v / factor) * 10000) / 10000);
-        }
-      });
-    }
-    nextConversions[unit.rowKey] = '1';
-    onUnitsChange(
-      units.map((u, i) =>
-        i === idx ? { ...u, isBase: true } : { ...u, isBase: false },
-      ),
-    );
-    onConversionsChange(nextConversions);
-  };
-
-  const handleSetDisplay = (idx: number) => {
-    onUnitsChange(
-      units.map((u, i) => (i === idx ? { ...u, isDisplay: true } : { ...u, isDisplay: false })),
-    );
-  };
-
-  const handleDelete = (idx: number) => {
-    const unit = units[idx];
-    onUnitsChange(units.filter((_, i) => i !== idx));
-    // v9.0：同步删除该单位的换算率
-    if (unit) {
-      const newConversions = { ...currentBrandConversions };
-      delete newConversions[unit.rowKey];
-      onConversionsChange(newConversions);
-    }
-  };
-
-  // v9.1：末尾空行新增（由 UnitManagePanel 基座承载）——输入有效单位名自动追加新行；
-  //   rate 可选：空行换算率一次录入（v2.2 基座完整空行通式）
-  const handleAddUnitCommit = (nameInput?: string, rateInput?: string) => {
-    const name = (nameInput ?? '').trim();
-    if (!name) return;
-    if (units.some((u) => u.unitName === name)) return;
-    const isFirst = units.length === 0;
-    const newRowKey = genRowKey('unit');
-    onUnitsChange([
-      ...units,
-      {
-        rowKey: newRowKey,
-        unitName: name,
-        isBase: isFirst,
-        isDisplay: isFirst,
-      },
-    ]);
-    // v9.0：新增单位初始化换算率（基准单位为 1；空行录入 rate 则用之）
-    const rate =
-      rateInput && Number.isFinite(parseFloat(rateInput)) && parseFloat(rateInput) > 0
-        ? rateInput.trim()
-        : '1';
-    onConversionsChange({
-      ...currentBrandConversions,
-      [newRowKey]: rate,
-    });
-  };
-
-  // v9.1：默认售价 = isDefault=true 的售价；无标记则兜底取最低价
-  // v10.4：基于当前品牌过滤后的价格数据计算，避免品牌切换后单位行显示其他品牌的价格
-  const getDefaultSalePrice = (unitIdx: number): string => {
-    if (!Array.isArray(currentBrandSalePrices)) return '';
-    const unitPrices = currentBrandSalePrices.filter((p) => p.unitIdx === unitIdx);
-    // v11.3：price 可能为 number（后端进价行已 toNumber），统一 String 处理
-    const valid = unitPrices.filter((p) => p.price && String(p.price).trim() !== '');
-    if (valid.length === 0) return '';
-    // 优先取 isDefault=true
-    const def = valid.find((p) => p.isDefault);
-    if (def) {
-      const n = parseFloat(def.price);
-      return isNaN(n) ? '' : n.toFixed(2);
-    }
-    // 兜底：取最低价
-    const nums = valid
-      .map((p) => parseFloat(p.price))
-      .filter((n) => !isNaN(n) && n > 0);
-    return nums.length === 0 ? '' : Math.min(...nums).toFixed(2);
-  };
-
-  // v12.0：默认进价 = isDefault=true 的「进价」（面价 × 点位）；无标记则兜底取最低进价
-  // v10.4：基于当前品牌过滤后的价格数据计算
-  const getDefaultPurchasePrice = (unitIdx: number): string => {
-    if (!Array.isArray(currentBrandPurchasePrices)) return '';
-    const unitPrices = currentBrandPurchasePrices.filter((p) => p.unitIdx === unitIdx);
-    // v12.0：进价 = 面价 × 点位；calcEffectivePrice 单一实现（SSOT）
-    const valid = unitPrices.filter((p) => !isNaN(calcEffectivePrice(p)));
-    if (valid.length === 0) return '';
-    const def = valid.find((p) => p.isDefault);
-    if (def) {
-      const n = calcEffectivePrice(def);
-      return isNaN(n) ? '' : n.toFixed(2);
-    }
-    const nums = valid.map(calcEffectivePrice).filter((n) => n > 0);
-    return nums.length === 0 ? '' : Math.min(...nums).toFixed(2);
-  };
-
-  // v1.5.6.3：编辑弹窗单位行售价/进价推算（与列表同口径回退链）
-  //   ① 当前单位已录默认价 → 直接用
-  //   ② 未录 → 基准单位(换算率=1)已录默认价 × 当前单位换算率 推算（不写库，可录入真实价覆盖）
-  //   ③ 均不可得 → ''（显示 —）
-  //   已收敛为 pricing-engine.resolveUnitPriceDisplay（SSOT，列表/弹窗共用，禁止本地重写）
-  const resolveUnitPriceDisplayLocal = (
-    unitIdx: number,
-    kind: 'sale' | 'purchase',
-  ): { price: string; derived: boolean } => {
-    const conversionRates = units.map((uu) => {
-      const raw = currentBrandConversions[uu.rowKey];
-      if (raw === undefined || raw === null || raw === '') return null;
-      const n = parseFloat(raw);
-      return isNaN(n) ? null : n;
-    });
-    const resolved = resolveUnitPriceDisplay({
-      currentUnitIdx: unitIdx,
-      conversionRates,
-      pickPrice: (idx) => {
-        const s = kind === 'sale' ? getDefaultSalePrice(idx) : getDefaultPurchasePrice(idx);
-        const n = parseFloat(s);
-        return isNaN(n) ? null : n;
-      },
-      fallback: null,
-    });
-    return {
-      price: resolved.price != null ? resolved.price.toFixed(2) : '',
-      derived: resolved.derived,
-    };
-  };
-
-  // v2.2：单位区收敛为公共基座 UnitManagePanel 组装（组件体系总纲领·基准唯一）
-  //   基座固定层 = 单位名/换算/默认/操作 + 排序 + 空行完整 + 常用快选；
-  //   业务可变层 extensions 注入：showBase（基准切换）+ priceColumns（售价/进价快捷显示 + 弹明细面板）
-  const priceColumns: NonNullable<UnitManagePanelExtensions['priceColumns']> = {
-    saleCell: (unit) => {
-      const idx = units.findIndex((u) => u.rowKey === unit.key);
-      const saleDisplay = resolveUnitPriceDisplayLocal(idx, 'sale');
-      const defaultSale = saleDisplay.price;
-      const isOpen = activePanel?.unitIdx === idx && activePanel.tab === 'sale';
-      return (
-        <Popover
-          trigger="click"
-          placement="bottomLeft"
-          destroyOnHidden={false}
-          open={isOpen}
-          onOpenChange={(open) => {
-            if (open) setActivePanel({ unitIdx: idx, tab: 'sale' });
-            else if (activePanel?.unitIdx === idx && activePanel.tab === 'sale') setActivePanel(null);
-          }}
-          title="售价明细"
-          getPopupContainer={smartPopupContainer}
-          // v14.3：面板统一低于弹窗基准层，保证「弹窗内打开的弹窗在弹窗之上」
-          zIndex={PANEL_POPPER_Z_INDEX}
-          content={
-            <UnitPriceExpandPanel
-              unitIdx={activePanel?.unitIdx ?? idx}
-              unitName={units[activePanel?.unitIdx ?? idx]?.unitName ?? unit.unitName}
-              units={units.map((uu, i) => ({ idx: i, name: uu.unitName }))}
-              onUnitChange={(newIdx) =>
-                setActivePanel((prev) => (prev ? { ...prev, unitIdx: newIdx } : null))
-              }
-              brandIdx={brandIdx}
-              unitConversions={units.map((uu) => {
-                const v = currentBrandConversions[uu.rowKey];
-                if (v === undefined || v === null || v === '') return null;
-                const n = parseFloat(v);
-                return isNaN(n) ? null : n;
-              })}
-              salePrices={currentBrandSalePrices}
-              onSalePricesChange={handleCurrentBrandSalePricesChange}
-              purchasePrices={currentBrandPurchasePrices}
-              onPurchasePricesChange={handleCurrentBrandPurchasePricesChange}
-              priceTypes={priceTypes}
-              onPriceTypesChange={onPriceTypesChange}
-              disabled={disabled}
-              defaultTab="sale"
-              open={isOpen}
-              onEditPoint={(pp) => onEditPoint?.(pp)}
-            />
-          }
-        >
-          <div
-            className="price-cell"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 2,
-              fontFamily: 'var(--font-family-mono)',
-              fontSize: 'var(--body-xs-font-size)',
-              color: defaultSale
-                ? saleDisplay.derived
-                  ? 'var(--text-placeholder-accent)'
-                  : 'var(--text-default)'
-                : 'var(--text-quaternary)',
-              cursor: 'pointer',
-              padding: '2px 4px',
-              borderRadius: 'var(--radius-2)',
-              border: '1px solid var(--cell-border, var(--border-neutral-l2))',
-              background: 'var(--cell-bg, var(--bg-base-secondary))',
-            }}
-            title={
-              saleDisplay.derived
-                ? '按基准单位售价 × 换算率推算（未录价，点击可录入真实价）'
-                : '点击编辑售价明细'
-            }
-          >
-            <span>{defaultSale || '—'}</span>
-            <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />
-          </div>
-        </Popover>
-      );
-    },
-    purchaseCell: (unit) => {
-      const idx = units.findIndex((u) => u.rowKey === unit.key);
-      const purchaseDisplay = resolveUnitPriceDisplayLocal(idx, 'purchase');
-      const defaultPurchase = purchaseDisplay.price;
-      const isOpen = activePanel?.unitIdx === idx && activePanel.tab === 'purchase';
-      return (
-        <Popover
-          trigger="click"
-          placement="bottomLeft"
-          destroyOnHidden={false}
-          open={isOpen}
-          onOpenChange={(open) => {
-            if (open) setActivePanel({ unitIdx: idx, tab: 'purchase' });
-            else if (activePanel?.unitIdx === idx && activePanel.tab === 'purchase') setActivePanel(null);
-          }}
-          title="进价明细"
-          getPopupContainer={smartPopupContainer}
-          // v14.3：面板统一低于弹窗基准层，保证「弹窗内打开的弹窗在弹窗之上」
-          zIndex={PANEL_POPPER_Z_INDEX}
-          content={
-            <UnitPriceExpandPanel
-              unitIdx={activePanel?.unitIdx ?? idx}
-              unitName={units[activePanel?.unitIdx ?? idx]?.unitName ?? unit.unitName}
-              units={units.map((uu, i) => ({ idx: i, name: uu.unitName }))}
-              onUnitChange={(newIdx) =>
-                setActivePanel((prev) => (prev ? { ...prev, unitIdx: newIdx } : null))
-              }
-              brandIdx={brandIdx}
-              unitConversions={units.map((uu) => {
-                const v = currentBrandConversions[uu.rowKey];
-                if (v === undefined || v === null || v === '') return null;
-                const n = parseFloat(v);
-                return isNaN(n) ? null : n;
-              })}
-              salePrices={currentBrandSalePrices}
-              onSalePricesChange={handleCurrentBrandSalePricesChange}
-              purchasePrices={currentBrandPurchasePrices}
-              onPurchasePricesChange={handleCurrentBrandPurchasePricesChange}
-              priceTypes={priceTypes}
-              onPriceTypesChange={onPriceTypesChange}
-              disabled={disabled}
-              defaultTab="purchase"
-              open={isOpen}
-              onEditPoint={(pp) => onEditPoint?.(pp)}
-            />
-          }
-        >
-          <div
-            className="price-cell"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 2,
-              fontFamily: 'var(--font-family-mono)',
-              fontSize: 'var(--body-xs-font-size)',
-              color: defaultPurchase
-                ? purchaseDisplay.derived
-                  ? 'var(--text-placeholder-accent)'
-                  : 'var(--status-discount-default)'
-                : 'var(--text-quaternary)',
-              cursor: 'pointer',
-              padding: '2px 4px',
-              borderRadius: 'var(--radius-2)',
-              border: '1px solid var(--cell-border, var(--border-neutral-l2))',
-              background: 'var(--cell-bg, var(--bg-base-secondary))',
-            }}
-            title={
-              purchaseDisplay.derived
-                ? '按基准单位进价 × 换算率推算（未录价，点击可录入真实价）'
-                : '点击编辑进价明细'
-            }
-          >
-            <span>{defaultPurchase || '—'}</span>
-            <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />
-          </div>
-        </Popover>
-      );
-    },
-  };
-
-  // 单位区 = 公共基座 UnitManagePanel 组装（价格索引/基准归一化等业务回调注入 extensions）
-  return (
-    <UnitManagePanel
-      units={units.map((u) => ({
-        key: u.rowKey,
-        unitName: u.unitName,
-        isBase: u.isBase,
-        isDisplay: u.isDisplay,
-      }))}
-      conversions={currentBrandConversions}
-      onSwitch={() => undefined}
-      onRename={(key, name) => handleUnitNameChange(units.findIndex((u) => u.rowKey === key), name)}
-      onRateChange={(key, rate) => handleRateChange(key, rate)}
-      onSetDisplay={(key) => handleSetDisplay(units.findIndex((u) => u.rowKey === key))}
-      onDelete={(key) => handleDelete(units.findIndex((u) => u.rowKey === key))}
-      onAdd={(name, rate) => handleAddUnitCommit(name, rate)}
-      commonUnits={COMMON_UNITS}
-      extensions={{
-        showBase: true,
-        onSetBase: (key) => handleSetBase(units.findIndex((u) => u.rowKey === key)),
-        priceColumns,
-      }}
-      disabled={disabled}
-    />
-  );
-}
 
 // ============================================================
 // §6.5 单单位价格展开面板（UnitPriceExpandPanel）已抽出到公共组件文件
@@ -668,246 +154,6 @@ function UnitSection({
 //   UnitPriceExpandPanel.tsx，产品编辑弹窗与产品列表共用。
 // ============================================================
 
-// ============================================================
-// §9 品牌图片区（依附当前品牌）
-// 图片列表 + 设为主图 + 上传
-// ============================================================
-
-interface BrandImagesProps {
-  images: ImageItem[];
-  onImagesChange: (images: ImageItem[]) => void;
-  disabled?: boolean;
-  /** v1.5.6 上下文接入：当前 SPU 产品名（预填图片库检索关键词，模糊匹配同款） */
-  contextProductName?: string;
-  /** v1.5.6 上下文接入：当前 SPU 分类 ID（图片库默认筛选该分类） */
-  contextCategoryId?: number;
-}
-
-function BrandImages({
-  images,
-  onImagesChange,
-  disabled,
-  contextProductName,
-  contextCategoryId,
-}: BrandImagesProps) {
-  const { message } = AntdApp.useApp();
-  const [uploading, setUploading] = useState(false);
-  // v1.5.4：从图片库选择（复用已有图片，内容寻址物理文件不重复存储）
-  const [libraryOpen, setLibraryOpen] = useState(false);
-
-  const handleSelectFromLibrary = (item: ProductImageLibraryItem) => {
-    if (disabled) return;
-    // 复用库图片（URL/hash 同源），追加到当前品牌图片列表（保存时随 saveProduct 落库）
-    onImagesChange([
-      ...images,
-      {
-        rowKey: genRowKey('img'),
-        imageUrl: item.imageUrl,
-        mediumUrl: item.mediumUrl,
-        thumbnailUrl: item.thumbnailUrl,
-        width: item.width,
-        height: item.height,
-        size: item.size,
-        hash: item.hash,
-        sortOrder: images.length,
-        isMain: images.length === 0,
-      },
-    ]);
-    setLibraryOpen(false);
-  };
-
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    try {
-      // v11.0：上传前预压缩（5MB+ 原片 → 200-500KB，节省存储与加载时间）
-      //   后端 imageProcessor 会用 sharp 生成三版本 WebP + 计算 hash
-      //   前端预压缩主要节省上传带宽，后端处理已无大文件压力
-      const compressed = await compressImage(file);
-      const res = await uploadProductImage(compressed);
-      onImagesChange([
-        ...images,
-        {
-          rowKey: genRowKey('img'),
-          imageUrl: res.imageUrl,
-          mediumUrl: res.mediumUrl,
-          thumbnailUrl: res.thumbnailUrl,
-          width: res.width,
-          height: res.height,
-          size: res.size,
-          hash: res.hash,
-          sortOrder: images.length,
-          isMain: images.length === 0,
-        },
-      ]);
-    } catch (e) {
-      message.error((e as Error).message || '上传失败');
-    } finally {
-      setUploading(false);
-    }
-    return false; // 阻止 antd 默认上传
-  };
-
-  const handleSetMain = (idx: number) => {
-    onImagesChange(images.map((img, i) => ({ ...img, isMain: i === idx })));
-  };
-
-  const handleDelete = (idx: number) => {
-    const filtered = images.filter((_, i) => i !== idx);
-    // 若删除的是主图，自动将第一张设为主图
-    if (filtered.length > 0 && !filtered.some((img) => img.isMain)) {
-      filtered[0].isMain = true;
-    }
-    onImagesChange(filtered);
-  };
-
-  return (
-    <div>
-      <div style={{ display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', gap: 8 }}>
-        {images.map((img, idx) => (
-          <div
-            key={img.rowKey}
-            style={{
-              position: 'relative',
-              width: 80,
-              height: 80,
-              borderRadius: 'var(--radius-3)',
-              overflow: 'hidden',
-              border: img.isMain
-                ? '2px solid var(--text-brand)'
-                : '1px solid var(--border-neutral-l2)',
-            }}
-          >
-            {/* v1.5.4：点击图片 → 大图预览（原图），方便给客户查看样式 */}
-            <Image
-              src={resolveImageUrl(img.mediumUrl || img.imageUrl)}
-              width={80}
-              height={80}
-              preview={{ src: resolveImageUrl(img.imageUrl) }}
-              alt={`图片 ${idx + 1}`}
-              loading="lazy"
-              decoding="async"
-              style={{ objectFit: 'cover', display: 'block' }}
-            />
-            {/* 主图标记 */}
-            <button
-              type="button"
-              onClick={() => handleSetMain(idx)}
-              title={img.isMain ? '当前主图' : '设为主图'}
-              disabled={disabled}
-              style={{
-                position: 'absolute',
-                top: 2,
-                right: 2,
-                border: 'none',
-                background: 'var(--bg-overlay-modal)',
-                borderRadius: '50%',
-                width: 20,
-                height: 20,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                color: img.isMain ? 'var(--status-star-default)' : 'var(--text-on-accent)',
-              }}
-            >
-              {img.isMain ? <StarFilled style={{ fontSize: 12 }} /> : <StarOutlined style={{ fontSize: 12 }} />}
-            </button>
-            {/* 删除按钮 */}
-            <button
-              type="button"
-              onClick={() => handleDelete(idx)}
-              title="删除图片"
-              disabled={disabled}
-              style={{
-                position: 'absolute',
-                bottom: 2,
-                right: 2,
-                border: 'none',
-                background: 'var(--bg-overlay-modal)',
-                borderRadius: '50%',
-                width: 20,
-                height: 20,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                color: 'var(--status-error-default)',
-              }}
-            >
-              <DeleteOutlined style={{ fontSize: 12 }} />
-            </button>
-          </div>
-        ))}
-
-        {/* 上传按钮 */}
-        <Upload
-          showUploadList={false}
-          beforeUpload={handleUpload}
-          accept="image/*"
-          disabled={uploading || disabled}
-        >
-          <div
-            style={{
-              width: 80,
-              height: 80,
-              border: '1px dashed var(--border-neutral-l2)',
-              borderRadius: 'var(--radius-3)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: uploading || disabled ? 'not-allowed' : 'pointer',
-              color: 'var(--text-tertiary)',
-              opacity: uploading ? 0.5 : 1,
-            }}
-          >
-            {uploading ? <Spin size="small" /> : <UploadOutlined style={{ fontSize: 20 }} />}
-            <span style={{ fontSize: 10, marginTop: 4 }}>上传图片</span>
-          </div>
-        </Upload>
-
-        {/* v1.5.4：从图片库选择（复用已有图片，避免重复上传/存储） */}
-        <div
-          onClick={() => {
-            if (!disabled) setLibraryOpen(true);
-          }}
-          style={{
-            width: 80,
-            height: 80,
-            border: '1px dashed var(--border-neutral-l2)',
-            borderRadius: 'var(--radius-3)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: disabled ? 'not-allowed' : 'pointer',
-            color: 'var(--text-tertiary)',
-            background: 'var(--bg-overlay-l1)',
-          }}
-          title="从已有图片库选择复用"
-        >
-          <PictureOutlined style={{ fontSize: 20 }} />
-          <span style={{ fontSize: 10, marginTop: 4 }}>图片库选择</span>
-        </div>
-      </div>
-      {images.length > 0 && (
-        <div style={{ marginTop: 4, fontSize: 10, color: 'var(--text-tertiary)' }}>
-          点击星标设为主图（当前: {images.find((img) => img.isMain) ? '已设' : '未设'}）
-        </div>
-      )}
-
-      {/* v1.5.4：从图片库选择（共享组件） */}
-      {/* v1.5.6：带入当前产品上下文（产品名模糊检索 + 当前分类默认筛选） */}
-      <ProductImageLibraryPicker
-        open={libraryOpen}
-        onClose={() => setLibraryOpen(false)}
-        onSelect={handleSelectFromLibrary}
-        initialCategoryId={contextCategoryId}
-        initialKeyword={contextProductName}
-      />
-    </div>
-  );
-}
 
 // ============================================================
 // §10 主组件：v9.0 SPU 编辑弹窗
@@ -931,7 +177,7 @@ export interface ProductEditDialogProps {
 
 export default function ProductEditDialog(props: ProductEditDialogProps) {
   const { open, productId, initialSpecId, initialBrandId, initialKeyword, onClose, onSaved } = props;
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
 
   // ---- 加载/保存状态 ----
   const [loading, setLoading] = useState(false);
@@ -945,6 +191,8 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
 
   // ---- SPU 表单状态 ----
   const [productName, setProductName] = useState('');
+  const [productRemark, setProductRemark] = useState('');
+  const [specRemark, setSpecRemark] = useState('');
   const [specModel, setSpecModel] = useState('');
   const [categoryId, setCategoryId] = useState<number>(0);
   const [categoryInput, setCategoryInput] = useState('');
@@ -955,13 +203,18 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   const [brands, setBrands] = useState<BrandItem[]>([]);
   // 当前选中品牌索引（矩阵区/图片区依附该品牌）
   const [currentBrandIdx, setCurrentBrandIdx] = useState(0);
-  // v11.3：进价明细点「点位」→ 批量调整弹窗上下文
-  const [batchAdjustCtx, setBatchAdjustCtx] = useState<{
-    supplierId: string;
-    supplierName: string;
-    brandName: string;
-    categoryName: string;
-  } | null>(null);
+  /** 当前选中的全局品牌 ID（product_brand；切换时只加载该品牌下系列/规格） */
+  const [activeBrandId, setActiveBrandId] = useState<string | null>(null);
+  /**
+   * activeBrandId 的 ref 中转（Maximum update depth 修复，v24.2）：
+   * loadProduct 只读 ref 不读 state，把 activeBrandId 从 loadProduct 依赖里摘掉。
+   * 否则死循环：open-effect 置 null → loadProduct 完成置 X → 依赖变化 → effect 重跑
+   * → 再置 null → 再加载……loading 反复翻转，Spin 反复重挂，50 次嵌套更新即崩。
+   */
+  const activeBrandIdRef = useRef<string | null>(null);
+  activeBrandIdRef.current = activeBrandId;
+  /** 产品下已挂品牌 tab（来自 product_brand；loadProduct 时写入） */
+  const [productBrandTabs, setProductBrandTabs] = useState<Array<{ id: string; name: string }>>([]);
   // 正在编辑名称的品牌索引（null=无；就地编辑标签名，去掉占位输入框）
   const [editingBrandIdx, setEditingBrandIdx] = useState<number | null>(null);
 
@@ -983,25 +236,43 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   // v11.1：规格下拉面板开关（内嵌于规格型号输入框右侧）
   const [specListOpen, setSpecListOpen] = useState(false);
 
-  // v11.3：规格型号唯一性实时检测（v14.0：siblingSpecs.id = spec.id，用 currentSpecId 排除当前规格）
-  //   规则：(product, specModel) 不重复 —— 同产品下规格型号唯一
-  //   当 specModel 值与 siblingSpecs 中其他规格（id 不同）的 specModel 相同时，
-  //   标记为重复，行内显示标识提示（类似非标数据的 InfoCircleOutlined 提示形式）
-  //   保存时也做此校验，重复则阻止保存
+  // v22.0：系列/规格唯一性（同产品×品牌下 specModel 不重复）
   const specDuplicate = useMemo(() => {
     const trimmed = specModel.trim();
     if (!trimmed) return false;
-    // 新建产品模式（无 siblingSpecs）：无需检查
+    const pool =
+      activeBrandId && !creatingSibling
+        ? siblingSpecs.filter((s) => s.brands?.some((b) => b.id === activeBrandId))
+        : siblingSpecs;
     if (!currentProductId && !creatingSibling) return false;
-    // 创建新规格模式：检查所有已有规格（currentProductId 为 null 但 siblingSpecs 有数据）
     if (creatingSibling) {
-      return siblingSpecs.some((s) => s.specModel === trimmed);
+      return pool.some((s) => s.specModel === trimmed);
     }
-    // 编辑模式：排除当前规格（spec.id），检查其他规格
-    return siblingSpecs.some(
-      (s) => s.id !== currentSpecId && s.specModel === trimmed,
-    );
-  }, [specModel, currentProductId, currentSpecId, creatingSibling, siblingSpecs]);
+    return pool.some((s) => s.id !== currentSpecId && s.specModel === trimmed);
+  }, [specModel, currentProductId, currentSpecId, creatingSibling, siblingSpecs, activeBrandId]);
+
+  /** 产品下已挂接的全局品牌 tab（优先 product_brand；新建模式回退 siblingSpecs / 草稿品牌） */
+  const productBrands = useMemo(() => {
+    if (productBrandTabs.length > 0) return productBrandTabs;
+    const map = new Map<string, string>();
+    for (const spec of siblingSpecs) {
+      for (const b of spec.brands ?? []) {
+        if (b.name.trim()) map.set(b.id, b.name);
+      }
+    }
+    for (const b of brands) {
+      const id = b.brandId || b.rowKey;
+      if (b.name.trim()) map.set(id, b.name);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [productBrandTabs, siblingSpecs, brands]);
+
+  /** 当前品牌下可选的规格/系列（与列表筛「产品→品牌→规格」同序） */
+  const specsForActiveBrand = useMemo(() => {
+    if (!activeBrandId || creatingSibling) return siblingSpecs;
+    const filtered = siblingSpecs.filter((s) => s.brands?.some((b) => b.id === activeBrandId));
+    return filtered.length > 0 ? filtered : siblingSpecs;
+  }, [siblingSpecs, activeBrandId, creatingSibling]);
 
   // 加载价格类型字典（弹窗打开时一次性加载，所有品牌/单位共享）
   useEffect(() => {
@@ -1015,17 +286,21 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   // ============================================================
 
   const loadProduct = useCallback(
-    async (id: string, specId?: string) => {
+    async (id: string, specId?: string, brandId?: string | null) => {
       setLoading(true);
+      const effectiveBrandId = brandId ?? activeBrandIdRef.current ?? undefined;
       try {
-        // v14.0 性能优化：详情与规格快切列表并行请求（互不依赖，原实现串行浪费一次往返）
-        //   规格列表失败不阻塞详情加载（独立容错）
         const [product, siblingSpecs] = await Promise.all([
-          getProduct(id, specId),
-          getSiblingSpecs(id, specId).catch(() => [] as SiblingSpec[]),
+          getProduct(id, specId, effectiveBrandId ?? undefined),
+          getSiblingSpecs(id, specId, effectiveBrandId ?? undefined).catch(() => [] as SiblingSpec[]),
         ]);
         setProductName(product.name);
+        setProductRemark(product.remark ?? '');
         setSpecModel(product.specModel ?? '');
+        const currentSpecRow = (product.brands ?? []).find(
+          (b) => String(b.id) === String(product.specId) || String(b.specId) === String(product.specId),
+        );
+        setSpecRemark(currentSpecRow?.remark ?? '');
         setCategoryId(product.categoryId ?? 0);
         if (product.category?.name) {
           setCategoryInput(product.category.name);
@@ -1053,7 +328,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
           // v14.2：显式绑定全局档案 ID（选择复用/改名解析的比对基准）
           brandId: b.brandId,
           name: b.name ?? '',
-          remark: b.remark ?? '',
           images: (b.images ?? []).map((img: ProductImageView) => ({
             rowKey: genRowKey('img'),
             id: img.id,
@@ -1079,7 +353,15 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         }));
         setBrands(brandList);
 
-        // 反填售价/进价（v14.0：通过 specBrandId/unitId 反查索引，价格行字段为 specBrandId）
+        const brandTabs = (product.productBrands ?? [])
+          .map((pb) => ({
+            id: String(pb.brandId),
+            name: pb.brand?.name?.trim() ?? '',
+          }))
+          .filter((t) => t.name);
+        setProductBrandTabs(brandTabs);
+
+        // 反填售价/进价（v22.0：specBrandId = spec.id）
         const salePriceItems: SalePriceItem[] = [];
         const purchasePriceItems: PurchasePriceItem[] = [];
 
@@ -1094,9 +376,12 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
             // v9.2：价格类型 ID + 名称（关联对象由 getProduct 详情返回时携带）
             priceTypeId: sp.priceTypeId,
             priceTypeName: sp.priceType?.name ?? '',
-            price: sp.price,
+            price: String(sp.price),
             // v9.1：从后端读取 isDefault 标记
             isDefault: sp.isDefault ?? false,
+            point: sp.point ?? 1,
+            effectivePrice: sp.effectivePrice ?? null,
+            specPoint: sp.specPoint ?? false,
           });
         });
 
@@ -1115,6 +400,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
             price: String(pp.price),
             point: pp.point ?? 1,
             effectivePrice: pp.effectivePrice ?? null,
+            specPoint: pp.specPoint ?? false,
           });
         });
 
@@ -1124,11 +410,25 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         // 选中初始品牌（若指定 initialBrandId，定位到对应索引；否则选第一个）
         if (brandList.length > 0) {
           let initIdx = 0;
+          let initBrandGlobalId: string | null = null;
           if (initialBrandId) {
-            const found = brandList.findIndex((b) => b.id === initialBrandId);
-            if (found >= 0) initIdx = found;
+            const bySpecBrand = brandList.findIndex((b) => b.id === initialBrandId);
+            const byGlobal = brandList.findIndex((b) => b.brandId === initialBrandId);
+            if (bySpecBrand >= 0) {
+              initIdx = bySpecBrand;
+              initBrandGlobalId = brandList[bySpecBrand].brandId ?? brandList[bySpecBrand].id ?? null;
+            } else if (byGlobal >= 0) {
+              initIdx = byGlobal;
+              initBrandGlobalId = brandList[byGlobal].brandId ?? null;
+            }
+          }
+          if (!initBrandGlobalId) {
+            initBrandGlobalId = brandList[initIdx].brandId ?? brandList[initIdx].id ?? null;
           }
           setCurrentBrandIdx(initIdx);
+          setActiveBrandId(initBrandGlobalId);
+        } else {
+          setActiveBrandId(null);
         }
 
         // v11.0 规格快切：加载同产品名的其他规格列表（已随详情并行请求）
@@ -1158,6 +458,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         setLoading(false);
       }
     },
+    // activeBrandId 走 ref 中转（见 activeBrandIdRef 注释），禁止加回依赖
     [message, initialBrandId, onClose],
   );
 
@@ -1168,19 +469,24 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
     setCurrentProductId(productId ?? null);
     setCurrentSpecId(null);
     setCreatingSibling(false);
+    setActiveBrandId(null);
+    setProductBrandTabs([]);
     if (productId) {
       // v14.0：从列表点击某规格的行进入时，initialSpecId 定位到该规格
-      void loadProduct(productId, initialSpecId);
+      void loadProduct(productId, initialSpecId, initialBrandId);
     } else {
       // 新建模式：初始化空表单，品牌留空（v15.3：不预填「普通品牌」——输入框留空，
       // 用户直接添加自己的品牌；保存时全空才兜底按值去重写入「普通品牌」）
       setProductName(initialKeyword ?? '');
+      setProductRemark('');
+      setSpecRemark('');
       setSpecModel('');
       setCategoryId(0);
       setCategoryInput('');
       setUnits([]);
       setBrands([]);
       setCurrentBrandIdx(0);
+      setActiveBrandId(null);
       setSalePrices([]);
       setPurchasePrices([]);
     }
@@ -1201,12 +507,13 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         okText: '切换',
         cancelText: '取消',
         onOk: () => {
-          // v14.0：产品 ID 不变，只切换规格定位（传 specId 给 loadProduct）
-          if (currentProductId) void loadProduct(currentProductId, specId);
+          if (currentProductId) {
+            void loadProduct(currentProductId, specId, activeBrandId);
+          }
         },
       });
     },
-    [currentProductId, currentSpecId, loading, saving, modal, loadProduct],
+    [currentProductId, currentSpecId, loading, saving, modal, loadProduct, activeBrandId],
   );
 
   /** 新增同产品名的新规格（v14.0：规格为独立 spec 表，保留产品 ID，仅清空规格/品牌/单位/价格） */
@@ -1219,6 +526,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       setCurrentSpecId(null);
       // 保留产品名和分类，清空规格、备注
       setSpecModel('');
+      setSpecRemark('');
       // 重置单位、品牌、价格（v15.3：品牌留空，不预填「普通品牌」，保存时才兜底）
       setUnits([]);
       setBrands([]);
@@ -1243,6 +551,37 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       doAdd();
     }
   }, [loading, saving, modal, currentProductId, productName, specModel]);
+
+  /** 切换全局品牌 tab：重载该品牌下系列/规格（尽量保持同 specModel） */
+  const handleSelectProductBrand = useCallback(
+    (brandId: string) => {
+      if (brandId === activeBrandId || loading || saving) return;
+      setActiveBrandId(brandId);
+      const idxOnSpec = brands.findIndex((b) => b.brandId === brandId);
+      if (idxOnSpec >= 0) {
+        setCurrentBrandIdx(idxOnSpec);
+      }
+      if (!currentProductId) return;
+      const trimmed = specModel.trim();
+      const specsWithBrand = siblingSpecs.filter((s) => s.brands?.some((b) => b.id === brandId));
+      const target =
+        (trimmed ? specsWithBrand.find((s) => s.specModel === trimmed) : undefined) ??
+        specsWithBrand.find((s) => s.id === currentSpecId) ??
+        specsWithBrand[0];
+      void loadProduct(currentProductId, target?.id, brandId);
+    },
+    [
+      activeBrandId,
+      loading,
+      saving,
+      brands,
+      currentProductId,
+      siblingSpecs,
+      currentSpecId,
+      specModel,
+      loadProduct,
+    ],
+  );
 
   // ============================================================
   // 单位操作
@@ -1295,14 +634,10 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       setBrands((prev) =>
         prev.map((b, i) => (i === idx ? { ...b, name: item.name, brandId: item.id } : b)),
       );
+      setActiveBrandId(item.id);
     },
     [],
   );
-
-  // v1.4：品牌级备注变更（执行标准/层数等，不同品牌各自独立）
-  const handleBrandRemarkChange = useCallback((idx: number, remark: string) => {
-    setBrands((prev) => prev.map((b, i) => (i === idx ? { ...b, remark } : b)));
-  }, []);
 
   const handleBrandImagesChange = useCallback((idx: number, images: ImageItem[]) => {
     setBrands((prev) => prev.map((b, i) => (i === idx ? { ...b, images } : b)));
@@ -1356,7 +691,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       const newBrand: BrandItem = {
         rowKey: genRowKey('brand'),
         name: '',
-        remark: '',
         images: [],
         conversions: {},
       };
@@ -1364,6 +698,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       const newIdx = prev.length;
       setCurrentBrandIdx(newIdx);
       setEditingBrandIdx(newIdx);
+      setSpecRemark('');
       return [...prev, newBrand];
     });
   }, []);
@@ -1438,13 +773,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   // 记录「通过下拉/面板选择」或「loadProduct 反填」时的分类名，供 resolveCategoryId 严格比对
   const categorySelectedNameRef = useRef<string>('');
 
-  const handleCategorySelect = useCallback((name: string, catId: number) => {
-    setCategoryInput(name);
-    setCategoryId(catId);
-    categorySelectedNameRef.current = name;
-    // 选择变化后清缓存
-    categoryResolvedRef.current = null;
-  }, []);
 
   const resolveCategoryId = useCallback(async (): Promise<number> => {
     const inputName = categoryInput.trim();
@@ -1506,7 +834,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
     const trimmedSpecModel = specModel.trim() || fieldConfig('specModel').fallback;
     // v11.3：规格型号唯一性校验——同产品名下规格不允许重复
     if (specDuplicate) {
-      message.warning('规格型号与同产品名下其他规格重复，请修改');
+      message.warning('系列/规格与同品牌下其他条目重复，请修改');
       savingRef.current = false;
       return;
     }
@@ -1591,7 +919,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       nonEmptyBrands.push({
         rowKey: genRowKey('brand'),
         name: fieldConfig('brand').fallback,
-        remark: '',
         images: [],
         conversions: {},
       });
@@ -1612,7 +939,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         return {
           id: b.id,
           name: b.name.trim(),
-          remark: b.remark.trim(),
           images: b.images.map((img) => ({
             imageUrl: img.imageUrl,
             mediumUrl: img.mediumUrl,
@@ -1694,6 +1020,8 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         name: trimmedName,
         specModel: trimmedSpecModel,
         categoryId: resolvedCategoryId,
+        remark: productRemark.trim(),
+        specRemark: specRemark.trim(),
         units: unitsInput,
         brands: brandsInput,
         salePrices: salePricesInput,
@@ -1718,6 +1046,8 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
     }
   }, [
     productName,
+    productRemark,
+    specRemark,
     specModel,
     units,
     brands,
@@ -1772,7 +1102,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       ]}
     >
       <Spin spinning={loading}>
-        {/* v11.2：弹窗根容器，所有 Popover 使用 smartPopupContainer 自动挂载到 .ant-modal-wrap */}
+        {/* 弹窗内 Popover 经 smartPopupContainer 挂到 modal 叠加层 */}
         <div className="product-edit-dialog-container">
         <style>{DIALOG_CSS}</style>
         {/* v14.1 性能优化：loading 时只渲染 SPU 信息行骨架（品牌区/单位区/价格矩阵/图片区
@@ -1780,33 +1110,20 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
          *   点击后立即显示骨架 → 秒开感知，长任务后移（此时已有 loading 反馈）。 */}
         {loading ? (
           <Fragment>
-            {/* §A SPU 信息行骨架：分类 | 产品名称 | 规格型号 | 备注 */}
+            {/* §A 产品信息骨架：分类 | 产品名称 | 备注 */}
             <div style={{ ...SECTION_BOX_STYLE, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '120px minmax(170px, 1.5fr) minmax(150px, 1.2fr) minmax(100px, 0.7fr)',
+                  gridTemplateColumns: '120px minmax(200px, 1.6fr) minmax(120px, 1fr)',
                   gap: 8,
                   alignItems: 'end',
-                  minWidth: 520,
+                  minWidth: 420,
                 }}
               >
-                <div style={{ minWidth: 0 }}>
-                  <label style={FIELD_LABEL_STYLE}>分类</label>
-                  <DsInput size="sm" placeholder="加载中…" disabled style={{ width: '100%' }} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <label style={FIELD_LABEL_STYLE}>产品名称</label>
-                  <DsInput size="sm" placeholder="加载中…" disabled style={{ width: '100%' }} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <label style={FIELD_LABEL_STYLE}>规格型号</label>
-                  <DsInput size="sm" placeholder="加载中…" disabled style={{ width: '100%' }} />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <label style={FIELD_LABEL_STYLE}>备注</label>
-                  <DsInput size="sm" placeholder="加载中…" disabled style={{ width: '100%' }} />
-                </div>
+                <ArchiveDialogFieldSkeleton label="分类" layout="stack" />
+                <ArchiveDialogFieldSkeleton label="产品名称" layout="stack" />
+                <ArchiveDialogFieldSkeleton label="俗称" layout="stack" />
               </div>
             </div>
             <div
@@ -1823,154 +1140,88 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         ) : (
           <Fragment>
         {/* ============================================================ */}
-        {/* §A SPU 信息行：分类 | 产品名称 | 规格型号 | 备注 */}
-        {/* v11.2：去除冗余标题（字段标签已自解释），缩短标签文字，重排列宽比例 */}
-        {/*   列宽：分类120(输入+管理按钮) | 产品名1.5fr(最宽，建材全名) | 规格1.2fr(输入+下拉按钮) | 备注0.7fr(短内容) */}
-        {/*   手机端：横向滚动，不溢出弹窗 */}
+        {/* §A 产品信息：分类 | 产品名称 | 俗称 */}
         {/* ============================================================ */}
         <div style={{ ...SECTION_BOX_STYLE, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '120px minmax(170px, 1.5fr) minmax(150px, 1.2fr) minmax(100px, 0.7fr)',
+              gridTemplateColumns: '120px minmax(200px, 1.6fr) minmax(120px, 1fr)',
               gap: 8,
               alignItems: 'end',
-              minWidth: 520,
+              minWidth: 420,
             }}
           >
-            {/* 分类（关联字段，allowCreate 默认 true，支持快速新建） */}
-            {/* v14.3：分类引用编辑 = DictRefField 一体化组件（输入匹配 = 换引用；
-                管理下拉按钮 → 分类档案面板：新增/改名/选择/删除全局分类） */}
-            <div style={{ minWidth: 0 }}>
-              <label style={FIELD_LABEL_STYLE}>分类</label>
-              <DictRefField
-                field="category"
-                value={categoryInput}
-                onResolve={(item) => handleCategorySelect(item.name, Number(item.id))}
-                currentId={categoryId}
-                dict={categoryDict}
-                placeholder="分类"
-                disabled={loading || saving}
-              />
-            </div>
+            <ArchiveDialogField
+              layout="stack"
+              label="分类"
+              value={categoryInput}
+              placeholder="分类"
+              title="修改分类"
+              dictConfig={categoryDict}
+              disabled={loading || saving}
+              onApply={(name) => {
+                setCategoryInput(name);
+                categoryResolvedRef.current = null;
+                if (categorySelectedNameRef.current !== name) {
+                  categorySelectedNameRef.current = '';
+                  setCategoryId(0);
+                }
+              }}
+            />
 
-            {/* 产品名称 */}
-            <div style={{ minWidth: 0 }}>
-              <label style={FIELD_LABEL_STYLE}>
-                产品名称 <span style={{ color: 'var(--status-error-default)' }}>*</span>
-              </label>
-              <SuggestInput
-                field="product"
-                value={productName}
-                onChange={setProductName}
-                placeholder="如 PPR热水管"
-                size="sm"
-                productId={currentProductId ?? undefined}
-                disabled={loading || saving}
-              />
-            </div>
+            <ArchiveDialogField
+              layout="stack"
+              label="产品名称"
+              required
+              value={productName}
+              placeholder="如 PPR热水管 dn25"
+              title="修改产品名称"
+              suggestField="product"
+              disabled={loading || saving}
+              onApply={setProductName}
+            />
 
-            {/* 规格型号（v11.3：输入框+独立下拉按钮+行内重复标识，与分类一致的交互模式）
-             *   输入框：快速检索匹配和录入填充（匹配后可部分修改，保存时唯一性校验）
-             *   下拉按钮：查看当前产品的全部规格，行级别切换/新增/编辑/删除
-             *   下拉选中 → 切换到该规格编辑；输入框填充 → 快速修改当前规格
-             *   行内重复标识 → specModel 与同产品名下其他规格重复时显示警告图标
-             */}
-            <div style={{ minWidth: 0 }}>
-              <label style={FIELD_LABEL_STYLE}>
-                {/* v1.5.6.3：规格非必填（简单产品可无规格，留空保存时补默认「通用」，前后端双端一致） */}
-                规格型号
-              </label>
-              <div style={{ display: 'flex', gap: 2, alignItems: 'stretch' }}>
-                <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-                  <SuggestInput
-                    field="specModel"
-                    value={specModel}
-                    onChange={setSpecModel}
-                    placeholder="留空默认通用"
-                    size="sm"
-                    productId={currentProductId ?? undefined}
-                    disabled={loading || saving}
-                  />
-                  {/* v11.3：规格重复行内标识（类似非标数据的 InfoCircleOutlined 提示形式） */}
-                  {specDuplicate && (
-                    <Tooltip title="规格型号与同产品名下其他规格重复，保存时将被阻止">
-                      <WarningOutlined
-                        style={{
-                          position: 'absolute',
-                          right: 28,
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          color: 'var(--status-star-default)',
-                          fontSize: 11,
-                          cursor: 'pointer',
-                          zIndex: 1,
-                        }}
-                      />
-                    </Tooltip>
-                  )}
-                </div>
-                {/* v11.2：规格下拉按钮始终显示（与分类管理按钮一致），不再判断 siblingSpecs 数量 */}
-                <Popover
-                  trigger="click"
-                  placement="bottomRight"
-                  open={specListOpen}
-                  onOpenChange={setSpecListOpen}
-                  getPopupContainer={smartPopupContainer}
-                  content={
-                    <SpecListPanel
-                      specs={siblingSpecs}
-                      currentSpecId={currentSpecId}
-                      creatingSibling={creatingSibling}
-                      currentSpecModel={specModel}
-                      onSelect={(specId) => {
-                        handleSwitchSpec(specId);
-                        setSpecListOpen(false);
-                      }}
-                      onAdd={() => {
-                        handleAddSiblingSpec();
-                        setSpecListOpen(false);
-                      }}
-                      onSpecChanged={() => {
-                        // 编辑/删除规格后刷新规格列表（保留当前规格定位标记）
-                        if (currentProductId) {
-                          getSiblingSpecs(currentProductId, currentSpecId ?? undefined)
-                            .then((specs) => setSiblingSpecs(specs))
-                            .catch(() => setSiblingSpecs([]));
-                        }
-                        onSaved?.();
-                      }}
-                      disabled={loading || saving}
-                    />
-                  }
-                >
-                  <DsButton
-                    size="sm"
-                    variant="ghost"
-                    icon={<DownOutlined />}
-                    disabled={loading || saving}
-                    title="查看全部规格"
-                    style={{ flexShrink: 0 }}
-                  />
-                </Popover>
-              </div>
-            </div>
+            <ArchiveDialogField
+              layout="stack"
+              label="俗称"
+              value={productRemark}
+              placeholder="如 6分管"
+              title="修改俗称"
+              disabled={loading || saving}
+              onApply={setProductRemark}
+            />
           </div>
         </div>
 
         {/* ============================================================ */}
-        {/* §B 品牌切换区：[品牌1] [品牌2] [+ 新增品牌] */}
-        {/* v11.2：去除冗余标题与说明文字（品牌标签本身已自解释，高亮标签即当前品牌） */}
+        {/* §B 品牌切换：先选品牌，再维护该品牌下的系列/规格 */}
         {/* ============================================================ */}
         <div style={SECTION_BOX_STYLE}>
-          {/* 品牌标签行：[标签名(点击切换) | 编辑按钮 | 删除按钮] ... 末尾 [+ 新增品牌] */}
+          <div
+            style={{
+              fontSize: 'var(--body-xs-font-size)',
+              color: 'var(--text-tertiary)',
+              marginBottom: 6,
+            }}
+          >
+            品牌为全店档案；同一产品可挂多个品牌。先选品牌，再编辑该品牌下的系列/规格与价格。
+          </div>
+          {/* 品牌标签行 */}
           <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
-            {brands.map((brand, bIdx) => {
-              const active = bIdx === currentBrandIdx;
-              const editing = bIdx === editingBrandIdx;
+            {(productBrands.length > 0 ? productBrands : brands.map((b, i) => ({
+              id: b.brandId || b.rowKey || String(i),
+              name: b.name || `品牌 ${i + 1}`,
+            }))).map((pb) => {
+              const bIdx = brands.findIndex(
+                (b) => (pb.id && b.brandId === pb.id) || b.rowKey === pb.id,
+              );
+              const active = activeBrandId ? pb.id === activeBrandId : bIdx === currentBrandIdx;
+              const editing = bIdx >= 0 && bIdx === editingBrandIdx;
+              const brand = bIdx >= 0 ? brands[bIdx] : null;
               return (
                 <div
-                  key={brand.rowKey}
+                  key={pb.id}
                   className={`brand-tag${active ? ' brand-tag-active' : ''}`}
                   style={{
                     display: 'flex',
@@ -1984,31 +1235,40 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                     color: active ? 'var(--text-brand)' : 'var(--tag-color, var(--text-default))',
                   }}
                 >
-                  {editing ? (
-                    // v14.3：品牌引用编辑 = DictRefField 一体化组件（输入框匹配复用/快捷新建带 id
-                    //   + 管理下拉按钮 → 品牌档案面板：新增/改名/选择/删除全局档案，所有引用方跟随）
-                    //   语义：输入匹配 = 换引用；改全局档案名 = 管理面板
-                    <DictRefField
-                      field="brand"
-                      value={brand.name}
-                      onResolve={(item) => handleBrandResolve(bIdx, item)}
-                      currentId={brand.brandId}
-                      dict={brandDict}
-                      onBlur={() => setEditingBrandIdx(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') setEditingBrandIdx(null);
-                      }}
-                      placeholder="品牌名称"
-                      disabled={loading || saving}
-                      inputStyle={{
-                        width: 140,
-                        fontSize: 'var(--body-sm-font-size)',
-                      }}
-                    />
+                  {editing && brand ? (
+                    <div
+                      className="ds-dialog-field-point"
+                      style={{ width: 140, minHeight: 28, border: 'none', background: 'transparent', padding: 0 }}
+                    >
+                      <ArchiveFieldCell
+                        value={brand.name}
+                        placeholder="品牌名称"
+                        title="修改品牌"
+                        dictConfig={brandDict}
+                        disabled={loading || saving}
+                        onApply={async (name) => {
+                          const trimmed = name.trim();
+                          if (!trimmed) return;
+                          try {
+                            const list = await brandDict.list();
+                            const matched = list.find((b) => b.name === trimmed);
+                            if (matched) {
+                              handleBrandResolve(bIdx, { id: String(matched.id), name: matched.name });
+                            } else {
+                              const created = await brandDict.create(trimmed);
+                              handleBrandResolve(bIdx, { id: String(created.id), name: created.name });
+                            }
+                          } catch {
+                            handleBrandResolve(bIdx, { id: brand.brandId ?? '', name: trimmed });
+                          }
+                          setEditingBrandIdx(null);
+                        }}
+                      />
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setCurrentBrandIdx(bIdx)}
+                      onClick={() => handleSelectProductBrand(pb.id)}
                       style={{
                         padding: '4px 10px',
                         border: 'none',
@@ -2020,10 +1280,10 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                         whiteSpace: 'nowrap',
                         flexShrink: 0,
                       }}
-                      title={brand.name || `品牌 ${bIdx + 1}`}
+                      title={pb.name}
                     >
-                      {brand.name || `品牌 ${bIdx + 1}`}
-                      {brand.images.length > 0 && (
+                      {pb.name}
+                      {brand && brand.images.length > 0 && (
                         <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>
                           ({brand.images.length}图)
                         </span>
@@ -2031,7 +1291,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                     </button>
                   )}
 
-                  {/* 编辑/确认按钮 */}
+                  {/* 编辑/确认按钮（仅当前规格已挂接的品牌可编辑） */}
                   {editing ? (
                     <button
                       type="button"
@@ -2051,13 +1311,14 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                     >
                       <CheckOutlined style={{ fontSize: 12 }} />
                     </button>
-                  ) : (
+                  ) : bIdx >= 0 ? (
                     <Tooltip title="编辑品牌名称">
                       <button
                         type="button"
                         onClick={() => {
                           setCurrentBrandIdx(bIdx);
                           setEditingBrandIdx(bIdx);
+                          if (brand?.brandId) setActiveBrandId(brand.brandId);
                         }}
                         disabled={loading || saving}
                         className="brand-tag-btn brand-tag-btn-edit"
@@ -2075,9 +1336,9 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                         <EditOutlined style={{ fontSize: 12 }} />
                       </button>
                     </Tooltip>
-                  )}
+                  ) : null}
 
-                  {/* 删除按钮 */}
+                  {bIdx >= 0 ? (
                   <Tooltip title="删除品牌（级联删除该品牌的售价/进价/图片）">
                     <button
                       type="button"
@@ -2099,6 +1360,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                       <DeleteOutlined style={{ fontSize: 12 }} />
                     </button>
                   </Tooltip>
+                  ) : null}
                 </div>
               );
             })}
@@ -2127,24 +1389,114 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
               新增品牌
             </button>
           </div>
+        </div>
 
-          {/* v1.4：品牌级备注（当前品牌，不同品牌各自独立） */}
-          <div style={{ padding: '2px 10px 0', maxWidth: 420 }}>
-            <label style={FIELD_LABEL_STYLE}>备注（{currentBrand?.name?.trim() || '当前品牌'}）</label>
-            <DsInput
-              size="sm"
-              value={currentBrand?.remark ?? ''}
-              onChange={(e) => handleBrandRemarkChange(currentBrandIdx, e.target.value)}
-              placeholder="如 执行标准S3.2 / 双层 / 6分管"
+        {/* ============================================================ */}
+        {/* §C 系列/规格：挂在品牌下的变体（spec.specModel；可含系列名/色号等） */}
+        {/* ============================================================ */}
+        <div style={SECTION_BOX_STYLE}>
+          <div
+            style={{
+              fontSize: 'var(--body-xs-font-size)',
+              color: 'var(--text-tertiary)',
+              marginBottom: 8,
+            }}
+          >
+            系列/规格：当前品牌下的货号变体（如 dn25、伟星绿、伟星黄）。通用尺寸可写在产品名；此处填品牌私有属性。
+          </div>
+          <div style={{ maxWidth: 420, position: 'relative' }}>
+            <ArchiveDialogField
+              layout="stack"
+              label="系列/规格"
+              value={specModel}
+              placeholder="留空默认「通用」"
+              title="修改系列/规格"
+              suggestField="specModel"
               disabled={loading || saving}
+              onApply={setSpecModel}
+              bodyStyle={{ position: 'relative' }}
+              suffix={
+                <>
+                  {specDuplicate ? (
+                    <Tooltip title="与同产品下其他系列/规格重复，保存时将被阻止">
+                      <WarningOutlined
+                        style={{
+                          position: 'absolute',
+                          right: 36,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          color: 'var(--status-star-default)',
+                          fontSize: 11,
+                          cursor: 'pointer',
+                          zIndex: 1,
+                        }}
+                      />
+                    </Tooltip>
+                  ) : null}
+                  <Popover
+                    trigger="click"
+                    placement="bottomRight"
+                    open={specListOpen}
+                    onOpenChange={setSpecListOpen}
+                    getPopupContainer={smartPopupContainer}
+                    content={
+                      <SpecListPanel
+                        specs={specsForActiveBrand}
+                        currentSpecId={currentSpecId}
+                        creatingSibling={creatingSibling}
+                        currentSpecModel={specModel}
+                        onSelect={(specId) => {
+                          handleSwitchSpec(specId);
+                          setSpecListOpen(false);
+                        }}
+                        onAdd={() => {
+                          handleAddSiblingSpec();
+                          setSpecListOpen(false);
+                        }}
+                        onSpecChanged={() => {
+                          if (currentProductId) {
+                            getSiblingSpecs(
+                              currentProductId,
+                              currentSpecId ?? undefined,
+                              activeBrandId ?? undefined,
+                            )
+                              .then((specs) => setSiblingSpecs(specs))
+                              .catch(() => setSiblingSpecs([]));
+                          }
+                          onSaved?.();
+                        }}
+                        disabled={loading || saving}
+                      />
+                    }
+                  >
+                    <DsButton
+                      size="sm"
+                      variant="ghost"
+                      className="ds-addon-btn"
+                      icon={<DownOutlined />}
+                      disabled={loading || saving}
+                      title="查看当前品牌下全部系列/规格"
+                    />
+                  </Popover>
+                </>
+              }
+            />
+          </div>
+          <div style={{ maxWidth: 420, marginTop: 8 }}>
+            <ArchiveDialogField
+              layout="stack"
+              label="规格备注"
+              value={specRemark}
+              placeholder="执行标准 / 企标 / 国标 / 层数"
+              title="修改规格备注"
+              disabled={loading || saving}
+              onApply={setSpecRemark}
             />
           </div>
         </div>
 
         {/* ============================================================ */}
-        {/* §C 单位区 + 价格明细（SPU 级共享，售价/进价合入单位行展开面板） */}
-        {/* v11.2：去除冗余标题（单位行本身已自解释） */}
-        {/* ============================================================ */}
+        {/* §D 单位区 + 价格明细（当前 spec×brand） */}
         <div style={SECTION_BOX_STYLE}>
           <UnitSection
             units={units}
@@ -2160,22 +1512,17 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
             onPurchasePricesChange={setPurchasePrices}
             priceTypes={priceTypes}
             onPriceTypesChange={setPriceTypes}
-            onEditPoint={(pp) =>
-              setBatchAdjustCtx({
-                supplierId: pp.supplierId,
-                supplierName: pp.supplierName,
-                brandName: currentBrand?.name ?? '',
-                categoryName: categoryInput,
-              })
-            }
+            pointCtx={{
+              specBrandId: currentBrand?.id,
+              brandName: currentBrand?.name ?? '',
+              categoryName: categoryInput,
+            }}
             disabled={loading || saving}
           />
         </div>
 
         {/* ============================================================ */}
-        {/* §F 产品图片区（依附当前品牌） */}
-        {/* v11.2：去除冗余标题（图片上传区本身已自解释） */}
-        {/* ============================================================ */}
+        {/* §E 产品图片（当前 spec×brand） */}
         <div style={SECTION_BOX_STYLE}>
           {currentBrand ? (
             <BrandImages
@@ -2203,25 +1550,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         )}
         </div>
       </Spin>
-      {/* v11.3：进价明细点「点位」→ 批量调整弹窗（带入上下文，调整后重载产品价格） */}
-      <BatchAdjustDialog
-        open={Boolean(batchAdjustCtx)}
-        onClose={() => setBatchAdjustCtx(null)}
-        onDone={() => {
-          // v14.0：重载时保留当前规格定位（specId 一并传入）
-          if (currentProductId) void loadProduct(currentProductId, currentSpecId ?? undefined);
-        }}
-        initialContext={
-          batchAdjustCtx
-            ? {
-                supplierId: batchAdjustCtx.supplierId,
-                supplierName: batchAdjustCtx.supplierName,
-                brandName: batchAdjustCtx.brandName,
-                categoryName: batchAdjustCtx.categoryName,
-              }
-            : undefined
-        }
-      />
     </DsDialog>
   );
 }

@@ -1,6 +1,6 @@
 // 客户端收货地址管理
 import { useCallback, useEffect, useState } from 'react';
-import { App as AntdApp, Empty, Form, Spin, Switch } from 'antd';
+import { Empty, Form, Spin, Switch } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { DsButton } from '../../../shared/components/DsButton.js';
 import { DsInput } from '../../../shared/components/DsInput.js';
@@ -15,9 +15,10 @@ import {
 } from '../../../shared/services/api/customerApi.js';
 // v2.6：CustomerAddressView 单一来源收敛（baseDataApi 定义，customerApi 不再重复导出）
 import type { CustomerAddressView } from '../../../shared/services/api/baseDataApi.js';
+import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
 
 export default function AddressManage() {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const [list, setList] = useState<CustomerAddressView[]>([]);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);

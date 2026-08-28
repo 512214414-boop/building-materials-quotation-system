@@ -1,4 +1,6 @@
-// DictFieldInput — 字典字段行内植入输入组件（通用复用，表格工程范式「枚举/字典字段」落地）
+// DictFieldInput — C16 字典字段行内输入（已废弃用于 MatrixTable 矩阵格）
+// 矩阵多记录字段统一改用 ArchiveFieldCell + PickerEditGate（点值确认层）。
+// 本组件仅保留给尚未迁移的非矩阵场景；新代码禁止在矩阵内引用。
 //
 // 设计依据：表格设计理念「同质同构」——字典字段（方式/分类/价格类型/单位等）交互形态完全一致：
 //   输入框（SuggestInput 检索 + 快速新建，或普通输入）+ 输入框后独立下拉按钮 → 展开字典管理面板
@@ -15,12 +17,14 @@
 // 同一组件承载所有字典字段，禁止各功能硬编码重写（代码冗余 + 形态不一致）
 
 import { useEffect, useState } from 'react';
-import { App as AntdApp, Popover } from 'antd';
+import { Popover } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
 import DictListPanel, { type DictListPanelItem } from './DictListPanel.js';
 import DsInput from './DsInput.js';
+import DsButton from './DsButton.js';
 import SuggestInput from './SuggestInput.js';
 import type { SuggestField } from '../services/api/baseDataApi.js';
+import { useCanvasApp } from '../hooks/useCanvasApp.js';
 
 /** 字典项（id + 名称） */
 export interface DictFieldItem {
@@ -107,17 +111,14 @@ export default function DictFieldInput({
           />
         }
       >
-        <span
-          style={{
-            cursor: 'pointer',
-            flexShrink: 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            padding: '0 2px',
-          }}
-        >
-          <DownOutlined style={{ fontSize: 9, color: 'var(--text-tertiary)' }} />
-        </span>
+        <DsButton
+          size="sm"
+          variant="ghost"
+          className="ds-addon-btn"
+          icon={<DownOutlined />}
+          disabled={disabled}
+          title="管理字典"
+        />
       </Popover>
     </div>
   );
@@ -141,7 +142,7 @@ function DictManagePanel({
   /** 行点击选用回调（回填枚举项并关闭面板） */
   onPick: (name: string) => void;
 }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const [items, setItems] = useState<DictFieldItem[]>([]);
   // 面板内检索关键词（SuggestInput 输入，选中/新建后清空）
   const [panelKw, setPanelKw] = useState('');

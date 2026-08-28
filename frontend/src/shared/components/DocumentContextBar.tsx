@@ -1,26 +1,22 @@
 // v10.33 单据上下文栏：使用 .ds-shell-row 通用行类，行高24px、字号11px统一
-// 字段顺序：单据编号 → 日期 → 整单备注 → 客户（集合显示「数据库编号 + 姓名 + 电话」）→ 收货地址 → 单据状态（最右、醒目颜色字体）
-// v10.33 变动：取消「单据标题」字段（标签改为由日期+备注+客户组成，标题不再需要）
-// v3.0 变动一：取消「产品种数」「产品数量」「制单人」三字段（种数/数量移入 StageBizStrip 右侧汇总区，制单人彻底移除）
-// v3.0 变动二：删除 DocumentCustomerBar，原「收货地址」并入本栏；其他字段（客户电话直改档案/联系电话/预计交付日期/公司）按 spec 决策丢弃
-// v3.0 变动三：客户字段改为集合显示 `[数据库编号] 姓名 电话`，点击触发 CustomerPicker 浮动面板
-// v3.0 变动四：单据状态靠最右 + 醒目颜色字体（pending=灰、confirmed=绿、voided=红）+ 加粗
-// 权限分层（与 spec 表一致）：
-//   - 全环节可编辑（仅作废后锁定）：客户选择、收货地址
-//   - purchase_quote rw 可编辑：日期、单据状态、整单备注
-//   - 作废后：除状态外其他字段只读
+// 字段顺序：单据编号 → 日期 → 单据标题 → 客户信息（姓名 + 当时那条联系）→ 收货地址 → 单据状态
+// 点值格：格子只展示，确认层确认才写；客户选用槽挂 CustomerPicker（子层），插入才关联
+// 权限分层：
+//   - 全环节可编辑（仅作废后锁定）：客户信息、收货地址
+//   - purchase_quote rw 可编辑：日期、单据状态、单据标题
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { App as AntdApp } from 'antd';
-import DsInput from './DsInput.js';
 import DsSelect from './DsSelect.js';
 import DsShellRow from './DsShellRow.js';
 import CustomerPicker, { type CustomerPickerValue } from './CustomerPicker.js';
+import { WorkbenchFieldCell } from './workbench/WorkbenchFieldCell.js';
 import { useDocumentStore } from '../stores/document.js';
 import { updateDocument, updateDocumentBusiness } from '../services/api/documentApi.js';
 import { STAGE_STATUS_LABELS, type StageStatus } from '../types/index.js';
 import { setPurchaseQuoteStatus } from '../services/api/purchaseQuoteApi.js';
 import { useStaffAuthStore } from '../stores/auth.js';
+import { formatCustomerInfo } from '../utils/customerInfo.js';
 
 // 行盒子统一常量：从 shared/styles/shell-constants.ts 统一管理
 // 注意：`export { X } from '...'` 是重新导出，不会在当前作用域创建绑定，
@@ -33,6 +29,13 @@ const denseControlStyle: CSSProperties = {
   minWidth: 0,
   height: 20,
   ...WORKBENCH_TEXT,
+};
+
+const pointSlotStyle: CSSProperties = {
+  display: 'inline-block',
+  minWidth: 88,
+  maxWidth: 220,
+  verticalAlign: 'middle',
 };
 
 /** 单据状态醒目颜色：pending=灰、confirmed=绿、voided=红 */
@@ -82,53 +85,8 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
   const doc =
     activeDocument && (!documentId || activeDocument.id === documentId) ? activeDocument : null;
 
-  const [dateStr, setDateStr] = useState('');
-  const [note, setNote] = useState('');
-  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const [statusChanging, setStatusChanging] = useState(false);
-  /** v3.0 客户集合显示：点击触发 CustomerPicker 浮动面板 */
-  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
-  /**
-   * v2.9 编辑态保护：用户正在编辑某字段时，doc 刷新（如 WS 协同推送）不重置该字段值。
-   * 避免协同场景下多人编辑导致输入被覆盖；blur 后解除保护并触发保存。
-   */
-  const editingFieldRef = useRef<string | null>(null);
-  /** v3.0 客户字段容器引用：用于点击外部关闭 CustomerPicker */
-  const customerWrapRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!doc) return;
-    // 编辑态保护：正在编辑的字段不重置
-    if (editingFieldRef.current !== 'date') {
-      setDateStr(formatDate(doc.createdAt));
-    }
-    if (editingFieldRef.current !== 'note') {
-      setNote(doc.note ?? '');
-    }
-    if (editingFieldRef.current !== 'deliveryAddress') {
-      setDeliveryAddress(doc.deliveryAddress ?? '');
-    }
-  }, [doc]);
-
-  /** v3.0 点击外部关闭客户选择器（CustomerPicker 自身 FloatPanel 已处理下拉关闭，此处处理整组退出） */
-  useEffect(() => {
-    if (!customerPickerOpen) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (customerWrapRef.current && !customerWrapRef.current.contains(e.target as Node)) {
-        setCustomerPickerOpen(false);
-      }
-    };
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setCustomerPickerOpen(false);
-    };
-    document.addEventListener('mousedown', onDocClick);
-    document.addEventListener('keydown', onEsc);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      document.removeEventListener('keydown', onEsc);
-    };
-  }, [customerPickerOpen]);
 
   const pqStatus: StageStatus = doc?.purchaseQuoteStatus ?? 'pending';
   const viewLocked = !!doc?.viewLocks?.purchaseQuote;
@@ -138,7 +96,7 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
   /** v2.9 协同字段（标题/客户/收货地址）：全环节可编辑，仅作废后锁定 */
   const collabReadOnly = pqStatus === 'voided';
 
-  const saveHeader = async (patch: { note?: string; createdAt?: string }) => {
+  const saveHeader = async (patch: { note?: string; title?: string; createdAt?: string }) => {
     if (!doc || bizHeaderReadOnly) return;
     setSaving(true);
     try {
@@ -149,68 +107,55 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
       await refresh();
     } catch (e) {
       message.error((e as Error).message || '保存失败');
-      setDateStr(formatDate(doc.createdAt));
-      setNote(doc.note ?? '');
     } finally {
       setSaving(false);
     }
   };
 
-  const saveDate = async () => {
-    if (!doc || bizHeaderReadOnly) return;
-    const prev = formatDate(doc.createdAt);
-    if (!dateStr || dateStr === prev) return;
-    await saveHeader({ createdAt: dateStr });
-  };
-
-  const saveNote = async () => {
-    if (!doc || bizHeaderReadOnly) return;
-    if (note === (doc.note ?? '')) return;
-    await saveHeader({ note });
-  };
-
-  /** v3.0 保存收货地址：全环节可编辑（仅作废后锁定），落 documents.delivery_address */
-  const saveDeliveryAddress = async () => {
+  const saveDeliveryAddress = async (next: string) => {
     if (!doc || collabReadOnly) return;
     const prev = doc.deliveryAddress ?? '';
-    if (deliveryAddress === prev) return;
+    if (next === prev) return;
     setSaving(true);
     try {
-      await updateDocumentBusiness(doc.id, { deliveryAddress });
+      await updateDocumentBusiness(doc.id, { deliveryAddress: next });
       await refresh();
     } catch (e) {
       message.error((e as Error).message || '保存失败');
-      setDeliveryAddress(prev);
     } finally {
       setSaving(false);
     }
   };
 
-  /** v2.10 客户关联变更：全环节可编辑（订单协同工作台协作核心） */
   const handleCustomerChange = async (customer: CustomerPickerValue | null) => {
     if (!doc || collabReadOnly) return;
     setSaving(true);
     try {
-      const patch: { customerId: string | number | null; contactPhone?: string } = {
+      const patch: {
+        customerId: string | number | null;
+        customerPhone?: string | null;
+        customerContactMethod?: string | null;
+        customerName?: string | null;
+        contactPhone?: string;
+      } = {
         customerId: customer ? customer.id : null,
+        customerPhone: customer?.phone || null,
+        customerContactMethod: customer?.contactMethod ?? null,
+        customerName: customer?.name ?? null,
       };
-      // v2.10 关联客户时若单据联系电话为空且客户 phone 有值，顺带补上客户电话
-      // （phone 可空：customer.phone 为 '' 时不补 contactPhone）
       if (customer && !doc.contactPhone && customer.phone) {
         patch.contactPhone = customer.phone;
       }
       await updateDocumentBusiness(doc.id, patch);
       await refresh();
       if (customer) {
-        // v2.10 phone 可空：name 和 phone 都为空时显示兜底文案
-        const displayName = customer.name || customer.phone || '（未命名客户）';
+        const displayName = formatCustomerInfo(customer.name, customer.phone, customer.contactMethod) || '（未命名客户）';
         message.success(`已关联客户：${displayName}`, 0.8);
       }
     } catch (e) {
       message.error((e as Error).message || '关联客户失败');
     } finally {
       setSaving(false);
-      setCustomerPickerOpen(false);
     }
   };
 
@@ -243,10 +188,10 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
     );
   }
 
-  // v3.0 客户集合显示文本（v11.0 解耦后使用客户档案快照字段：customerName/customerPhone/customerCompany）
-  const customerSummary = [doc.customerName, doc.customerPhone, doc.customerCompany]
-    .filter(Boolean)
-    .join(' ');
+  const dateStr = formatDate(doc.createdAt);
+  const titleStr = doc.title || doc.note || '';
+  const addressStr = doc.deliveryAddress ?? '';
+  const customerSummary = formatCustomerInfo(doc.customerName, doc.customerPhone, doc.customerContactMethod);
 
   return (
     <DsShellRow
@@ -258,95 +203,91 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
         borderBottom: '1px solid var(--border-neutral-l1)',
       }}
     >
-      {/* 1. 单据编号（只读，系统生成） */}
       <DenseField label="单据编号">{doc.documentNo}</DenseField>
 
-      {/* 2. 日期（purchase_quote rw 可编辑；§2.10 只读权限仍可改数预览，失焦不落库） */}
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>日期:</span>
-        <DsInput
-          size="sm"
-          type="date"
-          value={dateStr}
-          disabled={collabReadOnly || saving}
-          onChange={(e) => setDateStr(e.target.value)}
-          onFocus={() => {
-            editingFieldRef.current = 'date';
-          }}
-          onBlur={() => {
-            editingFieldRef.current = null;
-            void saveDate();
-          }}
-          style={{ ...denseControlStyle, width: 120 }}
-        />
+        <span style={{ ...pointSlotStyle, minWidth: 100 }}>
+          <WorkbenchFieldCell
+            embed="inline"
+            text={dateStr}
+            placeholder="—"
+            input="date"
+            disabled={bizHeaderReadOnly || saving}
+            title="单据日期"
+            bullets={['确认后写入单据头。', '取消不保存。']}
+            onApply={(next) => void saveHeader({ createdAt: next })}
+          />
+        </span>
       </span>
 
-      {/* 3. 整单备注（purchase_quote rw 可编辑；§2.10 只读权限仍可改数预览，失焦不落库） */}
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>整单备注:</span>
-        <DsInput
-          size="sm"
-          value={note}
-          disabled={collabReadOnly || saving}
-          placeholder="—"
-          onChange={(e) => setNote(e.target.value)}
-          onFocus={() => {
-            editingFieldRef.current = 'note';
-          }}
-          onBlur={() => {
-            editingFieldRef.current = null;
-            void saveNote();
-          }}
-          style={{ ...denseControlStyle, width: 140 }}
-        />
+        <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>单据标题:</span>
+        <span style={{ ...pointSlotStyle, minWidth: 120 }}>
+          <WorkbenchFieldCell
+            embed="inline"
+            text={titleStr}
+            placeholder="—"
+            allowEmpty
+            disabled={bizHeaderReadOnly || saving}
+            title="单据标题"
+            bullets={['确认后写入单据头。', '取消不保存。']}
+            onApply={(next) => void saveHeader({ title: next, note: next })}
+          />
+        </span>
       </span>
 
-      {/* 4. 客户（v10.33 统一为始终显示输入框，消除 span↔input 切换导致的宽度跳动） */}
-      <span
-        ref={customerWrapRef}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 4,
-          flexShrink: 0,
-          position: 'relative',
-        }}
-      >
-        <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>客户:</span>
-        <CustomerPicker
-          value={doc.customerId}
-          onChange={(c) => void handleCustomerChange(c)}
-          size="sm"
-          autoFocus={customerPickerOpen}
-          placeholder={customerSummary || '输入手机号/姓名搜索'}
-          disabled={collabReadOnly || saving}
-          onFocus={() => setCustomerPickerOpen(true)}
-          style={{ ...denseControlStyle, width: 200 }}
-        />
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>客户信息:</span>
+        <span style={{ ...pointSlotStyle, minWidth: 160, maxWidth: 260 }}>
+          <WorkbenchFieldCell
+            embed="inline"
+            text={customerSummary}
+            placeholder="姓名 / 电话 / 尾号"
+            disabled={collabReadOnly || saving}
+            title="客户信息"
+            bullets={['从列表点选才关联。', '手输确认不写库。', '取消不保存。']}
+            onApply={() => {
+              message.warning('请从列表点选客户');
+            }}
+            pickerRender={(ctx) => (
+              <CustomerPicker
+                open
+                hostedInGate
+                parentPanelId={ctx.panelId}
+                hostedKeyword={ctx.keyword}
+                onHostedKeywordChange={ctx.setKeyword}
+                anchorRef={ctx.inputHostRef}
+                value={doc.customerId}
+                placeholder="姓名 / 电话 / 尾号"
+                disabled={collabReadOnly || saving}
+                onChange={(c) => {
+                  void handleCustomerChange(c);
+                  ctx.close();
+                }}
+                onClose={ctx.close}
+              />
+            )}
+          />
+        </span>
       </span>
 
-      {/* 5. 收货地址（单据级，全环节可编辑，落 documents.delivery_address） */}
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>收货地址:</span>
-        <DsInput
-          size="sm"
-          value={deliveryAddress}
-          disabled={collabReadOnly || saving}
-          placeholder="本次收货地址"
-          onChange={(e) => setDeliveryAddress(e.target.value)}
-          onFocus={() => {
-            editingFieldRef.current = 'deliveryAddress';
-          }}
-          onBlur={() => {
-            editingFieldRef.current = null;
-            void saveDeliveryAddress();
-          }}
-          onPressEnter={() => void saveDeliveryAddress()}
-          style={{ ...denseControlStyle, width: 220 }}
-        />
+        <span style={{ ...pointSlotStyle, minWidth: 160, maxWidth: 280 }}>
+          <WorkbenchFieldCell
+            embed="inline"
+            text={addressStr}
+            placeholder="本次收货地址"
+            allowEmpty
+            disabled={collabReadOnly || saving}
+            title="收货地址"
+            bullets={['确认后写入本单。', '取消不保存。']}
+            onApply={(next) => void saveDeliveryAddress(next)}
+          />
+        </span>
       </span>
 
-      {/* 6. 单据状态（最右、醒目颜色字体：pending=灰、confirmed=绿、voided=红，加粗） */}
       <span
         style={{
           display: 'inline-flex',

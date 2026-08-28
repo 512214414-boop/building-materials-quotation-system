@@ -8,7 +8,7 @@
 //   2. 一级面板（parentId=null）之间互斥（打开 B 关闭 A）
 //   3. 二级面板（parentId=某一级面板）之间互斥，但与一级面板不互斥
 //   4. 关闭父面板 → 自动关闭所有子面板（级联关闭）
-//   5. z-index = 1060 + depth，确保子面板在父面板之上
+//   5. 同层 z-index = depth+1（float 叠加层 isolation 内），子面板在父面板之上
 //
 // 解决的问题：
 //   - B-2: openPanels 全局 Set 无父子关系 → 改为有父子关系的注册表
@@ -27,7 +27,7 @@ export interface PanelNode {
   id: string;
   /** 父面板 id（一级面板为 null） */
   parentId: string | null;
-  /** 层级深度（z-index = 1060 + depth） */
+  /** 层级深度（z-index = depth + 1，在 float 叠加层内） */
   depth: number;
   /** 关闭函数（调用后触发面板关闭） */
   close: () => void;
@@ -48,6 +48,13 @@ let panelIdCounter = 0;
 function generatePanelId(): string {
   panelIdCounter += 1;
   return `panel-${panelIdCounter}-${Date.now()}`;
+}
+
+/**
+ * 先拿到稳定 id，首帧就能写到 DOM 的 data-panel-id（不必等注册 effect）
+ */
+export function allocPanelId(): string {
+  return generatePanelId();
 }
 
 /**
@@ -108,14 +115,13 @@ export function closePanelWithDescendants(id: string): void {
   node.close();
 }
 
-/** 获取面板层级深度（用于 z-index 计算） */
+/** 获取面板层级深度（float 叠加层内 z-index = depth + 1） */
 export function getPanelDepth(id: string): number {
   return panelRegistry.get(id)?.depth ?? 0;
 }
 
-/** 获取当前注册的面板数量（调试用） */
-export function getPanelCount(): number {
-  return panelRegistry.size;
+export function isPointerOnFloatPanel(): boolean {
+  return !!document.querySelector('.float-panel:hover');
 }
 
 /** 检查指定 id 的面板是否已注册 */
@@ -161,6 +167,44 @@ export function isAncestorPanel(ancestorId: string, descendantId: string): boole
   return false;
 }
 
+function panelElById(id: string): HTMLElement | null {
+  return document.querySelector(`[data-panel-id="${id}"]`);
+}
+
+/**
+ * 注册表还没跟上时（子面板首帧、输入框 autoFocus 抢在 useEffect 前），
+ * 用 DOM 上的 data-parent-panel-id 判断是不是同一棵树。
+ */
+function isRelatedByDomChain(targetPanelEl: HTMLElement, currentPanelId: string): boolean {
+  const targetId = targetPanelEl.dataset.panelId;
+  if (targetId === currentPanelId) return true;
+
+  let pid = targetPanelEl.dataset.parentPanelId;
+  const seen = new Set<string>();
+  while (pid && !seen.has(pid)) {
+    if (pid === currentPanelId) return true;
+    seen.add(pid);
+    pid = panelElById(pid)?.dataset.parentPanelId;
+  }
+
+  if (!targetId) return false;
+  let el: HTMLElement | null = panelElById(currentPanelId);
+  seen.clear();
+  while (el) {
+    const id = el.dataset.panelId;
+    if (id === targetId) return true;
+    if (id) {
+      if (seen.has(id)) break;
+      seen.add(id);
+    }
+    const parent = el.dataset.parentPanelId;
+    if (!parent) break;
+    if (parent === targetId) return true;
+    el = panelElById(parent);
+  }
+  return false;
+}
+
 /**
  * 判断点击目标是否属于"当前面板或其祖先/后代面板"
  *
@@ -170,18 +214,23 @@ export function isAncestorPanel(ancestorId: string, descendantId: string): boole
  *   - 点击了后代面板内部 → 不关闭（后代面板会处理）
  *   - 点击了无关面板 → 关闭（同级互斥）
  *   - 点击了非面板区域 → 关闭
+ *
+ * 子面板里的输入框会在注册完成前抢焦点。此时注册表还没有父子关系，
+ * 若当成无关面板，父选品会被整棵关掉。未注册或 DOM 链能对上的，都算相关。
  */
 export function isClickOnRelatedPanel(target: Node, currentPanelId: string): boolean {
   let el = target as HTMLElement | null;
   while (el && el !== document.body) {
     const panelId = el.dataset?.panelId;
     if (panelId) {
-      if (panelId === currentPanelId) return true; // 点击了自己
-      if (isAncestorPanel(panelId, currentPanelId)) return true; // 点击了祖先
-      if (isAncestorPanel(currentPanelId, panelId)) return true; // 点击了后代
-      return false; // 点击了无关面板（同级或不同分支）
+      if (panelId === currentPanelId) return true;
+      if (isAncestorPanel(panelId, currentPanelId)) return true;
+      if (isAncestorPanel(currentPanelId, panelId)) return true;
+      if (isRelatedByDomChain(el, currentPanelId)) return true;
+      if (!isPanelRegistered(panelId)) return true;
+      return false;
     }
     el = el.parentElement;
   }
-  return false; // 没找到面板，是外部点击
+  return false;
 }

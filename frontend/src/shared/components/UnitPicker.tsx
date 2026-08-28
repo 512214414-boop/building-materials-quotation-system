@@ -19,10 +19,12 @@
 //   6. Enter：标准行匹配本地单位选中 / 未匹配则新增；Escape：关闭面板
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { App as AntdApp, Spin } from 'antd';
+import { Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import FloatPanel from './FloatPanel.js';
 import DsInput from './DsInput.js';
+import { PickerOverlayInput } from './PickerSlotChrome.js';
+import { useCanvasApp } from '../hooks/useCanvasApp.js';
 import {
   createUnit,
   getSkuOptions,
@@ -80,6 +82,12 @@ export interface UnitPickerProps {
    * 解析失败时退回 listUnits（仅单位名，无价格/换算）。
    */
   brandId?: string | null;
+  /**
+   * 宿主格只展示：输入+下拉挂在确认层里。
+   */
+  hideHostInput?: boolean;
+  /** hideHostInput 时：宿主格正在编辑的文字，用来过滤列表；value 仍是已保存单位 */
+  liveKeyword?: string;
   placeholder?: string;
   disabled?: boolean;
   size?: 'sm' | 'md';
@@ -92,6 +100,15 @@ export interface UnitPickerProps {
    * - false：非激活态（非表格场景默认 true）
    */
   open?: boolean;
+  /**
+   * 挂在确认层：列表是子层，不再画顶栏输入。
+   */
+  hostedInGate?: boolean;
+  parentPanelId?: string;
+  /** hostedInGate 时由确认层托管列表显隐（展开/收起钮）；不传默认常开 */
+  hostedListExpanded?: boolean;
+  /** 确认层定位稳定后为 true；子层应等它再 open */
+  hostReady?: boolean;
   /**
    * §2.1 关系表字段强约束（默认 false）：
    * - true：失焦/关闭面板时若 keyword 非空且未匹配档案，弹 Modal.confirm「是否新建补全？」
@@ -170,8 +187,14 @@ export default function UnitPicker({
   disabled = false,
   size = 'sm',
   autoFocus = false,
+  hideHostInput = false,
+  liveKeyword,
+  hostedInGate = false,
+  parentPanelId,
+  hostedListExpanded,
+  hostReady = true,
 }: UnitPickerProps) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   // v2.0 焦点总线契约：移除内部 open state，改为 prop 受控
   // keyword 是 UI state（输入框值），保留
   const [keyword, setKeyword] = useState(value || '');
@@ -188,7 +211,15 @@ export default function UnitPicker({
   /** v11.8：新增单位确认弹窗防重入（失焦/Enter/按钮点击多路触发时只弹一次） */
   const confirmingRef = useRef(false);
   /** 输入框 wrapper（用于内层 FloatPanel 锚点） */
+  const skipDraftRef = useRef(false);
+  const [listExpanded, setListExpanded] = useState(true);
   const innerWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (hideHostInput && open) {
+      setKeyword(liveKeyword ?? value ?? '');
+    }
+  }, [hideHostInput, open, liveKeyword, value]);
 
   // v11.4：兜底 0 = 未关联规格（BigInt 序列化为字符串 "0"）→ 视为无规格（非标行常见单位）
   const hasSpec = specId != null && String(specId) !== '0';
@@ -260,6 +291,8 @@ export default function UnitPicker({
   // 替代原 handleOpen 的副作用（setOpen 已移除，由外部控制）
   useEffect(() => {
     if (open) {
+      setListExpanded(true);
+      skipDraftRef.current = false;
       setKeyword(value || '');
       if (hasSpec) {
         void loadProductUnits();
@@ -271,6 +304,7 @@ export default function UnitPicker({
 
   const handleKeywordChange = (v: string) => {
     setKeyword(v);
+    setListExpanded(true);
   };
 
   // ---------- 展开/关闭 ----------
@@ -282,6 +316,16 @@ export default function UnitPicker({
   };
 
   const handleClose = () => {
+    if (hostedInGate) {
+      onClose?.();
+      return;
+    }
+    if (skipDraftRef.current) {
+      skipDraftRef.current = false;
+      onClose?.();
+      setKeyword('');
+      return;
+    }
     const trimmed = keyword.trim();
     // v11.3 直接输入模式：
     //   - 失焦时如果有关键词：
@@ -478,7 +522,9 @@ export default function UnitPicker({
   }, [hasSpec, keyword]);
 
   // 内层锚点：优先用 innerWrapRef，回退到外部 anchorRef
-  const innerAnchor = (innerWrapRef.current ? innerWrapRef : anchorRef) as React.RefObject<HTMLElement | null>;
+  const innerAnchor = (
+    hideHostInput ? anchorRef : innerWrapRef.current ? innerWrapRef : anchorRef
+  ) as React.RefObject<HTMLElement | null>;
 
   const showQuickCreate =
     keyword.trim().length > 0 &&
@@ -488,6 +534,7 @@ export default function UnitPicker({
 
   return (
     <>
+      {!hideHostInput && (
       <div ref={innerWrapRef} data-shared-badge="C25" style={{ position: 'relative', width: '100%' }}>
         <DsInput
           variant="embedded"
@@ -497,7 +544,6 @@ export default function UnitPicker({
           value={displayText}
           disabled={disabled}
           onChange={(e) => {
-            // v2.0 焦点总线契约：open 由外部控制，输入不再触发 setOpen
             handleKeywordChange(e.target.value);
           }}
           onFocus={handleOpen}
@@ -506,15 +552,31 @@ export default function UnitPicker({
           style={{ width: '100%' }}
         />
       </div>
+      )}
 
       <FloatPanel
-        open={open}
+        open={open && hostReady && (hostedListExpanded ?? true)}
         anchorRef={innerAnchor}
+        parentId={hostedInGate ? parentPanelId ?? null : null}
         onClose={handleClose}
         maxHeight={340}
         offset={2}
         style={{ padding: 0 }}
       >
+        {hideHostInput && !hostedInGate ? (
+          <PickerOverlayInput
+            value={keyword}
+            placeholder={placeholder}
+            listExpanded={listExpanded}
+            onToggleList={() => setListExpanded((v) => !v)}
+            onChange={handleKeywordChange}
+            onCancel={() => {
+              skipDraftRef.current = true;
+              handleClose();
+            }}
+          />
+        ) : null}
+        {(!hideHostInput || hostedInGate || listExpanded) ? (
         <div
           style={{
             maxHeight: 280,
@@ -533,7 +595,7 @@ export default function UnitPicker({
                 alignItems: 'center',
                 gap: 8,
                 width: '100%',
-                padding: '4px 8px',
+                padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                 border: 'none',
                 borderBottom: '1px solid var(--border-neutral-l1)',
                 background: 'var(--bg-brand-popup)',
@@ -541,7 +603,7 @@ export default function UnitPicker({
                 cursor: creating ? 'wait' : 'pointer',
                 textAlign: 'left',
                 fontSize: 'var(--body-xs-font-size)',
-                lineHeight: 1.4,
+                lineHeight: 1.2,
                 fontWeight: 500,
               }}
               onMouseEnter={(e) => {
@@ -569,7 +631,7 @@ export default function UnitPicker({
           )}
 
           {loading ? (
-            <div style={{ padding: '12px 8px', textAlign: 'center' }}>
+            <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', textAlign: 'center' }}>
               <Spin size="small" />
             </div>
           ) : hasSpec && dataSource === 'options' ? (
@@ -578,7 +640,7 @@ export default function UnitPicker({
             filteredSkuUnits.length === 0 ? (
               <div
                 style={{
-                  padding: '12px 8px',
+                  padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                   color: 'var(--text-tertiary)',
                   fontSize: 'var(--body-xs-font-size)',
                   textAlign: 'center',
@@ -605,7 +667,7 @@ export default function UnitPicker({
                       justifyContent: 'space-between',
                       gap: 8,
                       width: '100%',
-                      padding: '4px 8px',
+                      padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                       border: 'none',
                       borderBottom: '1px solid var(--border-neutral-l1)',
                       background: isActive ? 'var(--bg-brand-popup)' : 'transparent',
@@ -613,7 +675,7 @@ export default function UnitPicker({
                       cursor: 'pointer',
                       textAlign: 'left',
                       fontSize: 'var(--body-xs-font-size)',
-                      lineHeight: 1.4,
+                      lineHeight: 1.2,
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive) e.currentTarget.style.background = 'var(--bg-overlay-l1)';
@@ -646,7 +708,7 @@ export default function UnitPicker({
             filteredProductUnits.length === 0 ? (
               <div
                 style={{
-                  padding: '12px 8px',
+                  padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                   color: 'var(--text-tertiary)',
                   fontSize: 'var(--body-xs-font-size)',
                   textAlign: 'center',
@@ -673,7 +735,7 @@ export default function UnitPicker({
                       justifyContent: 'space-between',
                       gap: 8,
                       width: '100%',
-                      padding: '4px 8px',
+                      padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                       border: 'none',
                       borderBottom: '1px solid var(--border-neutral-l1)',
                       background: isActive ? 'var(--bg-brand-popup)' : 'transparent',
@@ -681,7 +743,7 @@ export default function UnitPicker({
                       cursor: 'pointer',
                       textAlign: 'left',
                       fontSize: 'var(--body-xs-font-size)',
-                      lineHeight: 1.4,
+                      lineHeight: 1.2,
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive) e.currentTarget.style.background = 'var(--bg-overlay-l1)';
@@ -712,7 +774,7 @@ export default function UnitPicker({
             filteredCommonUnits.length === 0 ? (
               <div
                 style={{
-                  padding: '12px 8px',
+                  padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                   color: 'var(--text-tertiary)',
                   fontSize: 'var(--body-xs-font-size)',
                   textAlign: 'center',
@@ -736,7 +798,7 @@ export default function UnitPicker({
                       justifyContent: 'space-between',
                       gap: 8,
                       width: '100%',
-                      padding: '4px 8px',
+                      padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                       border: 'none',
                       borderBottom: '1px solid var(--border-neutral-l1)',
                       background: isActive ? 'var(--bg-brand-popup)' : 'transparent',
@@ -744,7 +806,7 @@ export default function UnitPicker({
                       cursor: 'pointer',
                       textAlign: 'left',
                       fontSize: 'var(--body-xs-font-size)',
-                      lineHeight: 1.4,
+                      lineHeight: 1.2,
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive) e.currentTarget.style.background = 'var(--bg-overlay-l1)';
@@ -774,6 +836,7 @@ export default function UnitPicker({
             )
           )}
         </div>
+        ) : null}
       </FloatPanel>
     </>
   );

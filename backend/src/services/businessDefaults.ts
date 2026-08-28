@@ -52,8 +52,11 @@ export const DEFAULT_SUPPLIER_NAME = '面价渠道';
 /** 售价类型为空时的系统默认价格类型名（ensure 幂等，保证真实存在于 price_type 表） */
 export const DEFAULT_PRICE_TYPE_NAME = '零售价';
 
-/** 分类为空时的系统默认分类名（ensure 幂等，保证真实存在于 category 表；v15.3 统一引用类语义） */
+/** 分类为空时的系统默认分类名 */
 export const DEFAULT_CATEGORY_NAME = '未分类';
+
+/** 品牌为空时的系统默认品牌名 */
+export const DEFAULT_BRAND_NAME = '普通品牌';
 
 /** 数值类必填但无有效值时的占位大值（一眼识别「未设置」，配合字体颜色标记） */
 export const NUMERIC_PLACEHOLDER = 9999;
@@ -165,10 +168,7 @@ export async function resolveCategoryRef(
 }
 
 /**
- * 系统缺省记录预置（服务启动时调用，幂等）：
- *   - 「未分类」分类（分类为空时的缺省引用；v15.3 统一引用类语义，ensure 幂等）
- *   - 「面价渠道」供应商（进价供应商为空时的缺省引用，保证供应商列表始终可见可选）
- *   - 「零售价」价格类型（售价类型为空时的缺省引用）
+ * 按名称确保缺省引用（写入层调用，不在启动时预插）。
  */
 export async function ensureSystemDefaults(): Promise<void> {
   await resolveCategoryRef(prisma, {});

@@ -17,9 +17,9 @@
 //  2. 锁定后新建/编辑/删除全部禁用，避免忙时误触
 //  3. 必要字段：refund_type + refund_qty（2个）；次要字段：reason（1个，可空不阻塞）
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { App as AntdApp, Spin, Menu, type MenuProps } from 'antd';
+import { Spin, Menu, type MenuProps } from 'antd';
 import { DeleteOutlined, EditOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import DsButton from '../../../../../shared/components/DsButton.js';
 import DsInput from '../../../../../shared/components/DsInput.js';
@@ -29,15 +29,13 @@ import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/com
 import DsTag from '../../../../../shared/components/DsTag.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
-import {
-  listPurchaseQuoteLines,
-  type PurchaseQuoteLineView,
-} from '../../../../../shared/services/api/purchaseQuoteApi.js';
+import SoldLinePicker, { type RefundSourceDoc } from '../../../../../shared/components/SoldLinePicker.js';
+import DocumentSourcePicker from '../../../../../shared/components/DocumentSourcePicker.js';
+import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { WORKBENCH_TEXT } from '../../../../../shared/styles/shell-constants.js';
 import {
   getDocument,
-  listLines,
   type StaffDocumentDetail,
-  type StaffDocumentLine,
   type StaffPaymentRecordRef,
 } from '../../../../../shared/services/api/documentApi.js';
 import {
@@ -49,42 +47,14 @@ import {
   unlockRefundView,
   type RefundLineView,
   type RefundLineUpdateInput,
+  type SoldLineHit,
 } from '../../../../../shared/services/api/refundApi.js';
 import { round2 } from '../../../../../shared/engines/pricing-engine.js';
 import { useSaveStatus } from '../../../../../shared/components/common/SaveStatusProvider.js';
-import type { RefundType, RefundStatus, StageStatus } from '../../../../../shared/types/index.js';
+import type { RefundType, RefundStatus } from '../../../../../shared/types/index.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
-
-type QuoteStatus = StageStatus;
-interface QuoteLineView {
-  lineId: string;
-  seq: number;
-  productRef: string;
-  qty: number;
-  quote: {
-    unitPrice: number;
-    discount: number;
-    lineAmount: number;
-    quoteStatus: QuoteStatus;
-  } | null;
-}
-
-async function listQuoteLines(docId: string): Promise<QuoteLineView[]> {
-  const r = await listPurchaseQuoteLines(docId);
-  return r.lines.map((l: PurchaseQuoteLineView) => ({
-    lineId: String(l.lineId),
-    seq: l.seq,
-    productRef: l.productRef,
-    qty: l.qty,
-    quote: {
-      unitPrice: l.unitPrice,
-      discount: l.lineDiscount,
-      lineAmount: l.amount,
-      quoteStatus: r.purchaseQuoteStatus,
-    },
-  }));
-}
+import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
 
 // ============================================================
 // 辅助
@@ -210,23 +180,26 @@ interface EditForm {
 // ============================================================
 
 export default function RefundAfterSale({ documentId }: { documentId: string }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const { trackSave } = useSaveStatus();
   const [refundLines, setRefundLines] = useState<RefundLineView[]>([]);
-  const [docLines, setDocLines] = useState<StaffDocumentLine[]>([]);
-  const [quoteLines, setQuoteLines] = useState<QuoteLineView[]>([]);
   const [docDetail, setDocDetail] = useState<StaffDocumentDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sourceDocs, setSourceDocs] = useState<RefundSourceDoc[]>([
+    { id: documentId, documentNo: '', customerName: null },
+  ]);
+  const [selectedSold, setSelectedSold] = useState<SoldLineHit | null>(null);
 
   // 视图锁定（防误触，与行级 refund_status=closed 独立）
   const [viewLocked, setViewLocked] = useState(false);
   const [lockActioning, setLockActioning] = useState(false);
+  const loadedOnceRef = useRef(false);
 
   // 新建表单
-  const [newLineId, setNewLineId] = useState<string | undefined>(undefined);
   const [newRefundType, setNewRefundType] = useState<RefundType>('refund');
   const [newRefundQtyText, setNewRefundQtyText] = useState('');
   const [newReason, setNewReason] = useState('');
+  const [newRestock, setNewRestock] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // 编辑对话框
@@ -238,28 +211,50 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   // ----------------------------------------------------------
   // 数据加载
   // ----------------------------------------------------------
+  const sourceKey = sourceDocs.map((d) => d.id).join(',');
+
+  useEffect(() => {
+    loadedOnceRef.current = false;
+    setSourceDocs([{ id: documentId, documentNo: '', customerName: null }]);
+    setSelectedSold(null);
+  }, [documentId]);
+
+  useEffect(() => {
+    if (!docDetail) return;
+    setSourceDocs((prev) => {
+      const rest = prev.filter((d) => d.id !== documentId);
+      return [
+        {
+          id: documentId,
+          documentNo: docDetail.documentNo,
+          customerName: docDetail.customerName ?? null,
+        },
+        ...rest,
+      ];
+    });
+  }, [docDetail, documentId]);
+
   const load = useCallback(async () => {
-    setLoading(true);
+    // 勾选原单会改 sourceKey → 只静默刷退换行，不能 setLoading 把确认层整页卸掉
+    const silent = loadedOnceRef.current;
+    if (!silent) setLoading(true);
     try {
-      const [refunds, lines, quotes, doc] = await Promise.all([
-        listRefundLines(documentId),
-        listLines(documentId),
-        listQuoteLines(documentId),
+      const ids = Array.from(new Set([documentId, ...sourceDocs.map((d) => d.id)]));
+      const [refundLists, doc] = await Promise.all([
+        Promise.all(ids.map((id) => listRefundLines(id).catch(() => [] as RefundLineView[]))),
         getDocument(documentId),
       ]);
-      setRefundLines(refunds);
-      setDocLines(lines);
-      setQuoteLines(quotes);
+      setRefundLines(refundLists.flat());
       setDocDetail(doc);
-      // 读取视图锁定状态
       const locks = doc?.viewLocks ?? {};
       setViewLocked(!!locks['refundAfterSale']);
+      loadedOnceRef.current = true;
     } catch (e) {
       message.error((e as Error).message || '加载退换记录失败');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [documentId, message]);
+  }, [documentId, sourceKey, message]);
 
   // v3.1 安全异步 effect：组件卸载后跳过 load（避免卸载后 setState）
   useSafeAsyncEffect(() => load(), [load]);
@@ -270,15 +265,6 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   // ----------------------------------------------------------
   // 派生：原售价映射（lineId → unitPrice）
   // ----------------------------------------------------------
-  const unitPriceByLine = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const ql of quoteLines) {
-      if (ql.quote) map[ql.lineId] = ql.quote.unitPrice;
-    }
-    return map;
-  }, [quoteLines]);
-
-  // 已退换数量映射（lineId → totalRefunded，前端聚合）
   const refundedByLine = useMemo(() => {
     const map: Record<string, number> = {};
     for (const rl of refundLines) {
@@ -289,12 +275,10 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
 
   const newRefundQty = parseFloat(newRefundQtyText) || 0;
 
-  // 选中的商品行
-  const selectedLine = newLineId ? docLines.find((dl) => dl.id === newLineId) ?? null : null;
-  const selectedUnitPrice = selectedLine ? unitPriceByLine[selectedLine.id] || 0 : 0;
-  const selectedRemaining = selectedLine
-    ? Number(selectedLine.qty) - (refundedByLine[selectedLine.id] || 0)
-    : 0;
+  const selectedLine = selectedSold;
+  const selectedRecognized = selectedSold?.recognized ?? false;
+  const selectedUnitPrice = selectedSold?.unitPrice ?? 0;
+  const selectedRemaining = selectedSold?.remaining ?? 0;
   const previewRefundAmount = round2(newRefundQty * selectedUnitPrice);
 
   // ----------------------------------------------------------
@@ -327,57 +311,62 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   }, [refundLines]);
 
   // ----------------------------------------------------------
-  // 派生：商品行下拉选项
-  // ----------------------------------------------------------
-  const lineOptions = useMemo(() => {
-    return docLines.map((dl) => {
-      const remaining = Number(dl.qty) - (refundedByLine[dl.id] || 0);
-      const unitPrice = unitPriceByLine[dl.id] || 0;
-      return {
-        label: `${dl.productRef}${dl.spec ? ` (${dl.spec})` : ''} — 需求${dl.qty} / 余可退${remaining}${unitPrice > 0 ? ` / 单价¥${unitPrice.toFixed(2)}` : ''}`,
-        value: dl.id,
-        disabled: remaining <= 0 || unitPrice <= 0,
-      };
-    });
-  }, [docLines, refundedByLine, unitPriceByLine]);
-
-  // ----------------------------------------------------------
   // 操作：添加退换记录
   // ----------------------------------------------------------
+  const submitSoldLines = useCallback(
+    async (lines: Array<SoldLineHit & { refundQty?: number }>) => {
+      if (viewLocked) return;
+      if (!lines.length) {
+        message.warning('请先对上已卖行');
+        return;
+      }
+      // 每行用自己的数量（picker 里输的）；没输的回退到新建区统一数量
+      const resolved = lines.map((l) => ({ line: l, qty: l.refundQty ?? newRefundQty }));
+      for (const { line, qty } of resolved) {
+        if (qty <= 0) {
+          message.warning(`${line.productRef} 退换数量必须大于 0`);
+          return;
+        }
+        if (qty > line.remaining) {
+          message.warning(`${line.productRef} 不能超过剩余可退量 ${line.remaining}`);
+          return;
+        }
+      }
+      setSubmitting(true);
+      try {
+        for (const { line, qty } of resolved) {
+          const didRestock = newRestock && line.recognized;
+          await addRefundLine(line.documentId, {
+            lineId: line.lineId,
+            refundType: newRefundType,
+            refundQty: qty,
+            reason: newReason.trim() || undefined,
+            restock: didRestock,
+          });
+        }
+        message.success(newRestock ? '退换记录已添加，认全的已回主仓' : '退换记录已添加');
+        setSelectedSold(null);
+        setNewRefundType('refund');
+        setNewRefundQtyText('');
+        setNewReason('');
+        setNewRestock(false);
+        await load();
+      } catch (e) {
+        message.error((e as Error).message || '添加失败');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [viewLocked, newRefundQty, newRestock, newRefundType, newReason, message, load],
+  );
+
   const handleAdd = useCallback(async () => {
-    if (viewLocked) return;
-    if (!newLineId) {
-      message.warning('请选择商品行');
+    if (!selectedSold) {
+      message.warning('请先对上已卖行');
       return;
     }
-    if (newRefundQty <= 0) {
-      message.warning('退换数量必须大于 0');
-      return;
-    }
-    if (newRefundQty > selectedRemaining) {
-      message.warning(`退换数量不能超过剩余可退量 ${selectedRemaining}`);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await addRefundLine(documentId, {
-        lineId: newLineId,
-        refundType: newRefundType,
-        refundQty: newRefundQty,
-        reason: newReason.trim() || undefined,
-      });
-      message.success('退换记录已添加');
-      setNewLineId(undefined);
-      setNewRefundType('refund');
-      setNewRefundQtyText('');
-      setNewReason('');
-      await load();
-    } catch (e) {
-      message.error((e as Error).message || '添加失败');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [newLineId, newRefundType, newRefundQty, newReason, selectedRemaining, documentId, message, load, viewLocked]);
+    await submitSoldLines([selectedSold]);
+  }, [selectedSold, submitSoldLines, message]);
 
   // ----------------------------------------------------------
   // 操作：删除退换记录
@@ -530,7 +519,17 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   // ----------------------------------------------------------
   const columns: UnifiedTableColumn<RefundLineView>[] = useMemo(
     () => [
-      // 1. 商品名称
+      {
+        key: 'documentNo',
+        title: '原单',
+        minWidth: 110,
+        align: 'center',
+        renderMode: 'static' as const,
+        render: (_v: unknown, r: RefundLineView) => {
+          const doc = sourceDocs.find((d) => d.id === r.documentId);
+          return <span style={{ color: 'var(--text-secondary)' }}>{doc?.documentNo ?? r.documentId}</span>;
+        },
+      },
       {
         key: 'productRef',
         title: '商品名称',
@@ -694,7 +693,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
           v ? v : <span style={{ color: 'var(--text-tertiary)' }}>—</span>,
       },
     ],
-    [],
+    [sourceDocs],
   );
 
   // ----------------------------------------------------------
@@ -911,7 +910,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
       {/* 新建退换记录区 */}
       <div
         style={{
-          padding: 'var(--spacer-16)',
+          padding: 'var(--spacer-12)',
           background: 'var(--bg-base-secondary)',
           border: '1px solid var(--border-neutral-l1)',
           borderRadius: 'var(--radius-6)',
@@ -922,31 +921,85 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
             fontSize: 'var(--body-sm-font-size)',
             fontWeight: 600,
             color: 'var(--text-default)',
-            marginBottom: 'var(--spacer-12)',
+            marginBottom: 'var(--spacer-8)',
           }}
         >
-          新建退换记录（强继承：原数量/原售价由系统自动继承，操作员仅填写退换数量与原因）
+          新建退换记录
         </div>
-        <div style={{ display: 'flex', gap: 'var(--spacer-12)', alignItems: 'flex-end' }}>
-          <div style={{ flex: '2 1 240px', minWidth: '240px' }}>
-            <div style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)', marginBottom: 'var(--spacer-4)' }}>
-              商品行（已按余可退量过滤）
-            </div>
-            <DsSelect
-              size="sm"
-              value={newLineId}
-              onChange={(v) => setNewLineId(v as string | undefined)}
-              options={lineOptions}
-              placeholder="选择商品行"
-              style={{ width: '100%' }}
-              allowClear
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', overflowX: 'auto' }}>
+          <div style={{ flex: '1 1 150px', minWidth: 130, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>检索单据:</span>
+            <div style={{ flex: 1, minWidth: 0, height: 20, display: 'flex', alignItems: 'center' }}>
+            <WorkbenchFieldCell
+              embed="inline"
+              text=""
+              placeholder={sourceDocs.length > 1 ? `已选 ${sourceDocs.length} 张` : '点此检索'}
               disabled={viewLocked}
+              title="检索单据"
+              bullets={['勾选原单。', '手输确认不改已勾选。']}
+              onApply={() => {
+                message.warning('请从列表勾选单据');
+              }}
+              pickerRender={(ctx) => (
+                <DocumentSourcePicker
+                  hostedInGate
+                  parentPanelId={ctx.panelId}
+                  hostedKeyword={ctx.keyword}
+                  onHostedKeywordChange={ctx.setKeyword}
+                  hostedListExpanded={ctx.listExpanded}
+                  hostReady={ctx.hostReady}
+                  anchorRef={ctx.inputHostRef}
+                  pinnedDocument={{
+                    id: documentId,
+                    documentNo: docDetail?.documentNo ?? '',
+                    customerName: docDetail?.customerName ?? null,
+                  }}
+                  sourceDocs={sourceDocs}
+                  onSourceDocsChange={setSourceDocs}
+                  disabled={viewLocked}
+                />
+              )}
             />
-          </div>
-          <div style={{ flex: '1 1 100px', minWidth: '100px' }}>
-            <div style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)', marginBottom: 'var(--spacer-4)' }}>
-              退换类型
             </div>
+          </div>
+          <div style={{ flex: '1 1 170px', minWidth: 140, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>检索单据产品:</span>
+            <div style={{ flex: 1, minWidth: 0, height: 20, display: 'flex', alignItems: 'center' }}>
+            <WorkbenchFieldCell
+              embed="inline"
+              text={selectedSold?.productRef ?? ''}
+              placeholder="点此检索已卖行"
+              disabled={viewLocked}
+              title="检索单据产品"
+              bullets={['点名称预览，插入才写入退换。', '手输确认不写库。']}
+              onApply={() => {
+                message.warning('请从列表点选或插入已卖行');
+              }}
+              pickerRender={(ctx) => (
+                <SoldLinePicker
+                  hostedInGate
+                  parentPanelId={ctx.panelId}
+                  hostedKeyword={ctx.keyword}
+                  onHostedKeywordChange={ctx.setKeyword}
+                  hostedListExpanded={ctx.listExpanded}
+                  hostReady={ctx.hostReady}
+                  anchorRef={ctx.inputHostRef}
+                  sourceDocs={sourceDocs}
+                  selectedLineId={selectedSold?.lineId}
+                  onSelectLine={(line) => {
+                    setSelectedSold(line);
+                    setNewRestock(false);
+                  }}
+                  onInsert={(lines) => void submitSoldLines(lines)}
+                  onClose={ctx.close}
+                  disabled={viewLocked}
+                />
+              )}
+            />
+            </div>
+          </div>
+          <div style={{ flex: '0 0 108px', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>类型:</span>
             <DsSelect
               size="sm"
               value={newRefundType}
@@ -955,14 +1008,12 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
                 { label: '退款', value: 'refund' },
                 { label: '换货', value: 'exchange' },
               ]}
-              style={{ width: '100%' }}
+              style={{ flex: 1, minWidth: 0, height: 20 }}
               disabled={viewLocked}
             />
           </div>
-          <div style={{ flex: '1 1 100px', minWidth: '100px' }}>
-            <div style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)', marginBottom: 'var(--spacer-4)' }}>
-              退换数量{selectedRemaining > 0 ? `（余可退 ${selectedRemaining}）` : ''}
-            </div>
+          <div style={{ flex: '0 0 100px', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }} title={selectedRemaining > 0 ? `余可退 ${selectedRemaining}` : undefined}>数量:</span>
             <DsInput
               size="sm"
               type="text"
@@ -970,25 +1021,44 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
               value={newRefundQtyText}
               onChange={(e) => setNewRefundQtyText(e.target.value)}
               placeholder="0"
-              style={{ width: '100%', fontVariantNumeric: 'tabular-nums' }}
+              style={{ flex: 1, minWidth: 0, fontVariantNumeric: 'tabular-nums' }}
               disabled={viewLocked}
             />
           </div>
-          <div style={{ flex: '2 1 200px', minWidth: '200px' }}>
-            <div style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)', marginBottom: 'var(--spacer-4)' }}>
-              退换原因 / 备注
-            </div>
+          <div style={{ flex: '1 1 140px', minWidth: 110, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>原因:</span>
             <DsInput
               size="sm"
               value={newReason}
               onChange={(e) => setNewReason(e.target.value)}
               placeholder="选填"
-              style={{ width: '100%' }}
+              style={{ flex: 1, minWidth: 0 }}
               disabled={viewLocked}
             />
           </div>
+          <label
+            style={{
+              flex: '0 0 auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              ...WORKBENCH_TEXT,
+              color: 'var(--text-secondary)',
+              cursor: viewLocked || !selectedRecognized ? 'not-allowed' : 'pointer',
+            }}
+            title={selectedLine && !selectedRecognized ? '规格、牌子、单位都认上了才能回仓' : undefined}
+          >
+            <input
+              type="checkbox"
+              checked={newRestock && selectedRecognized}
+              disabled={viewLocked || !selectedRecognized}
+              onChange={(e) => setNewRestock(e.target.checked)}
+              style={{ margin: 0 }}
+            />
+            回主仓
+          </label>
           <div style={{ flex: '0 0 auto' }}>
-            <DsButton variant="primary" onClick={handleAdd} disabled={viewLocked || submitting}>
+            <DsButton variant="primary" size="sm" onClick={handleAdd} disabled={viewLocked || submitting}>
               {submitting ? '添加中…' : '添加'}
             </DsButton>
           </div>
@@ -1003,8 +1073,8 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
               flexWrap: 'nowrap',
               overflowX: 'auto',
               WebkitOverflowScrolling: 'touch',
-              marginTop: 'var(--spacer-12)',
-              padding: 'var(--spacer-8) var(--spacer-12)',
+              marginTop: 'var(--spacer-8)',
+              padding: 'var(--spacer-6) var(--spacer-12)',
               background: 'var(--bg-base-tertiary)',
               border: '1px solid var(--border-neutral-l1)',
               borderRadius: 'var(--radius-6)',
@@ -1027,7 +1097,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
               原需求（强继承）：<span style={{ color: 'var(--text-default)' }}>{selectedLine.qty}</span>
             </span>
             <span>
-              已退换：<span style={{ color: 'var(--text-default)' }}>{refundedByLine[selectedLine.id] || 0}</span>
+              已退换：<span style={{ color: 'var(--text-default)' }}>{refundedByLine[selectedLine.lineId] || 0}</span>
             </span>
             <span>
               余可退：<span style={{ color: 'var(--status-warning-default)', fontWeight: 500 }}>{selectedRemaining}</span>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>文档可视化 · 业务指导思想与基础数据</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <aside class="nav">
+    <div class="nav-head">
+      <h1>开发文档可视化</h1>
+      <p>人看这里对齐开发 · 先改这里再改用户文档 · 冲突以这里为准</p>
+    </div>
+    <div class="nav-list"></div>
+  </aside>
+
+  <main class="main">
+    <header class="page-title">
+      <h2>本章定位</h2>
+      <p>按一类活 · 先业务后能力 · 不写表和组件</p>
+    </header>
+    <nav class="chapter-nav" id="chapter-nav" hidden></nav>
+    <div id="module-extra" class="module-extra"></div>
+
+    <div id="why"></div>
+    <div id="point-model"></div>
+    <div id="inventory"></div>
+    <div id="tree"></div>
+    <div id="fill"></div>
+    <div id="law"></div>
+    <div id="nslot"></div>
+    <div id="layers"></div>
+    <div id="picker-use"></div>
+    <div id="archive-layers"></div>
+    <div id="archive-use"></div>
+
+    <section class="demo">
+      <div class="demo-head">
+        <h3>选品展开</h3>
+        <p>格子里打字。面板顶栏切视图：同一词换检索打法。切档后入口层在最左，别的层各占一列。点当前档或 ? 看这一档打在哪。写入只走 →。试一下：打「伟星」点「品牌」；打「国标」点「执行标准」；打「华南」点「渠道」；打「ppr25」或「伟星」点「渠道」看已进价和范围；打「6分管」看名称；打「金牛」分别点品牌和渠道。</p>
+      </div>
+      <div class="quote-row">
+        <span class="quote-h">产品名称</span>
+        <span class="quote-h">单位</span>
+        <span class="quote-h">数量</span>
+        <span class="quote-h">单价</span>
+      </div>
+      <div class="quote-row quote-body">
+        <div class="quote-cell">
+          <input id="search-input" type="text" value="" placeholder="输入产品名称" />
+          <span class="quote-caret">▾</span>
+        </div>
+        <span class="quote-static">米</span>
+        <span class="quote-static">1</span>
+        <span class="quote-static">15.60</span>
+      </div>
+      <div class="picker-stage" id="demo-body"></div>
+    </section>
+
+    <section class="demo archive-demo">
+      <div class="demo-head">
+        <h3>产品管理列表 = 同一棵树摊平</h3>
+        <p>一行已经是规格×品牌。点 ▾ 是子集浮层，不是选品展开。</p>
+      </div>
+      <div class="quote-row">
+        <span class="quote-h">分类</span>
+        <span class="quote-h">产品名</span>
+        <span class="quote-h">品牌</span>
+        <span class="quote-h">规格</span>
+        <span class="quote-h">单位</span>
+        <span class="quote-h">售价</span>
+        <span class="quote-h">进价</span>
+        <span class="quote-h">备注</span>
+      </div>
+      <div class="quote-row quote-body">
+        <span class="quote-static is-value">给水管</span>
+        <span class="quote-static is-value">ppr25水管</span>
+        <span class="quote-static is-value">伟星</span>
+        <span class="quote-static is-value">dn25*3.5</span>
+        <span class="quote-static is-value">米 ▾</span>
+        <span class="quote-static is-value">15.60 ▾</span>
+        <span class="quote-static is-value">10.50 ▾</span>
+        <span class="quote-static is-value">国标 GB/T 18742.2</span>
+      </div>
+      <p class="archive-demo-note">点「给水管 / 伟星 / dn25*3.5」→ 确认层。点「ppr25水管」→ 编辑弹窗（俗称在产品名旁，规格备注在规格旁）。点「米 / 15.60 / 10.50」→ 维护浮层。列表备注列是这一条规格的执行标准，格内直编。</p>
+    </section>
+  </main>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-panel" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <div>
+          <h3 id="modal-title"></h3>
+          <p class="modal-sub" id="modal-sub"></p>
+        </div>
+        <button type="button" class="modal-close" id="modal-close">关闭</button>
+      </div>
+      <p class="modal-scene" id="modal-scene" hidden></p>
+      <p class="modal-hang" id="modal-hang" hidden></p>
+      <p class="modal-dep" id="modal-dep"></p>
+      <p class="modal-code" id="modal-code" hidden></p>
+      <table class="modal-table">
+        <thead>
+          <tr>
+            <th>数据库字段</th>
+            <th>业务语义</th>
+            <th>外键关联指向</th>
+          </tr>
+        </thead>
+        <tbody id="modal-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

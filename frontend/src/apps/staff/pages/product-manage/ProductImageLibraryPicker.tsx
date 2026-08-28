@@ -33,6 +33,7 @@ import {
   scoreSkuByCustomWeights,
 } from '../../../../shared/utils/search-scoring.js';
 import { resolveImageUrl } from '../../../../shared/utils/resolveImageUrl.js';
+import { overlayModalContainer } from '../../../../shared/utils/canvasStage.js';
 
 export interface ProductImageLibraryPickerProps {
   open: boolean;
@@ -268,6 +269,8 @@ export default function ProductImageLibraryPicker({
       title="从图片库选择（已有图片复用，无需重复上传）"
       footer={null}
       width={820}
+      getContainer={overlayModalContainer}
+      centered
     >
       <Spin spinning={loading}>
         {/* v1.5.5：检索栏（关键词 + 分类筛选） */}

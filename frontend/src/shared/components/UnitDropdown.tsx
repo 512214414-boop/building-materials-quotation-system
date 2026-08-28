@@ -119,7 +119,7 @@ export function UnitDropdown({
   );
 
   const dropdownContent = (
-    <div style={{ width: 240, padding: 4 }}>
+    <div style={{ width: 240, padding: 'var(--overlay-pad-y) var(--overlay-pad-x)' }}>
       <div
         style={{
           fontSize: 10,
@@ -166,7 +166,7 @@ export function UnitDropdown({
                   gridTemplateColumns: '16px 1fr auto',
                   alignItems: 'center',
                   gap: 6,
-                  padding: '4px 6px',
+                  padding: '1px var(--overlay-pad-x)',
                   border: 'none',
                   background: isSelected ? 'var(--bg-overlay-l1)' : 'transparent',
                   cursor: disabled ? 'not-allowed' : 'pointer',

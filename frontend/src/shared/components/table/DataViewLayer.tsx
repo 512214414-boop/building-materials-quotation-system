@@ -14,11 +14,18 @@
 //   - DataViewLayer 通过 onCellRender 委托单元格渲染给 InteractionLayer
 //   - InteractionLayer 在 columns 中注入 render 函数（渲染 CellEditor）
 
-import { useMemo } from 'react';
+import { memo, useMemo, useSyncExternalStore } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Table } from 'antd';
 import type { TableColumnsType } from 'antd';
 import type { UnifiedTableColumn } from './cell-editors/CellEditor.types.js';
+import {
+  COL_WIDTHS,
+  fitChromeFor,
+  fitColWidth,
+  getFitDraft,
+  subscribeFitDraft,
+} from './colWidths.js';
 
 // ============================================================
 // Props
@@ -56,7 +63,7 @@ export interface DataViewLayerProps<T extends Record<string, any>> {
 // 组件
 // ============================================================
 
-export default function DataViewLayer<T extends Record<string, any>>({
+function DataViewLayer<T extends Record<string, any>>({
   columns,
   rows,
   rowKey,
@@ -68,10 +75,9 @@ export default function DataViewLayer<T extends Record<string, any>>({
   rowClassName,
   emptyText,
 }: DataViewLayerProps<T>) {
-  // 虚拟滚动：>50 行自动启用
   const shouldVirtual = virtual ?? rows.length > 50;
+  const fitDraft = useSyncExternalStore(subscribeFitDraft, getFitDraft);
 
-  // 将 UnifiedTableColumn 转换为 antd Table 列定义
   const antdColumns: TableColumnsType<T> = useMemo(() => {
     return columns.map((col) => {
       const isElastic = col.key === '__elastic';
@@ -93,19 +99,16 @@ export default function DataViewLayer<T extends Record<string, any>>({
           : undefined,
       };
 
-      // 列宽统一规则（fixed 布局，v12.1 修复）：
-      //   列宽 = 设计值（真实物理大小），任何内容不参与列宽计算
-      //   —— 修复「内容撑开列宽 → 编辑态回落」的列宽跳变问题
-      //   依据：用户顶层要求「所有元素就是看到是多大就是多大」「状态转换不影响原本大小」
-      //   - 弹性列：不设 width，fixed 布局自动分配剩余空间
-      //   - wrap=true 列（如产品名称）：固定 width=minWidth，内容换行显示，行高自适应
-      //   - 已有显式 width 的列（操作列、序号列）：保持原 width，不换行
-      //   - 其他数据列：固定 width=minWidth，nowrap，内容溢出由列宽兜底（不撑开列）
+      // 列宽：
+      //   - 弹性列：剩余空间
+      //   - wrap：固定 minWidth，内容换行
+      //   - 操作/序号等已有显式 width 且无 minWidth：保持
+      //   - 其余数据列默认随当前页最长内容撑开（不低于 minWidth）；fitContent:false 才锁死
       if (isElastic) {
         antdCol.width = undefined;
         antdCol.minWidth = 0;
       } else if (col.wrap) {
-        // 允许换行的列：固定宽度，内容自动换行，行高自适应
+        // 允许换行的列：宽度锁在 minWidth，多了往下折，禁止按内容把表撑宽
         // v11.3.1 修复：通过列级 className + CSS !important 规则确保 wrap 列样式不被全局 nowrap 覆盖
         // 核心改动：将 className 设在列定义层面（Ant Design 会直接应用到 <td>/<th>），
         //          而非 onCell 返回值（可能被 Ant Design 内部逻辑覆盖）
@@ -122,6 +125,8 @@ export default function DataViewLayer<T extends Record<string, any>>({
               ...(userProps.style || {}),
               whiteSpace: 'nowrap',
               minWidth: wrapMinWidth,
+              maxWidth: wrapMinWidth,
+              width: wrapMinWidth,
               '--wrap-min-width': `${wrapMinWidth}px`,
             } as CSSProperties,
           };
@@ -136,15 +141,16 @@ export default function DataViewLayer<T extends Record<string, any>>({
               wordBreak: 'break-word',
               wordWrap: 'break-word',
               verticalAlign: 'top',
-              paddingTop: 4,
-              paddingBottom: 4,
+              overflow: 'visible',
               minWidth: wrapMinWidth,
+              maxWidth: wrapMinWidth,
+              width: wrapMinWidth,
               '--wrap-min-width': `${wrapMinWidth}px`,
             } as CSSProperties,
           };
         };
-      } else if (antdCol.width != null) {
-        // 已有显式 width 的列（操作列、序号列）：保持原宽度，不换行
+      } else if (antdCol.width != null && col.minWidth == null && col.fitContent == null) {
+        // 操作列/序号列：已有显式 width，不随内容
         const userOnHeaderCell = antdCol.onHeaderCell;
         const userOnCell = antdCol.onCell;
         antdCol.onHeaderCell = (record: any, index: number) => {
@@ -161,12 +167,8 @@ export default function DataViewLayer<T extends Record<string, any>>({
             style: { ...(userProps.style || {}), whiteSpace: 'nowrap' },
           };
         };
-      } else {
-        // 普通数据列：固定 width=minWidth（真实物理大小），nowrap 防换行，
-        // 内容溢出由列宽兜底（overflow:hidden 裁切），绝不撑开列宽
-        if (col.minWidth) {
-          antdCol.width = col.minWidth;
-        }
+      } else if (col.fitContent === false) {
+        if (col.minWidth) antdCol.width = col.minWidth;
         antdCol.minWidth = 0;
         const userOnHeaderCell = antdCol.onHeaderCell;
         const userOnCell = antdCol.onCell;
@@ -194,10 +196,65 @@ export default function DataViewLayer<T extends Record<string, any>>({
             },
           };
         };
+      } else {
+        const field = (col.dataIndex as string) || col.key;
+        const texts = rows.map((r) =>
+          col.getFitText ? col.getFitText(r) : String(r[field] ?? ''),
+        );
+        const draft = fitDraft[col.key];
+        if (draft) texts.push(draft);
+        if (typeof col.title === 'string') texts.push(col.title);
+        const align = col.align ?? 'center';
+        const min = col.minWidth ?? COL_WIDTHS.TAG_S;
+        const width = fitColWidth(texts, min, fitChromeFor(col));
+        antdCol.width = width;
+        antdCol.minWidth = width;
+        antdCol.className = [col.className, 'ds-fit-col', `ds-fit-align-${align}`]
+          .filter(Boolean)
+          .join(' ');
+        const userOnHeaderCell = antdCol.onHeaderCell;
+        const userOnCell = antdCol.onCell;
+        antdCol.onHeaderCell = (record: any, index: number) => {
+          const userProps = userOnHeaderCell ? userOnHeaderCell(record, index) : {};
+          return {
+            ...userProps,
+            style: {
+              ...(userProps.style || {}),
+              whiteSpace: 'nowrap',
+              textAlign: align,
+              width,
+              minWidth: width,
+            } as CSSProperties,
+          };
+        };
+        antdCol.onCell = (record: any, index: number) => {
+          const userProps = userOnCell ? userOnCell(record, index) : {};
+          return {
+            ...userProps,
+            style: {
+              ...(userProps.style || {}),
+              whiteSpace: 'nowrap',
+              verticalAlign: 'middle',
+              overflow: 'visible',
+              textAlign: align,
+              width,
+              minWidth: width,
+            } as CSSProperties,
+          };
+        };
       }
       return antdCol;
     });
-  }, [columns, shouldVirtual]);
+  }, [columns, shouldVirtual, rows, fitDraft]);
+
+  const columnWidthSum = antdColumns.reduce((s, c) => {
+    const w = (c as { width?: number }).width;
+    return s + (typeof w === 'number' ? w : 0);
+  }, 0);
+  const resolvedScroll =
+    scroll?.x == null
+      ? { x: Math.max(columnWidthSum, 1), y: scroll?.y }
+      : scroll;
 
   return (
     <Table<T>
@@ -206,7 +263,7 @@ export default function DataViewLayer<T extends Record<string, any>>({
       dataSource={rows}
       rowKey={rowKey}
       virtual={shouldVirtual}
-      scroll={scroll}
+      scroll={resolvedScroll}
       pagination={
         pagination
           ? {
@@ -235,3 +292,5 @@ export default function DataViewLayer<T extends Record<string, any>>({
     />
   );
 }
+
+export default memo(DataViewLayer) as typeof DataViewLayer;

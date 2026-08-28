@@ -31,6 +31,12 @@ import { calcLineAmount, round2 } from '../engines/pricing-engine.js';
 import { broadcastLinesUpdated } from './documentService.js';
 import { syncDocumentTotals } from './purchaseQuoteService.js';
 
+function assertSalesLinesWritable(doc: { status: string; sales_archive_status: string }) {
+  if (doc.status === 'archived' || doc.sales_archive_status === 'archived') {
+    throw Errors.unprocessable('销售已定档，单据行只读。要改先反定档。');
+  }
+}
+
 export interface DocumentLineInput {
   /** v14.0：关联规格变体（SKU 维度锚点，可空——待建档商品直接用 productRef） */
   specId?: bigint | null;
@@ -41,6 +47,9 @@ export interface DocumentLineInput {
   /** v8.0：关联单位（FK → unit.id，可空；null=清空） */
   unitId?: bigint | null;
   productRef: string;
+  /** 手写拆分时直接写快照，不经过档案 */
+  productName?: string | null;
+  brandName?: string | null;
   /** v8.0：规格型号快照（update 时 null=清除，undefined=不变；来自 SPU.specModel） */
   spec?: string | null;
   categoryId?: number | null;
@@ -57,6 +66,8 @@ export interface DocumentLineInput {
   rawUnit?: string;
   /** 是否已标准化；AI 原始行传 false，默认 true */
   isStandardized?: boolean;
+  /** 插入到该序号（1-based）；不传则追加到末尾。后续行 seq 后移。 */
+  insertSeq?: number;
 }
 
 /**
@@ -109,7 +120,7 @@ async function resolveLineSnapshots(input: DocumentLineInput): Promise<LineSnaps
     unitId
       ? prisma.unit.findUnique({
           where: { id: unitId },
-          select: { unitName: true, specId: true },
+          select: { unitName: true },
         })
       : Promise.resolve(null),
     specId
@@ -184,7 +195,7 @@ async function resolveLineSnapshotsBatch(lines: DocumentLineInput[]): Promise<Li
     unitIds.size
       ? prisma.unit.findMany({
           where: { id: { in: Array.from(unitIds) } },
-          select: { id: true, unitName: true, specId: true },
+          select: { id: true, unitName: true },
         })
       : Promise.resolve([]),
     productIds.size
@@ -286,11 +297,11 @@ async function nextSeq(documentId: bigint): Promise<number> {
 export async function addLine(documentId: bigint, input: DocumentLineInput) {
   const doc = await prisma.documents.findUnique({
     where: { id: documentId },
-    select: { id: true, status: true, purchase_quote_status: true },
+    select: { id: true, status: true, purchase_quote_status: true, sales_archive_status: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
+  assertSalesLinesWritable(doc);
 
-  const seq = await nextSeq(documentId);
   const isStandardized = input.isStandardized ?? !!input.brandId;
   const rawDescription = input.rawDescription ?? (isStandardized ? null : input.productRef);
   const rawUnit = input.rawUnit ?? (isStandardized ? null : input.unit);
@@ -298,14 +309,33 @@ export async function addLine(documentId: bigint, input: DocumentLineInput) {
   const lineDiscount = round2(input.lineDiscount ?? 0);
   const amount = calcLineAmount(input.qty, unitPrice, lineDiscount);
 
-  // v11.0 解耦：主动查询产品档案信息，写入 5 个独立快照字段
-  // 产品档案已物理删除时，快照字段返回 null，单据行仍可创建
   const snapshots = await resolveLineSnapshots(input);
 
-  const created = await prisma.document_lines.create({
-    data: {
-      documentId,
-      seq,
+  const created = await prisma.$transaction(async (tx) => {
+    let seq: number;
+    if (input.insertSeq && input.insertSeq > 0) {
+      seq = input.insertSeq;
+      const toShift = await tx.document_lines.findMany({
+        where: { documentId, seq: { gte: seq } },
+        orderBy: { seq: 'desc' },
+        select: { id: true, seq: true },
+      });
+      for (const line of toShift) {
+        await tx.document_lines.update({ where: { id: line.id }, data: { seq: line.seq + 1 } });
+      }
+    } else {
+      const last = await tx.document_lines.findFirst({
+        where: { documentId },
+        orderBy: { seq: 'desc' },
+        select: { seq: true },
+      });
+      seq = (last?.seq ?? 0) + 1;
+    }
+
+    return tx.document_lines.create({
+      data: {
+        documentId,
+        seq,
       // v14.0 + v8.0：SKU 关联（specId 物理 NOT NULL，待建档商品兜底 0=未关联规格；brandId/productId/unitId 可空）
       specId: input.specId ?? 0n,
       brandId: input.brandId ?? null,
@@ -319,11 +349,11 @@ export async function addLine(documentId: bigint, input: DocumentLineInput) {
       thumbnailUrl: input.thumbnailUrl ?? null,
       imageUrls: (input.imageUrls as object) ?? undefined,
       // v11.0 独立快照字段（确保单据展示完全脱离产品库当前状态）
-      productName: snapshots.productName,
-      brandName: snapshots.brandName,
+      productName: input.productName !== undefined ? input.productName : snapshots.productName,
+      brandName: input.brandName !== undefined ? input.brandName : snapshots.brandName,
       categoryName: snapshots.categoryName,
-      specModel: snapshots.specModel,
-      unitName: snapshots.unitName,
+      specModel: input.spec !== undefined ? input.spec : snapshots.specModel,
+      unitName: snapshots.unitName ?? (input.unit || null),
       qty: input.qty,
       unitPrice,
       lineDiscount,
@@ -333,6 +363,7 @@ export async function addLine(documentId: bigint, input: DocumentLineInput) {
       rawDescription,
       rawUnit,
     },
+    });
   });
   await syncDocumentTotals(documentId);
   broadcastLinesUpdated(documentId);
@@ -346,6 +377,13 @@ export async function updateLine(
 ) {
   const existing = await prisma.document_lines.findUnique({ where: { id: lineId } });
   if (!existing) throw Errors.notFound('单据行不存在');
+
+  const parent = await prisma.documents.findUnique({
+    where: { id: existing.documentId },
+    select: { status: true, sales_archive_status: true },
+  });
+  if (!parent) throw Errors.notFound('单据不存在');
+  assertSalesLinesWritable(parent);
 
   if (lineVersion !== undefined && lineVersion !== existing.lineVersion) {
     throw Errors.conflict('单据行已被其他操作修改，请刷新后重试', 40901);
@@ -390,15 +428,16 @@ export async function updateLine(
     update.isStandardized = input.isStandardized;
   }
 
-  // v14.0 + v11.0 解耦：当 specId/brandId/productId/unitId 任一被传入时，重新解析 5 个独立快照字段
-  // 设计依据：[数据库新设计·产品数据层.md]「单据-产品库解耦」章节
-  // 合并 existing 与 input 的最新 SKU 关联值，调用 resolveLineSnapshots 刷新快照
-  const skuChanged =
+  // 快照只在「主动换绑」时重抄，不按行上残留 ID 去档案里自动刷。
+  //   · 再插入 / 换产品 / 解绑（payload 带 specId/brandId/productId）→ 5 个快照整份重抄当时档案
+  //   · 只换单位（只带 unitId）→ 只重抄单位名；产品/品牌/规格/分类保持开单时的字
+  //   · 改数量/单价/备注 → 快照不动
+  const rebindSku =
     input.specId !== undefined ||
     input.brandId !== undefined ||
-    input.productId !== undefined ||
-    input.unitId !== undefined;
-  if (skuChanged) {
+    input.productId !== undefined;
+  const unitTouched = input.unitId !== undefined;
+  if (rebindSku || unitTouched) {
     const mergedInput: DocumentLineInput = {
       specId: input.specId !== undefined ? input.specId : (existing.specId ?? undefined),
       brandId: input.brandId !== undefined ? input.brandId : (existing.brandId ?? undefined),
@@ -412,12 +451,22 @@ export async function updateLine(
       lineDiscount,
       remark: input.remark ?? existing.remark ?? undefined,
     };
-    const snapshots = await resolveLineSnapshots(mergedInput);
-    update.productName = snapshots.productName;
-    update.brandName = snapshots.brandName;
-    update.categoryName = snapshots.categoryName;
-    update.specModel = snapshots.specModel;
-    update.unitName = snapshots.unitName;
+    if (rebindSku) {
+      const snapshots = await resolveLineSnapshots(mergedInput);
+      update.productName = input.productName !== undefined ? input.productName : snapshots.productName;
+      update.brandName = input.brandName !== undefined ? input.brandName : snapshots.brandName;
+      update.categoryName = snapshots.categoryName;
+      update.specModel = input.spec !== undefined ? input.spec : snapshots.specModel;
+      update.unitName = snapshots.unitName ?? (input.unit !== undefined ? input.unit : null);
+    } else if (mergedInput.unitId) {
+      const unitRow = await prisma.unit.findUnique({
+        where: { id: mergedInput.unitId },
+        select: { unitName: true },
+      });
+      update.unitName = unitRow?.unitName ?? null;
+    } else {
+      update.unitName = null;
+    }
   }
 
   const updated = await prisma.document_lines.update({
@@ -432,6 +481,13 @@ export async function updateLine(
 export async function removeLine(lineId: bigint, lineVersion?: number) {
   const existing = await prisma.document_lines.findUnique({ where: { id: lineId } });
   if (!existing) throw Errors.notFound('单据行不存在');
+
+  const parent = await prisma.documents.findUnique({
+    where: { id: existing.documentId },
+    select: { status: true, sales_archive_status: true },
+  });
+  if (!parent) throw Errors.notFound('单据不存在');
+  assertSalesLinesWritable(parent);
 
   if (lineVersion !== undefined && lineVersion !== existing.lineVersion) {
     throw Errors.conflict('单据行已被其他操作修改，请刷新后重试', 40901);
@@ -460,6 +516,29 @@ async function normalizeSeq(documentId: bigint) {
   }
 }
 
+/** 重新整理单据内所有行的 seq（按当前顺序从 1 重排，保留行 ID，不破坏快照/跨视图引用） */
+export async function resequenceLines(documentId: bigint) {
+  const doc = await prisma.documents.findUnique({
+    where: { id: documentId },
+    select: { status: true, sales_archive_status: true },
+  });
+  if (!doc) throw Errors.notFound('单据不存在');
+  assertSalesLinesWritable(doc);
+
+  const lines = await prisma.document_lines.findMany({
+    where: { documentId },
+    select: { id: true, productRef: true, productId: true },
+  });
+  const blankIds = lines
+    .filter((l) => !l.productRef.trim() && l.productId == null)
+    .map((l) => l.id);
+  if (blankIds.length > 0) {
+    await prisma.document_lines.deleteMany({ where: { id: { in: blankIds } } });
+  }
+  await normalizeSeq(documentId);
+  broadcastLinesUpdated(documentId);
+}
+
 /**
  * 批量替换单据行（保留单据 ID，重置所有行）。
  * 用于客户端「批量编辑」场景。
@@ -468,8 +547,12 @@ async function normalizeSeq(documentId: bigint) {
  * 避免循环中多次 DB 查询。
  */
 export async function replaceLines(documentId: bigint, lines: DocumentLineInput[]) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await prisma.documents.findUnique({
+    where: { id: documentId },
+    select: { id: true, status: true, sales_archive_status: true },
+  });
   if (!doc) throw Errors.notFound('单据不存在');
+  assertSalesLinesWritable(doc);
 
   // v11.0 解耦：批量解析快照字段
   const snapshotsList = await resolveLineSnapshotsBatch(lines);

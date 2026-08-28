@@ -535,6 +535,38 @@ async function main() {
       create: { customer_code, ...c },
     });
     customerMap[c.phone] = customer.id;
+    const phoneContact = await prisma.customer_contact.findFirst({
+      where: { customerId: customer.id, value: c.phone },
+    });
+    if (!phoneContact) {
+      await prisma.customer_contact.create({
+        data: {
+          customerId: customer.id,
+          name: c.name,
+          method: '电话',
+          value: c.phone,
+          isDefault: true,
+          sortOrder: 0,
+        },
+      });
+    }
+    if (c.wechat) {
+      const wx = await prisma.customer_contact.findFirst({
+        where: { customerId: customer.id, value: c.wechat },
+      });
+      if (!wx) {
+        await prisma.customer_contact.create({
+          data: {
+            customerId: customer.id,
+            name: c.name,
+            method: '微信',
+            value: c.wechat,
+            isDefault: false,
+            sortOrder: 1,
+          },
+        });
+      }
+    }
   }
   console.log('✓ 3 个客户档案初始化完成');
 
@@ -614,17 +646,47 @@ async function main() {
     const supplier = await prisma.supplier.create({
       data: {
         name: s.name,
-        contacts: s.contacts ?? null,
-        businessScope: s.businessScope ?? null,
-        address: s.address ?? null,
         remark: s.remark ?? null,
         status: 1,
+        contacts: s.contacts?.length
+          ? {
+              create: (s.contacts as Array<{ name: string; method: string; value: string; isDefault?: boolean }>).map(
+                (c, i) => ({
+                  name: c.name,
+                  method: c.method,
+                  value: c.value,
+                  isDefault: c.isDefault ?? i === 0,
+                  sortOrder: i,
+                }),
+              ),
+            }
+          : undefined,
+        addresses: s.address
+          ? {
+              create: {
+                addressText: s.address,
+                isDefault: true,
+                sortOrder: 0,
+              },
+            }
+          : undefined,
       },
     });
+    if (s.businessScope) {
+      const parts = s.businessScope.split(/[,，、/|]/).map((x) => x.trim()).filter(Boolean);
+      for (const part of parts) {
+        const cat = await prisma.category.findFirst({ where: { name: { contains: part } } });
+        if (cat) {
+          await prisma.supplier_business_category.create({
+            data: { supplierId: supplier.id, categoryId: cat.id },
+          }).catch(() => undefined);
+        }
+      }
+    }
     supplierMap[s.name] = supplier.id;
     supplierCount++;
   }
-  console.log(`§6.2 ✓ ${supplierCount} 个供应商档案初始化完成（v9.0：contacts Json + businessScope + Int status）`);
+  console.log(`§6.2 ✓ ${supplierCount} 个供应商档案初始化完成（v20：拆表 contacts/addresses/categories）`);
 
   // ---- §6.3 导入产品主体 product（SPU = name + specModel）----
   const productMap: Record<string, bigint> = {};

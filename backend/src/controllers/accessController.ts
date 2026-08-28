@@ -13,7 +13,7 @@ import * as codeSvc from '../services/accessCodeService.js';
 // ===== 公开：客户准入登录 =====
 
 const verifySchema = z.object({
-  phone: z.string().min(1, '手机号必填'),
+  phone: z.string().min(1, '登录账号必填').max(200).regex(/^[A-Za-z0-9_+\-.]+$/, '登录账号只能是电话或微信字符'),
   code: z.string().min(1, '授权码必填'),
 });
 
@@ -27,7 +27,9 @@ export async function verifyGateHandler(req: Request, res: Response) {
 
 // ===== 公开：客户准入申请 =====
 
-const requestAccessSchema = z.object({ phone: z.string().min(1, '手机号必填') });
+const requestAccessSchema = z.object({
+  phone: z.string().min(1, '登录账号必填').max(200).regex(/^[A-Za-z0-9_+\-.]+$/, '登录账号只能是电话或微信字符'),
+});
 
 export async function requestAccessHandler(req: Request, res: Response) {
   const parsed = requestAccessSchema.safeParse(req.body);

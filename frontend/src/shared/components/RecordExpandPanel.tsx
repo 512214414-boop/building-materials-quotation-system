@@ -66,7 +66,7 @@ export interface RecordExpandPanelProps {
   renderTab?: (tabKey: string) => React.ReactNode;
   /** 单页内容（无 tabs 模式） */
   children?: React.ReactNode;
-  /** 面板最小宽度 */
+  /** 面板最小宽度。无 Tab/切换的单页（单位维护）默认吃内容，不要垫出空白。 */
   minWidth?: number;
 }
 
@@ -81,10 +81,12 @@ export function RecordExpandPanel({
   switcher,
   renderTab,
   children,
-  minWidth = 280,
+  minWidth: minWidthProp,
   'data-shared-badge': badgeOverride,
 }: RecordExpandPanelProps) {
   const hasTabs = !!tabs?.length;
+  const hasChrome = hasTabs || !!switcher;
+  const minWidth = minWidthProp ?? (hasChrome ? 280 : 0);
   const [internalTab, setInternalTab] = useState<string | undefined>(activeTab);
 
   // 受控/非受控兼容：优先受控 activeTab，否则内部状态
@@ -114,12 +116,8 @@ export function RecordExpandPanel({
   return (
     <div
       data-shared-badge={badgeOverride ?? 'C28'}
-      style={{
-        background: 'var(--bg-overlay-l1)',
-        padding: '6px 8px',
-        borderBottom: '1px solid var(--border-neutral-l1)',
-        minWidth,
-      }}
+      className={hasChrome ? 'ds-expand-panel' : 'ds-expand-panel is-flush'}
+      style={{ minWidth: minWidth || undefined }}
     >
       {/* 顶部：Tab 切换（可选）+ 维度切换下拉（可选），同一行紧凑布局 */}
       {/* v10.1.4：nowrap + overflow-x:auto，禁止任何子元素被压缩 */}

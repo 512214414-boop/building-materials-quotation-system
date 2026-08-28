@@ -18,7 +18,6 @@ import {
   ScanOutlined,
   UnlockOutlined,
 } from '@ant-design/icons';
-import { App as AntdApp } from 'antd';
 import ProductPicker, {
   buildQuickCreateSelection,
   type SelectedPrice,
@@ -32,6 +31,7 @@ import {
 } from '../services/api/documentApi.js';
 import type { SkuSearchRow, SkuOptionUnit } from '../services/api/baseDataApi.js';
 import { round2 } from '../engines/pricing-engine.js';
+import { useCanvasApp } from '../hooks/useCanvasApp.js';
 
 // ============================================================
 // 类型定义
@@ -47,8 +47,12 @@ export interface PaperRow {
   productId: string | null;
   unitId: string | null;
   productRef: string;
+  productName?: string;
   brandName: string;
   spec: string | null;
+  hideProductName?: boolean;
+  hideBrandName?: boolean;
+  hideSpecModel?: boolean;
   unit: string;
   qty: string;
   unitPrice: string;
@@ -380,7 +384,7 @@ function UnitCell({ value, specId, disabled, onSelect }: UnitCellProps) {
 // ============================================================
 
 export default function DocumentPaperView(props: DocumentPaperViewProps) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const {
     lines,
     documentNo,

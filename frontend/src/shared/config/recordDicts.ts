@@ -13,6 +13,7 @@ import type {
   SupplierView,
   CategoryView,
   PriceTypeView,
+  UnitView,
 } from '../services/api/baseDataApi.js';
 import {
   listBrands,
@@ -31,6 +32,9 @@ import {
   createPriceType,
   updatePriceType,
   deletePriceType,
+  listUnits,
+  quickAddUnit,
+  deleteUnit,
 } from '../services/api/baseDataApi.js';
 import type { DictRecordConfig } from '../components/DictRefField.js';
 
@@ -115,9 +119,42 @@ export const priceTypeDict: DictRecordConfig<PriceTypeView> = {
   entityName: '价格类型',
 };
 
+// ============================================================
+// §5 单位全局字典（v16.5 unit 表，A 类槽：检索 + 边用边建 + 管理面板）
+//   - 非标行（无 specId）走这一套：按名称确保幂等 → 直接建即选
+//   - 标准行（有 specId）走 B 类 spec_unit（ProductPicker unit 层），不在此槽
+//   - 删除：无 spec_unit 引用才允许物理删除；被引用时管理面板拦截
+// ============================================================
+
+export const unitDict: DictRecordConfig<UnitView> = {
+  list: () => listUnits({ page: 1, pageSize: 200 }).then((r) => r.list ?? []),
+  create: (name) => quickAddUnit(name).then((u) => ({ id: u.id, name: u.unitName })),
+  update: () => {
+    throw new Error('单位全局字典暂不支持改名，请在产品编辑里维护');
+  },
+  remove: (id) => deleteUnit(id) as Promise<unknown>,
+  countField: 'specUnits',
+  countHeader: '引用数',
+  nameHeader: '单位名称',
+  addPlaceholder: '输入新单位名称',
+  editPlaceholder: '输入新单位名称',
+  emptyText: '暂无单位，请在上方输入框新增',
+  entityName: '单位',
+};
+
 export default {
   brandDict,
   supplierDict,
   categoryDict,
   priceTypeDict,
+  unitDict,
 };
+
+export function dictConfigFor(kind: 'brand' | 'unit' | 'category' | 'priceType' | 'supplier') {
+  if (kind === 'category') return categoryDict;
+  if (kind === 'brand') return brandDict;
+  if (kind === 'priceType') return priceTypeDict;
+  if (kind === 'supplier') return supplierDict;
+  if (kind === 'unit') return unitDict;
+  return undefined;
+}

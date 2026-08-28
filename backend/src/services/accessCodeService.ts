@@ -10,6 +10,13 @@ import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
 import { signCustomer } from './authService.js';
 import { generateCustomerCode } from '../utils/code-generator.js';
+import {
+  assertLoginContactValue,
+  assertLoginValueAvailable,
+  findCustomerByLoginValue,
+  guessContactMethod,
+} from '../utils/loginContact.js';
+import { syncCustomerContacts } from './customerRelations.js';
 
 function generateCode(): string {
   const buf = randomBytes(4);
@@ -97,20 +104,27 @@ export async function stats() {
   return { total, active, used, revoked, expired };
 }
 
-export async function verify(phone: string, code: string) {
+export async function verify(login: string, code: string) {
+  const phone = login.trim();
+  assertLoginContactValue(phone, '登录账号');
   const ac = await prisma.authorization_codes.findUnique({ where: { code } });
   if (!ac) throw Errors.unauthorized('授权码无效', 40103);
   if (ac.status !== 'active') throw Errors.unauthorized('授权码已失效', 40103);
   if (ac.expiresAt < new Date()) throw Errors.unauthorized('授权码已过期', 40103);
   if (ac.phone && ac.phone !== phone) {
-    throw Errors.unprocessable('授权码与手机号不匹配', 42201);
+    throw Errors.unprocessable('授权码与登录账号不匹配', 42201);
   }
 
-  let customer = await prisma.customers.findUnique({ where: { phone } });
+  let customer = await findCustomerByLoginValue(phone);
   if (!customer) {
-    // v2.7 自动生成不可变客户编码
+    await assertLoginValueAvailable(phone);
     const customer_code = await generateCustomerCode();
-    customer = await prisma.customers.create({ data: { customer_code, phone } });
+    customer = await prisma.customers.create({
+      data: { customer_code, phone: phone.length <= 20 ? phone : null },
+    });
+    await syncCustomerContacts(customer.id, [
+      { name: '', method: guessContactMethod(phone), value: phone, isDefault: true },
+    ]);
   }
 
   await prisma.authorization_codes.update({
@@ -118,7 +132,7 @@ export async function verify(phone: string, code: string) {
     data: { status: 'used', activatedAt: new Date(), phone },
   });
 
-  const token = signCustomer(customer.id, customer.phone);
+  const token = signCustomer(customer.id, phone);
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
   await prisma.customer_sessions.create({
     data: { customerId: customer.id, token, authorizationCodeId: ac.id, expiresAt },
@@ -126,7 +140,7 @@ export async function verify(phone: string, code: string) {
 
   return {
     token,
-    customer: { id: customer.id, phone: customer.phone, name: customer.name },
+    customer: { id: customer.id, phone, name: customer.name },
   };
 }
 
@@ -189,11 +203,44 @@ export async function reviewAccessRequest(
   }
 
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.customers.findUnique({ where: { phone: ar.phone } });
+    let existing = await tx.customer_contact.findFirst({
+      where: { isDefault: true, value: ar.phone },
+      select: { customerId: true },
+    });
     if (!existing) {
-      // v2.7 自动生成不可变客户编码
-      const customer_code = await generateCustomerCode();
-      await tx.customers.create({ data: { customer_code, phone: ar.phone } });
+      const byPhone = await tx.customers.findUnique({ where: { phone: ar.phone } });
+      if (!byPhone) {
+        const customer_code = await generateCustomerCode();
+        const created = await tx.customers.create({
+          data: { customer_code, phone: ar.phone.length <= 20 ? ar.phone : null },
+        });
+        await tx.customer_contact.create({
+          data: {
+            customerId: created.id,
+            name: '',
+            method: guessContactMethod(ar.phone),
+            value: ar.phone,
+            isDefault: true,
+            sortOrder: 0,
+          },
+        });
+      } else {
+        const hasDefault = await tx.customer_contact.findFirst({
+          where: { customerId: byPhone.id, isDefault: true },
+        });
+        if (!hasDefault) {
+          await tx.customer_contact.create({
+            data: {
+              customerId: byPhone.id,
+              name: byPhone.name ?? '',
+              method: guessContactMethod(ar.phone),
+              value: ar.phone,
+              isDefault: true,
+              sortOrder: 0,
+            },
+          });
+        }
+      }
     }
 
     const hours = config.authCodeExpiresHours;

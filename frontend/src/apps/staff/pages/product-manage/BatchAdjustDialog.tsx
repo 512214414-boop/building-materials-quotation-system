@@ -11,14 +11,14 @@ import { App as AntdApp } from 'antd';
 import {
   DsButton,
   DsDialog,
-  DsNumberInput,
   DsTag,
-  SuggestInput,
+  ArchiveDialogField,
 } from '../../../../shared/components/index.js';
 import {
   batchAdjustPreview,
   batchAdjustPurchasePrices,
   getPointRule,
+  listSuppliers,
   type BatchAdjustInput,
   type BatchAdjustPreviewResult,
 } from '../../../../shared/services/api/baseDataApi.js';
@@ -36,13 +36,6 @@ export interface BatchAdjustDialogProps {
     categoryName: string;
   };
 }
-
-const FIELD_LABEL: React.CSSProperties = {
-  fontSize: 'var(--body-xs-font-size)',
-  color: 'var(--text-secondary)',
-  marginBottom: 2,
-  whiteSpace: 'nowrap',
-};
 
 export default function BatchAdjustDialog({
   open,
@@ -181,97 +174,75 @@ export default function BatchAdjustDialog({
         </DsButton>,
       ]}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* 定位同类：供应商 + 品牌名 + 分类名 */}
-        <div>
-          <div style={FIELD_LABEL}>供应商</div>
-          <SuggestInput
-            field="supplier"
-            value={supplierInput}
-            onChange={(val) => {
-              setSupplierInput(val);
-              invalidatePreview();
-            }}
-            onSelect={(item) => {
-              setSupplierId(item.id ?? '');
-              setSupplierInput(item.name);
-              invalidatePreview();
-            }}
-            allowCreate={false}
-            placeholder="选择供应商（点位挂供应商维度）"
-            size="sm"
-            disabled={contextLocked}
-          />
-        </div>
-        <div>
-          <div style={FIELD_LABEL}>品牌</div>
-          <SuggestInput
-            field="brand"
-            value={brandInput}
-            onChange={(val) => {
-              setBrandInput(val);
-              invalidatePreview();
-            }}
-            onSelect={(item) => {
-              setBrandInput(item.name);
-              invalidatePreview();
-            }}
-            allowCreate={false}
-            placeholder="选择品牌（同品牌不同系列点位不同 → 品牌名录细）"
-            size="sm"
-            disabled={contextLocked}
-          />
-        </div>
-        <div>
-          <div style={FIELD_LABEL}>分类</div>
-          <SuggestInput
-            field="category"
-            value={categoryInput}
-            onChange={(val) => {
-              setCategoryInput(val);
-              invalidatePreview();
-            }}
-            onSelect={(item) => {
-              setCategoryInput(item.name);
-              invalidatePreview();
-            }}
-            allowCreate={false}
-            placeholder="选择分类（管材/管件点位不同 → 分类名录细）"
-            size="sm"
-            disabled={contextLocked}
-          />
-        </div>
-
-        {/* 点位输入（旧点位自动带出，新点位必填） */}
+      <div className="ds-dialog-form">
+        <ArchiveDialogField
+          label="供应商"
+          value={supplierInput}
+          placeholder="选择供应商（点位挂供应商维度）"
+          title="修改供应商"
+          suggestField="supplier"
+          disabled={contextLocked}
+          onApply={async (name) => {
+            setSupplierInput(name);
+            try {
+              const r = await listSuppliers({ keyword: name, page: 1, pageSize: 50 });
+              const matched = r.list.find((s) => s.name === name.trim());
+              setSupplierId(matched?.id ?? '');
+            } catch {
+              setSupplierId('');
+            }
+            invalidatePreview();
+          }}
+        />
+        <ArchiveDialogField
+          label="品牌"
+          value={brandInput}
+          placeholder="选择品牌（同品牌不同系列点位不同 → 品牌名录细）"
+          title="修改品牌"
+          suggestField="brand"
+          disabled={contextLocked}
+          onApply={(name) => {
+            setBrandInput(name);
+            invalidatePreview();
+          }}
+        />
+        <ArchiveDialogField
+          label="分类"
+          value={categoryInput}
+          placeholder="选择分类（管材/管件点位不同 → 分类名录细）"
+          title="修改分类"
+          suggestField="category"
+          disabled={contextLocked}
+          onApply={(name) => {
+            setCategoryInput(name);
+            invalidatePreview();
+          }}
+        />
         <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={FIELD_LABEL}>
-              旧点位{loadingRule && '（读取中…）'}
-            </div>
-            <DsNumberInput
-              size="sm"
-              placeholder="如 0.58"
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <ArchiveDialogField
+              label={loadingRule ? '旧点位（读取中…）' : '旧点位'}
               value={oldPoint}
-              onChange={(e) => {
-                setOldPoint(e.target.value);
+              placeholder="如 0.58"
+              title="修改旧点位"
+              input="number"
+              onApply={(v) => {
+                setOldPoint(v);
                 invalidatePreview();
               }}
-              align="left"
-              style={{ width: '100%' }}
             />
           </div>
-          <div style={{ flex: 1 }}>
-            <div style={FIELD_LABEL}>新点位</div>
-            <DsNumberInput
-              size="sm"
-              placeholder="如 0.55"
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <ArchiveDialogField
+              label="新点位"
               value={newPoint}
-              onChange={(e) => {
-                setNewPoint(e.target.value);
+              placeholder="如 0.55"
+              title="修改新点位"
+              input="number"
+              onApply={(v) => {
+                setNewPoint(v);
                 invalidatePreview();
               }}
-              align="left"
-              style={{ width: '100%' }}
             />
           </div>
         </div>

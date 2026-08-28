@@ -15,6 +15,13 @@ import { applyTransition, isPriceVisible } from '../engines/document-state-machi
 import { wsManager } from '../ws/index.js';
 import type { DocumentStatus, StageStatus } from '../types/index.js';
 
+function parseDayBound(raw: string, endOfDay: boolean): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return new Date(`${raw}T${endOfDay ? '23:59:59.999' : '00:00:00'}+08:00`);
+  }
+  return new Date(raw);
+}
+
 function formatDate(d: Date): string {
   const y = String(d.getFullYear()).slice(-2);
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -50,28 +57,57 @@ export interface ListFilter {
   startDate?: Date;
   endDate?: Date;
   includeArchived?: boolean;
+  entryView?: 'loose' | 'customer' | 'qty' | 'amount';
+  preview?: boolean;
+}
+
+function parseDocSearchNumber(kw: string): number | null {
+  const t = kw.trim().replace(/[,，]/g, '');
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function listDocuments(query: Record<string, unknown>) {
   const { page, pageSize, skip, take } = parsePagination(query);
   const where: Record<string, unknown> = {};
+  const entryView = query.entryView as ListFilter['entryView'] | undefined;
+  const preview = query.preview === 'true' || query.preview === true;
 
   if (typeof query.keyword === 'string' && query.keyword) {
     const kw = query.keyword.trim();
-    // v15.2 索引驱动检索（规模基线：几千万行单据，禁止 OR contains 全表扫描）：
-    //   - 标准单号形态（以「YY-」开头，如 26-08-10-001 / 26-08-10）→ document_no 前缀检索，
-    //     走 document_no 唯一索引前缀（单据号检索是最高频路径，必须先索引）
-    //   - 其余关键词（客户名/电话/公司/标题）→ 保持模糊匹配（配合状态/时间过滤收敛）
-    if (/^\d{2}-/.test(kw)) {
+    if (/^\d{2}-/.test(kw) && (!entryView || entryView === 'loose')) {
       where.document_no = { startsWith: kw };
     } else {
-      // v11.0 解耦：customer 关系已移除，改为基于快照字段检索
-      where.OR = [
-        { customerName: { contains: kw } },
-        { customerPhone: { contains: kw } },
-        { customerCompany: { contains: kw } },
-        { title: { contains: kw } },
-      ];
+      const num = parseDocSearchNumber(kw);
+      const or: Record<string, unknown>[] = [];
+      if (!entryView || entryView === 'loose') {
+        or.push(
+          { document_no: { contains: kw } },
+          { customerName: { contains: kw } },
+          { customerPhone: { contains: kw } },
+          { customerContactMethod: { contains: kw } },
+          { customerCompany: { contains: kw } },
+          { title: { contains: kw } },
+          { note: { contains: kw } },
+        );
+        if (num != null) {
+          or.push({ total_amount: num }, { total_qty: num });
+        }
+      } else if (entryView === 'customer') {
+        or.push(
+          { customerName: { contains: kw } },
+          { customerPhone: { contains: kw } },
+          { customerContactMethod: { contains: kw } },
+          { customerCompany: { contains: kw } },
+        );
+      } else if (entryView === 'qty') {
+        if (num != null) or.push({ total_qty: num });
+      } else if (entryView === 'amount') {
+        if (num != null) or.push({ total_amount: num });
+      }
+      if (or.length) where.OR = or;
+      else where.id = -1n;
     }
   }
   if (typeof query.customerId === 'string' && query.customerId) {
@@ -86,10 +122,10 @@ export async function listDocuments(query: Record<string, unknown>) {
   const dateFrom = query.dateFrom ?? query.startDate;
   const dateTo = query.dateTo ?? query.endDate;
   if (typeof dateFrom === 'string' && dateFrom) {
-    where.created_at = { ...(where.created_at as object), gte: new Date(dateFrom) };
+    where.created_at = { ...(where.created_at as object), gte: parseDayBound(dateFrom, false) };
   }
   if (typeof dateTo === 'string' && dateTo) {
-    where.created_at = { ...(where.created_at as object), lte: new Date(dateTo) };
+    where.created_at = { ...(where.created_at as object), lte: parseDayBound(dateTo, true) };
   }
   const includeArchived = query.includeArchived === 'true' || query.includeArchived === true;
   if (!includeArchived) {
@@ -113,7 +149,66 @@ export async function listDocuments(query: Record<string, unknown>) {
       },
     }),
   ]);
-  return paginate(list, total, page, pageSize);
+  if (!preview || list.length === 0) return paginate(list, total, page, pageSize);
+  const ids = list.map((d) => d.id);
+  const lines = await prisma.document_lines.findMany({
+    where: { documentId: { in: ids } },
+    select: {
+      documentId: true,
+      productRef: true,
+      productName: true,
+      brandName: true,
+      spec: true,
+      specModel: true,
+      unit: true,
+      unitName: true,
+      qty: true,
+      unitPrice: true,
+      amount: true,
+      remark: true,
+      seq: true,
+    },
+    orderBy: { seq: 'asc' },
+  });
+  const byDoc = new Map<string, {
+    productRef: string;
+    productName: string | null;
+    brandName: string | null;
+    spec: string | null;
+    unit: string;
+    qty: unknown;
+    unitPrice: unknown;
+    amount: unknown;
+    remark: string | null;
+  }[]>();
+  for (const l of lines) {
+    const key = String(l.documentId);
+    const arr = byDoc.get(key) ?? [];
+    const name = (l.productName || l.productRef || '').trim();
+    if (!name && !(Number(l.qty) > 0)) {
+      byDoc.set(key, arr);
+      continue;
+    }
+    if (arr.length < 24) {
+      arr.push({
+        productRef: l.productRef,
+        productName: l.productName,
+        brandName: l.brandName,
+        spec: l.spec || l.specModel,
+        unit: (l.unitName || l.unit || '').trim(),
+        qty: l.qty,
+        unitPrice: l.unitPrice,
+        amount: l.amount,
+        remark: l.remark,
+      });
+    }
+    byDoc.set(key, arr);
+  }
+  const withPreview = list.map((d) => ({
+    ...d,
+    previewLines: byDoc.get(String(d.id)) ?? [],
+  }));
+  return paginate(withPreview, total, page, pageSize);
 }
 
 const detailInclude = {
@@ -303,6 +398,8 @@ export interface CreateDocumentInput {
   customerId?: bigint | null;
   title?: string;
   note?: string;
+  customerContactMethod?: string | null;
+  customerPhone?: string | null;
   createdBy?: bigint | null;
   /// v11.0 解耦：业务员ID（用于填充 salespersonName 快照）
   salespersonId?: bigint | null;
@@ -360,14 +457,15 @@ export async function createDocument(input: CreateDocumentInput) {
           document_no,
           // v2.6 customer_id 可空：未关联客户时为 null
           customer_id: input.customerId ?? null,
-          title: input.title ?? null,
-          note: input.note ?? null,
+          title: input.title ?? input.note ?? null,
+          note: input.note ?? input.title ?? null,
           created_by: input.createdBy ?? null,
           salesperson_id: input.salespersonId ?? null,
           // v11.0 解耦：客户档案快照字段
           customerName: customerRow?.name ?? null,
-          customerPhone: customerRow?.phone ?? null,
+          customerPhone: input.customerPhone ?? customerRow?.phone ?? null,
           customerCompany: customerRow?.company ?? null,
+          customerContactMethod: input.customerContactMethod ?? null,
           // v11.0 解耦：员工档案快照字段
           creatorName: creatorRow?.real_name ?? null,
           salespersonName: salespersonRow?.real_name ?? null,
@@ -424,8 +522,14 @@ export async function updateDocument(
   }
 
   const update: Record<string, unknown> = {};
-  if (data.title !== undefined) update.title = data.title;
-  if (data.note !== undefined) update.note = data.note;
+  if (data.title !== undefined) {
+    update.title = data.title;
+    if (data.note === undefined) update.note = data.title;
+  }
+  if (data.note !== undefined) {
+    update.note = data.note;
+    if (data.title === undefined) update.title = data.note;
+  }
   if (data.needInvoice !== undefined) update.need_invoice = data.needInvoice;
   if (data.createdAt !== undefined) {
     const next = new Date(data.createdAt);
@@ -445,6 +549,9 @@ export async function updateDocument(
 
 export interface DocumentBusinessUpdateInput {
   customerId?: bigint | null;
+  customerPhone?: string | null;
+  customerContactMethod?: string | null;
+  customerName?: string | null;
   salespersonId?: bigint | null;
   deliveryAddress?: string | null;
   contactPhone?: string | null;
@@ -507,9 +614,13 @@ export async function updateDocumentBusiness(id: bigint, input: DocumentBusiness
         : Promise.resolve(null),
     ]);
     if (customerChanged) {
-      update.customerName = customerRow?.name ?? null;
-      update.customerPhone = customerRow?.phone ?? null;
+      update.customerName = input.customerName !== undefined ? input.customerName : (customerRow?.name ?? null);
+      update.customerPhone =
+        input.customerPhone !== undefined ? input.customerPhone : (customerRow?.phone ?? null);
       update.customerCompany = customerRow?.company ?? null;
+      if (input.customerContactMethod !== undefined) {
+        update.customerContactMethod = input.customerContactMethod;
+      }
     }
     if (salespersonChanged) {
       update.salespersonName = salespersonRow?.real_name ?? null;

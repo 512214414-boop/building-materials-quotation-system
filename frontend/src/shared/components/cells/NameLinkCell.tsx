@@ -2,9 +2,9 @@
 //
 // 设计依据：表格设计理念「点即所得」——每个业务表至少一个名称字段（主标识），
 //   点击名称字段 → 触发集合弹窗（范式 B 编辑弹窗/完整编辑面板）。
-//   产品管理「产品全名」列是唯一基准原型（v1.4 组件抽象与复用规范）：
+//   产品管理「产品名」列是唯一基准原型（v1.4 组件抽象与复用规范）：
 //   - 创建入口行：品牌色链接「创建包含"kw"的产品 / 创建新产品」
-//   - 数据行：分段分色（品牌=品牌色加粗 / 主名称=默认色 / 修饰=弱化色）+ Tooltip 全名
+//   - 数据行：主名称链接（档案列表产品名单独一列；选品仍可分段拼品牌+规格）
 //   - 点击 → 打开编辑弹窗（携带上下文）
 //
 // 复用方式：差异通过 props 注入（segments 分段、tooltip、onClick、creation 创建入口），
@@ -35,6 +35,11 @@ export interface NameLinkCellProps {
     keyword?: string;
     onClick: () => void;
   };
+  /**
+   * 单行不换行（档案列表 / 开单 fitContent 列）。
+   * 默认 false：创建入口等仍可换行。
+   */
+  nowrap?: boolean;
   /** 空值占位（默认 —） */
   emptyText?: string;
 }
@@ -49,6 +54,7 @@ export function NameLinkCell({
   onClick,
   creation,
   emptyText = '—',
+  nowrap = false,
 }: NameLinkCellProps) {
   // 创建入口行：显示当前关键词建档提示，点击直接打开建档弹窗并预填关键词
   if (creation) {
@@ -85,10 +91,10 @@ export function NameLinkCell({
         }}
         style={{
           cursor: 'pointer',
-          wordBreak: 'break-word',
-          // v11.3.1：display:block 让 <a> 撑满单元格宽度，文本自然换行
+          wordBreak: nowrap ? 'normal' : 'break-word',
+          whiteSpace: nowrap ? 'nowrap' : undefined,
           display: 'block',
-          lineHeight: 1.4,
+          lineHeight: nowrap ? 'inherit' : 1.4,
         }}
       >
         {parts.map((s, i) => (

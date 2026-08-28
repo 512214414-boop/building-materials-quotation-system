@@ -23,8 +23,8 @@ export const SCORE_FULL_PRODUCT_NAME_EXACT = 7000;    // Tier 2：产品名完�
 export const SCORE_FULL_PRODUCT_NAME_CONTAINS = 4000; // Tier 2：产品名完整包含（顺序保留）
 export const SCORE_FULL_SPEC_EXACT = 6500;            // Tier 2：规格型号完整精确
 export const SCORE_FULL_SPEC_CONTAINS = 3800;         // Tier 2：规格型号完整包含（顺序保留）
-export const SCORE_FULL_REMARK_EXACT = 3000;          // Tier 3：备注完整精确
-export const SCORE_FULL_REMARK_CONTAINS = 2000;       // Tier 3：备注完整包含（顺序保留）
+export const SCORE_FULL_REMARK_EXACT = 3000;          // Tier 3：俗称/入口附加字段完整精确
+export const SCORE_FULL_REMARK_CONTAINS = 2000;       // Tier 3：俗称/入口附加字段完整包含（顺序保留）
 export const SCORE_FULL_CATEGORY_EXACT = 2500;        // Tier 3：分类完整精确
 export const SCORE_FULL_CATEGORY_CONTAINS = 1500;     // Tier 3：分类完整包含（顺序保留）
 
@@ -98,6 +98,109 @@ export function normText(s: string): string {
   return (s ?? '').toLowerCase().replace(/\s+/g, '');
 }
 
+/**
+ * 包含与被包含：字段在输入里，或输入在字段里。
+ * 词比字段长（输入里还带着别的层）也算中。字段短于 2 字时不做「输入包含字段」，避免单字误伤。
+ */
+export function containedEitherWay(field: string, query: string): boolean {
+  const f = normText(field);
+  const q = normText(query);
+  if (!f || !q) return false;
+  if (f === q || f.includes(q)) return true;
+  return f.length >= 2 && q.includes(f);
+}
+
+/** 入口层字段 vs 整串输入：整串互相包含，或语义段与字段互相包含。 */
+export function entryFieldMatches(field: string, query: string): boolean {
+  if (containedEitherWay(field, query)) return true;
+  const f = normText(field);
+  if (!f) return false;
+  for (const seg of segmentizeKeyword(query)) {
+    const s = seg.toLowerCase();
+    if (s.length < 2) continue;
+    if (f.includes(s) || s.includes(f)) return true;
+  }
+  return false;
+}
+
+/** 召回用针：语义段优先，再整串、再 2-gram。切档不改字时，整串往往装不进单列。 */
+export function uniqueSearchNeedles(keyword: string, max = 16): string[] {
+  const raw = keyword.trim();
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (s: string) => {
+    const n = s.trim().toLowerCase();
+    if (n.length < 2 || seen.has(n)) return;
+    seen.add(n);
+    out.push(n);
+  };
+  for (const seg of segmentizeKeyword(raw)) add(seg);
+  add(raw);
+  for (const t of tokenizeKeyword(raw)) add(t);
+  return out.slice(0, max);
+}
+
+/**
+ * 输入已经是某一渠道的全名，或把全名写进这一串里。
+ * 用来避免「金牛管业」被当成品牌「金牛」去展开该货全部渠道。
+ */
+export function keywordContainsFullName(keyword: string, names: string[]): boolean {
+  const q = normText(keyword);
+  if (!q) return false;
+  return names.some((name) => {
+    const n = normText(name);
+    return n.length >= 2 && (n === q || q.includes(n));
+  });
+}
+
+/** 渠道档：打的是货才展开全部可能渠道。完整渠道名不当作品牌去铺开。 */
+export function skuMatchesProductQuery(
+  row: {
+    productName?: string | null;
+    productRemark?: string | null;
+    specModel?: string | null;
+    categoryName?: string | null;
+    brandName?: string | null;
+  },
+  keyword: string,
+  channelNames: string[] = [],
+): boolean {
+  if (
+    entryFieldMatches(row.productName ?? '', keyword) ||
+    entryFieldMatches(row.productRemark ?? '', keyword) ||
+    entryFieldMatches(row.specModel ?? '', keyword) ||
+    entryFieldMatches(row.categoryName ?? '', keyword)
+  ) {
+    return true;
+  }
+  const brand = row.brandName ?? '';
+  if (!entryFieldMatches(brand, keyword)) return false;
+  const b = normText(brand);
+  const q = normText(keyword);
+  if (
+    keywordContainsFullName(keyword, channelNames) &&
+    b.length >= 2 &&
+    q.includes(b) &&
+    !b.includes(q)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isShortNumericField(field: string): boolean {
+  return /^[0-9./]+$/.test(field) && field.replace(/[./]/g, '').length <= 4;
+}
+
+function fullKeywordContainScore(field: string, kw: string, exact: number, contains: number): number {
+  if (!field || !kw) return 0;
+  if (field === kw) return exact;
+  if (field.includes(kw)) return contains;
+  if (field.length >= 2 && kw.includes(field) && !isShortNumericField(field)) return contains;
+  return 0;
+}
+
 /** 参与打分的字段（与后端 ScoreRow 对齐；前端本地检索时无字段传空串） */
 export interface ScoreRow {
   productName: string;
@@ -127,7 +230,7 @@ export function scoreSkuByCustomWeights(
   const specLower = normText(row.specModel);
   const remarkLower = normText(row.remark);
   const catLower = normText(row.categoryName);
-  // keywords 全串（名称+规格+品牌+备注+分类），段级松匹配不区分字段
+  // keywords 全串（名称+规格+品牌+俗称或当前入口附加字段+分类），段级松匹配不区分字段
   const fullKeywords = normText(
     [row.productName, row.specModel, row.brandName, row.remark, row.categoryName].join(' '),
   );
@@ -135,20 +238,11 @@ export function scoreSkuByCustomWeights(
   // 完整关键词级匹配（顺序一致/完全包含 → 最高权重）
   const kw = normText(rawKw);
   if (kw) {
-    if (brandLower === kw) score += SCORE_FULL_BRAND_EXACT;
-    else if (brandLower.includes(kw)) score += SCORE_FULL_BRAND_CONTAINS;
-
-    if (nameLower === kw) score += SCORE_FULL_PRODUCT_NAME_EXACT;
-    else if (nameLower.includes(kw)) score += SCORE_FULL_PRODUCT_NAME_CONTAINS;
-
-    if (specLower === kw) score += SCORE_FULL_SPEC_EXACT;
-    else if (specLower.includes(kw)) score += SCORE_FULL_SPEC_CONTAINS;
-
-    if (remarkLower === kw) score += SCORE_FULL_REMARK_EXACT;
-    else if (remarkLower.includes(kw)) score += SCORE_FULL_REMARK_CONTAINS;
-
-    if (catLower === kw) score += SCORE_FULL_CATEGORY_EXACT;
-    else if (catLower.includes(kw)) score += SCORE_FULL_CATEGORY_CONTAINS;
+    score += fullKeywordContainScore(brandLower, kw, SCORE_FULL_BRAND_EXACT, SCORE_FULL_BRAND_CONTAINS);
+    score += fullKeywordContainScore(nameLower, kw, SCORE_FULL_PRODUCT_NAME_EXACT, SCORE_FULL_PRODUCT_NAME_CONTAINS);
+    score += fullKeywordContainScore(specLower, kw, SCORE_FULL_SPEC_EXACT, SCORE_FULL_SPEC_CONTAINS);
+    score += fullKeywordContainScore(remarkLower, kw, SCORE_FULL_REMARK_EXACT, SCORE_FULL_REMARK_CONTAINS);
+    score += fullKeywordContainScore(catLower, kw, SCORE_FULL_CATEGORY_EXACT, SCORE_FULL_CATEGORY_CONTAINS);
   }
 
   // 语义段级松匹配（乱序碎片 / 跨字段组合 / 省略中间文字）
@@ -221,7 +315,9 @@ export function scoreNameByWeights(
   if (kw) {
     if (nameLower === kw) score += SCORE_NAME_FULL_EXACT;
     else if (nameLower.startsWith(kw)) score += SCORE_NAME_FULL_PREFIX;
-    else if (nameLower.includes(kw)) score += SCORE_NAME_FULL_CONTAINS;
+    else if (nameLower.includes(kw) || (nameLower.length >= 2 && kw.includes(nameLower) && !/^[0-9./]+$/.test(nameLower))) {
+      score += SCORE_NAME_FULL_CONTAINS;
+    }
   }
   for (const seg of segments) {
     const segLower = seg.toLowerCase();

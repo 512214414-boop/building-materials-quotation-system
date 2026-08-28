@@ -55,3 +55,9 @@ export function calcEffectivePrice(p: {
   if (isNaN(n)) return NaN;
   return Math.round(n * (p.point ?? 1) * 100) / 100;
 }
+
+/** 点位展示：最多 4 位小数，去掉无意义的尾零 */
+export function formatPoint(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(Number(n))) return '';
+  return String(Number(Number(n).toFixed(4)));
+}

@@ -1,11 +1,11 @@
 // DsInput — 设计系统输入框（v10.2 全量补强 / v10.3 多行 / v10.15 embedded 变体 + forwardRef）
 //
 // 设计原则：
-//   1. allowClear 默认 true，hover 即显示清除叉号（用户确认的统一目标行为）
+//   1. allowClear 默认 true：有值且悬停/聚焦时显示纯文本 ×（与采购报价客户输入框同一套）
 //      与 antd Input 默认行为一致，全项目输入框行为统一
 //   2. variant 变体体系：plain / name / price / embedded
-//      - plain：通用文本（默认，暗色背景 + 边框）
-//      - name：名称类（与 SuggestInput 视觉一致，body-xs 字号）
+//      - plain：通用文本（默认，纸面底 + 墨色边框）
+//      - name：名称类（纸面底 + 墨色边框，字号跟 size）
 //      - price：价格类（等宽字体 + 居中对齐 + 可选红色）
 //      - embedded：嵌入式（透明背景 + 无边框，focus 时底部 brand 色线提示）
 //        专用于"嵌入到外部容器"的场景：表格单元格、报销单明细行等
@@ -18,8 +18,8 @@
 //      让 UnifiedTable 等组件能直接用 DsInput 替代原生 input，消除重复样式
 //
 // 配套 CSS 类（elements.css）：
-//   .ds-input          基础样式（暗色背景 + 边框 + 字体）
-//   .ds-input-name     名称变体（body-xs 字号）
+//   .ds-input          基础样式（纸面底 + 边框 + 字体）
+//   .ds-input-name     名称变体
 //   .ds-input-price    价格变体（等宽 + 居中）
 //   .ds-input-click-to-edit  clickToEdit 文本态
 
@@ -56,8 +56,8 @@ export interface DsInputProps
   rows?: number;
   /**
    * 变体：决定默认样式
-   * - plain：通用文本（默认，暗色背景 + 边框）
-   * - name：名称类（与 SuggestInput 视觉一致，body-xs 字号）
+   * - plain：通用文本（默认，纸面底 + 墨色边框）
+   * - name：名称类（与 SuggestInput 视觉一致，字号跟 size）
    * - price：价格类（等宽字体 + 居中对齐 + 可选红色，配合 numericColor）
    * - embedded：嵌入式（透明背景 + 无边框，focus 时底部 brand 色线）
    *   专用于嵌入到外部容器的场景（表格单元格、明细行等）
@@ -83,11 +83,8 @@ export interface DsInputProps
    */
   placeholderColor?: string;
   /**
-   * allowClear 默认 true，hover 即显示清除叉号
-   * 显式传 false 可关闭（如验证码、确认密码等场景）
-   * v11.18：embedded 变体默认 false（嵌入式/单元格内输入框禁用清除图标——
-   *   清除图标常驻占位随输入文字出现/消失挤压 input 宽度，违反「状态转换
-   *   不影响原本大小」；嵌入容器内的清除由用户直接删除达成）
+   * allowClear 默认 true。有值且悬停/聚焦时显示纯文本 ×，叠在框内不占外框。
+   * 禁止各处另写圆形清除图标。
    */
   // allowClear 继承自 InputProps，默认值在组件内处理
   /**
@@ -115,31 +112,49 @@ const SIZE_MAP: Record<DsInputSize, NonNullable<InputProps['size']>> = {
   lg: 'large',
 };
 
-const SIZE_FONT_MAP: Record<DsInputSize, string> = {
-  sm: 'var(--body-sm-font-size)',
-  md: 'var(--body-base-font-size)',
-  lg: 'var(--body-base-font-size)',
+/** sm 与 SuggestInput 同一套：20px / body-sm / 左右 2px。md/lg 只定字号。 */
+const SIZE_BOX_MAP: Record<DsInputSize, CSSProperties> = {
+  sm: {
+    height: 20,
+    minHeight: 20,
+    padding: '0 2px',
+    fontSize: 'var(--body-sm-font-size)',
+    lineHeight: '20px',
+    borderRadius: 'var(--radius-4)',
+  },
+  md: {
+    fontSize: 'var(--body-base-font-size)',
+  },
+  lg: {
+    fontSize: 'var(--body-base-font-size)',
+  },
 };
 
 /**
  * v10.15 基础样式按变体区分
- * - plain/name/price：暗色背景 + 边框（原 BASE）
+ * - plain/name/price：纸面底 + 墨色边框（原 BASE）
  * - embedded：透明背景 + 无边框（嵌入式，依赖外部容器提供视觉反馈）
  */
 const BASE_BY_VARIANT: Record<DsInputVariant, CSSProperties> = {
   plain: {
-    background: 'var(--bg-base-tertiary)',
+    background: 'var(--bg-base-secondary)',
     color: 'var(--text-default)',
+    borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: 'var(--border-neutral-l2)',
   },
   name: {
-    background: 'var(--bg-base-tertiary)',
+    background: 'var(--bg-base-secondary)',
     color: 'var(--text-default)',
+    borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: 'var(--border-neutral-l2)',
   },
   price: {
-    background: 'var(--bg-base-tertiary)',
+    background: 'var(--bg-base-secondary)',
     color: 'var(--text-default)',
+    borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: 'var(--border-neutral-l2)',
   },
   embedded: {
@@ -149,9 +164,15 @@ const BASE_BY_VARIANT: Record<DsInputVariant, CSSProperties> = {
     //   antd 默认 padding/border 会挤压输入框视觉宽度（单元格 220px 时 input 仅 183px），
     //   用户感知"进入编辑态列宽变窄"。embedded 语义=嵌入外部容器，视觉由外部容器
     //   （td.unified-table-cell-editing 光晕）提供，自身不得带任何内缩/边框。
-    border: 'none',
+    // 边框只用长属性：简写 `border` 与聚焦时的 `borderColor` 混用会触发 React 重绘警告。
+    borderWidth: 0,
+    borderStyle: 'none',
+    borderColor: 'transparent',
     padding: '0 4px', // 与单元格文本态 CELL_SHARED_STYLE 缩进一致，文字起点不漂移
     boxShadow: 'none',
+    minWidth: 0,
+    maxWidth: '100%',
+    width: '100%',
   },
 };
 
@@ -198,20 +219,17 @@ function ensurePhStyles() {
 /**
  * 变体附加样式
  * - plain：通用，无附加
- * - name：body-xs 字号
+ * - name：无附加（字号跟 size，与 SuggestInput 一致）
  * - price：等宽字体 + 居中
  * - embedded：无附加（透明样式已在 BASE_BY_VARIANT 提供）
  */
 const VARIANT_STYLE: Record<DsInputVariant, CSSProperties> = {
   plain: {},
-  name: {
-    fontSize: 'var(--body-xs-font-size)',
-  },
+  name: {},
   price: {
     fontFamily: 'var(--font-family-mono)',
     fontVariantNumeric: 'tabular-nums',
     textAlign: 'center',
-    fontSize: 'var(--body-xs-font-size)',
   },
   embedded: {},
 };
@@ -259,7 +277,7 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
     style,
     onFocus,
     onBlur,
-    allowClear = variant === 'embedded' ? false : true,
+    allowClear = true,
     clickToEdit = false,
     displayText,
     displayPlaceholder = '—',
@@ -268,6 +286,7 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
     onActivate,
     multiline = false,
     rows = 4,
+    className,
     'data-shared-badge': badgeOverride,
     ...rest
   } = props;
@@ -325,10 +344,10 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
         allowClear={allowClear}
         // v14.3：多行通道同样支持 placeholderColor（phClass/phVar 与单行一致，
         //   类落在 TextArea 根元素/容器上，注入规则用后代选择器命中内部 textarea）
-        className={phClass}
+        className={[phClass, 'ds-input', className].filter(Boolean).join(' ')}
         style={{
           ...baseStyle,
-          fontSize: SIZE_FONT_MAP[size],
+          fontSize: SIZE_BOX_MAP[size].fontSize,
           ...variantStyle,
           textAlign: resolvedAlign,
           ...colorStyle,
@@ -349,78 +368,69 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
     );
   }
 
-  // clickToEdit 模式：文本态 + 激活态切换
+  // clickToEdit 必须常驻同一套 Input：先画 span 再异步 focus，手机不出键盘。
   if (clickToEdit) {
-    if (!editing) {
-      // 文本态：纯文本展示，hover 提示
-      const text = displayText != null ? displayText : value;
-      const isEmpty = text == null || text === '' || text === '0';
-      const textColor = isEmpty
-        ? 'var(--text-tertiary)'
-        : style?.color || 'var(--text-default)';
-      return (
-        <span
-          className="ds-input ds-input-click-to-edit"
-          data-shared-badge={badge}
-          onClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-          }}
-          style={{
-            display: 'block',
-            width: '100%',
-            minHeight: TEXT_STYLE[size].minHeight,
-            padding: TEXT_STYLE[size].padding,
-            fontSize: TEXT_STYLE[size].fontSize,
-            lineHeight: TEXT_STYLE[size].lineHeight,
-            color: textColor,
-            cursor: 'text',
-            borderRadius: 'var(--radius-2)',
-            border: '1px solid transparent',
-            background: 'transparent',
-            fontVariantNumeric:
-              variant === 'price' ? 'tabular-nums' : undefined,
-            fontFamily:
-              variant === 'price' ? 'var(--font-family-mono)' : undefined,
-            textAlign: resolvedAlign,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            transition: 'background .12s ease, border-color .12s ease',
-            ...style,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--bg-overlay-l2)';
-            e.currentTarget.style.borderColor = 'var(--border-neutral-l1)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.borderColor = 'transparent';
-          }}
-        >
-          {isEmpty ? displayPlaceholder : text}
-        </span>
-      );
-    }
-    // 激活态：渲染 Input，brand 色边框
+    const text = displayText != null ? displayText : value;
+    const isEmpty = text == null || text === '' || text === '0';
+    const textColor = isEmpty
+      ? 'var(--text-tertiary)'
+      : style?.color || 'var(--text-default)';
+    const showOverlay = displayText != null && !focused;
     return (
-      <span data-shared-badge={badge} style={{ display: 'block', width: '100%' }}>
+      <span data-shared-badge={badge} style={{ display: 'block', width: '100%', position: 'relative' }}>
+        {showOverlay && (
+          <span
+            className="ds-input ds-input-click-to-edit"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 1,
+              pointerEvents: 'none',
+              minHeight: TEXT_STYLE[size].minHeight,
+              padding: TEXT_STYLE[size].padding,
+              fontSize: TEXT_STYLE[size].fontSize,
+              lineHeight: TEXT_STYLE[size].lineHeight,
+              color: isEmpty ? 'var(--text-tertiary)' : textColor,
+              fontVariantNumeric: variant === 'price' ? 'tabular-nums' : undefined,
+              fontFamily: variant === 'price' ? 'var(--font-family-mono)' : undefined,
+              textAlign: resolvedAlign,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {isEmpty ? displayPlaceholder : displayText}
+          </span>
+        )}
         <Input
           ref={internalRef}
+          className={['ds-input', className].filter(Boolean).join(' ')}
           size={SIZE_MAP[size]}
           value={value}
           onChange={onChange}
-          allowClear={allowClear}
+          allowClear={allowClear && focused}
           style={{
             ...baseStyle,
-            ...focusStyle,
+            ...(variant === 'embedded' ? {} : SIZE_BOX_MAP[size]),
+            ...(!focused ? {
+              ...TEXT_STYLE[size],
+              borderColor: 'transparent',
+              background: 'transparent',
+              cursor: 'text',
+              ...(showOverlay ? { color: 'transparent', caretColor: 'transparent' } : { color: textColor }),
+            } : {
+              ...focusStyle,
+              background: 'var(--bg-base-secondary)',
+            }),
             ...variantStyle,
             textAlign: resolvedAlign,
             ...colorStyle,
             ...style,
-            background: 'var(--bg-base-secondary)',
+            width: '100%',
+            touchAction: 'manipulation',
           }}
           onFocus={(e) => {
+            setEditing(true);
             setFocused(true);
             onFocus?.(e);
             onActivate?.();
@@ -443,10 +453,10 @@ export const DsInput = forwardRef<InputRef, DsInputProps>(function DsInput(
       data-shared-badge={badge}
       size={SIZE_MAP[size]}
       allowClear={allowClear}
-      className={phClass}
+      className={[phClass, 'ds-input', className].filter(Boolean).join(' ')}
       style={{
         ...baseStyle,
-        fontSize: SIZE_FONT_MAP[size],
+        ...(variant === 'embedded' ? {} : SIZE_BOX_MAP[size]),
         ...variantStyle,
         textAlign: resolvedAlign,
         ...colorStyle,

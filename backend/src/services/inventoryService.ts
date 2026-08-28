@@ -41,7 +41,7 @@ export async function listInventory(query: Record<string, unknown>) {
   if (typeof query.keyword === 'string' && query.keyword) {
     // v15.2：复用 SKU 宽表关键词召回唯一实现（FULLTEXT 索引驱动 + LIKE 参数化兜底，
     //   候选集 LIMIT 500 受控——禁止原 contains 全表扫 + 各业务各写一套检索）
-    const { rows: matched } = await recallSkuRowsByKeyword(query.keyword);
+    const { rows: matched } = await recallSkuRowsByKeyword(query.keyword, '', [], 500, true);
     if (matched.length === 0) return paginate([], 0, page, pageSize);
     // v14.0：SKU = 规格×品牌×单位，按 (spec_id, brand_id) 组合过滤
     const pairs = matched.map((m) => ({ spec_id: BigInt(m.specId), brand_id: BigInt(m.brandId) }));
@@ -358,6 +358,7 @@ export async function adjustInventory(
   remark: string | null,
   userId: bigint | null,
   userName: string | null,
+  unitCost?: number | null,
 ) {
   const target = Number(targetQty);
   if (!isFinite(target) || target < 0) throw Errors.unprocessable('盘点后数量必须 ≥ 0');
@@ -366,11 +367,19 @@ export async function adjustInventory(
     if (!existing) throw Errors.notFound('库存台账不存在');
     const currentQty = Number(existing.qty);
     const diff = round2(target - currentQty);
-    if (diff === 0) return existing;
-    const avgCost = Number(existing.weighted_avg_cost);
+    const oldAvg = Number(existing.weighted_avg_cost);
+    const costInput = unitCost != null && isFinite(Number(unitCost)) && Number(unitCost) >= 0
+      ? Number(unitCost)
+      : null;
+    let newAvg = oldAvg;
+    if (costInput != null) {
+      if (diff > 0) newAvg = calcWeightedAvgCost(currentQty, oldAvg, diff, costInput);
+      else if (target > 0) newAvg = costInput;
+    }
+    if (diff === 0 && (costInput == null || newAvg === oldAvg)) return existing;
     const updated = await tx.inventory.update({
-      where: { id },
-      data: { qty: target },
+      where: { id: existing.id },
+      data: { qty: target, weighted_avg_cost: newAvg },
     });
     await tx.inventory_ledger.create({
       data: {
@@ -381,9 +390,9 @@ export async function adjustInventory(
         unit_id: existing.unit_id,
         movement_type: 'adjust',
         qty: diff,
-        unit_cost: avgCost,
+        unit_cost: costInput ?? oldAvg,
         balance_qty: target,
-        balance_avg_cost: avgCost,
+        balance_avg_cost: newAvg,
         biz_type: 'adjust',
         biz_no: `ADJ${existing.id}`,
         remark: remark ?? null,
@@ -393,4 +402,69 @@ export async function adjustInventory(
     });
     return updated;
   });
+}
+
+/**
+ * 期初入库：尚无库存行时按 SKU × 仓写入数量和成本，流水 biz_type=adjust。
+ * 已有台账请走盘点，避免把期初当成又一次进货。
+ */
+export async function openingInventory(
+  input: {
+    warehouseId: bigint;
+    specId: bigint;
+    brandId: bigint;
+    unitId: bigint;
+    qty: number;
+    unitCost: number;
+    remark?: string;
+  },
+  actor: { id: bigint | null; name: string | null },
+) {
+  const qty = Number(input.qty);
+  const unitCost = Number(input.unitCost);
+  if (!isFinite(qty) || qty <= 0) throw Errors.unprocessable('期初数量必须大于 0');
+  if (!isFinite(unitCost) || unitCost < 0) throw Errors.unprocessable('期初成本不能为负');
+
+  const warehouse = await prisma.warehouse.findUnique({
+    where: { id: input.warehouseId },
+    select: { id: true, status: true },
+  });
+  if (!warehouse) throw Errors.notFound('仓库不存在');
+  if (warehouse.status !== 1) throw Errors.unprocessable('仓库已停用');
+
+  const specRow = await prisma.spec.findFirst({
+    where: { id: input.specId, brandId: input.brandId },
+    select: { id: true },
+  });
+  if (!specRow) throw Errors.unprocessable('该规格品牌不存在，请先建档');
+
+  const existing = await prisma.inventory.findUnique({
+    where: {
+      warehouse_id_spec_id_brand_id_unit_id: {
+        warehouse_id: input.warehouseId,
+        spec_id: input.specId,
+        brand_id: input.brandId,
+        unit_id: input.unitId,
+      },
+    },
+  });
+  if (existing) {
+    throw Errors.unprocessable('该仓已有该货库存，请用盘点调整数量与成本');
+  }
+
+  return increaseInventory(
+    input.warehouseId,
+    input.specId,
+    input.brandId,
+    input.unitId,
+    qty,
+    unitCost,
+    {
+      bizType: 'adjust',
+      bizNo: 'OPENING',
+      remark: input.remark?.trim() || '期初入库',
+      userId: actor.id,
+      userName: actor.name,
+    },
+  );
 }

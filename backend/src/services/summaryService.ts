@@ -110,73 +110,12 @@ export async function getDocumentSummary(documentId: bigint): Promise<DocumentSu
  * 按时间范围归集多单据。
  */
 export async function getRangeSummary(query: Record<string, unknown>) {
-  const { page, pageSize, skip, take } = parsePagination(query);
-
-  // 解析时间范围
-  const startDateStr = typeof query.startDate === 'string' ? query.startDate : undefined;
-  const endDateStr = typeof query.endDate === 'string' ? query.endDate : undefined;
-  if (!startDateStr || !endDateStr) {
-    throw Errors.badRequest('必须提供 startDate 和 endDate 参数', 42219);
-  }
-  const startDate = new Date(startDateStr);
-  const endDate = new Date(endDateStr);
-  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-    throw Errors.badRequest('日期格式错误', 42220);
-  }
-  // endDate 设为当天结束
-  endDate.setHours(23, 59, 59, 999);
-
-  // 状态过滤（可选）
-  const statusFilter = typeof query.status === 'string' ? [query.status as DocumentStatus] : undefined;
-
-  const where = {
-    created_at: { gte: startDate, lte: endDate },
-    ...(statusFilter ? { status: { in: statusFilter } } : {}),
-  };
-
-  // 查询单据列表
-  const [documents, total] = await Promise.all([
-    prisma.documents.findMany({
-      where,
-      orderBy: { created_at: 'desc' },
-      skip,
-      take,
-      select: { id: true },
-    }),
-    prisma.documents.count({ where }),
-  ]);
-
-  // 逐个归集
-  const summaries: DocumentSummary[] = [];
-  for (const doc of documents) {
-    summaries.push(await getDocumentSummary(doc.id));
-  }
-
-  // 总体汇总
-  const totalSalesAmount = round2(summaries.reduce((s, d) => s + d.salesAmount, 0));
-  const totalReceivedAmount = round2(summaries.reduce((s, d) => s + d.receivedAmount, 0));
-  const totalCostAmount = round2(summaries.reduce((s, d) => s + d.costAmount, 0));
-  const totalRefundDeduction = round2(summaries.reduce((s, d) => s + d.refundDeduction, 0));
-  const totalNetProfit = round2(summaries.reduce((s, d) => s + d.netProfit, 0));
-  const overallMarginRate = totalSalesAmount > 0 ? round2((totalNetProfit / totalSalesAmount) * 100) : 0;
-
+  const { rangeSummary } = await import('./opsReportService.js');
+  const result = await rangeSummary(query);
   return {
-    range: { startDate, endDate },
-    totals: {
-      documentCount: total,
-      totalSalesAmount,
-      totalReceivedAmount,
-      totalCostAmount,
-      totalRefundDeduction,
-      totalNetProfit,
-      overallMarginRate,
-    },
-    pagination: {
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-    },
-    documents: summaries,
+    range: result.range,
+    totals: result.totals,
+    pagination: result.pagination,
+    documents: result.list,
   };
 }

@@ -30,14 +30,23 @@ import {
 } from '../services/api/baseDataApi.js';
 
 export interface UseSuggestOptions {
-  /** 字段类型，决定检索接口 */
-  field: SuggestField;
+  /** 字段类型，决定检索接口。传入 fetcher 时可省略。 */
+  field?: SuggestField;
   /** 关键词（建议外部 useDebounce 后传入） */
   keyword: string;
   /** SPU 上下文过滤（brand/specModel/unit/remark 按 productId 检索） */
   productId?: string;
   /** 是否使用 public 接口（未登录态），默认 false */
   isPublic?: boolean;
+  /**
+   * 自定义检索（档案列表表头级联等）。传入则不走 suggest(field)。
+   * 空关键词也会查（品牌/规格在上级已锁定时列出当前结果里的下级）。
+   */
+  fetcher?: (keyword: string) => Promise<SuggestOption[]>;
+  /** 为 true 时空关键词也检索（表头级联：上级锁定后列出当前结果里的下级） */
+  allowEmptyKeyword?: boolean;
+  /** 关闭时不发请求（表头下拉打开才查） */
+  enabled?: boolean;
   /**
    * 是否允许快速新建
    * - true：保留 type='create' 项（用于 UI 显示新建选项）
@@ -61,8 +70,8 @@ export interface UseSuggestResult {
  * 输入框快捷辅助录入组件的检索逻辑 hook
  *
  * 内部行为：
- *   - keyword 为空时清空 options
- *   - keyword 非空时调用 suggest(field, kw, { productId })
+ *   - keyword 为空时清空 options（allowEmptyKeyword 除外）
+ *   - 默认走 suggest(field, kw, { productId })；传入 fetcher 则走自定义检索
  *   - 按 allowCreate 决定是否保留 type='create' 项
  */
 export function useSuggest({
@@ -70,29 +79,42 @@ export function useSuggest({
   keyword,
   productId,
   isPublic = false,
+  fetcher,
+  allowEmptyKeyword = false,
+  enabled = true,
   allowCreate,
 }: UseSuggestOptions): UseSuggestResult {
   const [options, setOptions] = useState<SuggestOption[]>([]);
   const [loading, setLoading] = useState(false);
 
   // 默认 allowCreate 按 field 数据来源类型判定（规则3 三条件）
-  const finalAllowCreate = allowCreate ?? DEFAULT_CREATABLE_FIELDS.includes(field);
+  const finalAllowCreate = allowCreate ?? (field != null && DEFAULT_CREATABLE_FIELDS.includes(field));
 
   useEffect(() => {
+    if (!enabled) return;
     const kw = keyword.trim();
-    if (!kw) {
+    if (!kw && !allowEmptyKeyword) {
+      setOptions([]);
+      setLoading(false);
+      return;
+    }
+    if (!fetcher && !field) {
       setOptions([]);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const suggestFn = isPublic ? suggestPublic : suggest;
     let cancelled = false;
-    suggestFn(field, kw, productId ? { productId } : undefined)
-      .then((res) => {
+    const run = fetcher
+      ? fetcher(kw)
+      : (isPublic ? suggestPublic : suggest)(field!, kw, productId ? { productId } : undefined).then(
+          (res) => res.options ?? [],
+        );
+    run
+      .then((all) => {
         if (cancelled) return;
-        const all = res.options ?? [];
-        setOptions(finalAllowCreate ? all : all.filter((o) => o.type !== 'create'));
+        const list = all ?? [];
+        setOptions(finalAllowCreate ? list : list.filter((o) => o.type !== 'create'));
       })
       .catch(() => {
         if (cancelled) return;
@@ -105,7 +127,7 @@ export function useSuggest({
     return () => {
       cancelled = true;
     };
-  }, [keyword, field, productId, isPublic, finalAllowCreate]);
+  }, [keyword, field, productId, isPublic, fetcher, allowEmptyKeyword, enabled, finalAllowCreate]);
 
   return { options, loading };
 }

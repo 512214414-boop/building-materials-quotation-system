@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { App as AntdApp, Spin, Menu, Modal, type MenuProps } from 'antd';
+import { Spin, Menu, Modal, type MenuProps } from 'antd';
 import { ClearOutlined, LockOutlined, TagsOutlined, UnlockOutlined } from '@ant-design/icons';
 import DsButton from '../../../../../shared/components/DsButton.js';
 import DsShellRow from '../../../../../shared/components/DsShellRow.js';
@@ -25,7 +25,11 @@ import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/com
 import FloatPanel from '../../../../../shared/components/FloatPanel.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
+import { HeaderCascadeFilter } from '../../../../../shared/components/archive/HeaderCascadeFilter.js';
+import { ArchiveFilterChip } from '../../../../../shared/components/archive/ArchiveListFilters.js';
+import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
 import AllocationSourcePicker from '../../../../../shared/components/AllocationSourcePicker.js';
+import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
 import {
   listAllocationSources,
   listAllocationLines,
@@ -41,10 +45,12 @@ import type {
   AllocationLineView,
 } from '../../../../../shared/services/api/allocationApi.js';
 import { getDocument } from '../../../../../shared/services/api/documentApi.js';
-import { createBackorder } from '../../../../../shared/services/api/inboundApi.js';
 import { useSaveStatus, SaveStatusDot } from '../../../../../shared/components/common/SaveStatusProvider.js';
+import { overlayModalContainer } from '../../../../../shared/utils/canvasStage.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
+import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useDocumentLineCascadeFilter } from '../../../../../shared/hooks/useDocumentLineCascadeFilter.js';
 
 // ============================================================
 // 工具函数
@@ -116,11 +122,11 @@ const ALLOC_CSS = `
 }
 .alloc-view .alloc-modal-summary {
   display: flex;
-  gap: 16px;
-  padding: 10px 16px;
+  gap: var(--spacer-12);
+  padding: var(--spacer-6) var(--spacer-12);
   background: var(--bg-base-tertiary);
   border-bottom: 1px solid var(--border-neutral-l1);
-  font-size: 12px;
+  font-size: var(--body-xs-font-size);
   color: var(--text-secondary);
 }
 .alloc-view .alloc-modal-summary span strong {
@@ -132,20 +138,20 @@ const ALLOC_CSS = `
   color: var(--status-warning-default);
 }
 .alloc-view .alloc-modal-body {
-  padding: 12px 16px;
+  padding: var(--spacer-8) var(--spacer-12);
 }
 .alloc-view .alloc-edit-row {
   display: grid;
-  grid-template-columns: 28px minmax(180px, 1fr) 90px 1fr 28px;
-  gap: 8px;
+  grid-template-columns: 20px minmax(120px, 1fr) 64px 20px;
+  gap: var(--spacer-8);
   align-items: center;
-  padding: 6px 0;
+  padding: 4px 0;
   border-bottom: 1px dashed var(--border-neutral-l1);
 }
 .alloc-view .alloc-edit-row:last-child { border-bottom: none; }
 .alloc-view .alloc-check {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--radius-4, 4px);
   border: 1.5px solid var(--border-neutral-l2);
   background: var(--bg-base-secondary);
@@ -206,8 +212,8 @@ const ALLOC_CSS = `
   gap: 4px;
 }
 .alloc-view .alloc-del-btn {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--radius-4, 4px);
   border: none;
   background: transparent;
@@ -228,11 +234,8 @@ const ALLOC_CSS = `
   cursor: not-allowed;
 }
 .alloc-view .alloc-modal-hint {
-  margin-top: 10px;
-  padding: 8px 10px;
-  background: var(--bg-base-tertiary);
-  border-radius: var(--radius-4, 4px);
-  font-size: 11px;
+  margin-top: var(--spacer-8);
+  font-size: var(--body-xs-font-size);
   color: var(--text-tertiary);
 }
 /* v9.4：antd Select 样式覆盖已迁移至 AllocationSourcePicker（本视图不再直接使用 Select） */
@@ -252,11 +255,12 @@ const ALLOC_CSS = `
 // ============================================================
 
 export default function AllocationView({ documentId }: { documentId: string }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const { trackSave } = useSaveStatus();
 
   const [loading, setLoading] = useState(true);
   const [lines, setLines] = useState<AllocationDocumentLineView[]>([]);
+  const lineFilter = useDocumentLineCascadeFilter(documentId);
   const [sources, setSources] = useState<AllocationSourcesResult | null>(null);
   const [viewLocked, setViewLocked] = useState(false);
   const [lockActioning, setLockActioning] = useState(false);
@@ -275,7 +279,6 @@ export default function AllocationView({ documentId }: { documentId: string }) {
     productRef: string;
     qty: number;
   } | null>(null);
-  const [backorderSaving, setBackorderSaving] = useState(false);
 
   // v9.4：quickAdd 供应商相关 state 已迁移至 AllocationSourcePicker 组件
 
@@ -326,6 +329,11 @@ export default function AllocationView({ documentId }: { documentId: string }) {
     }
     return { totalDemand, totalAllocated, totalShortage, sourceCount };
   }, [lines]);
+
+  const visibleLines = useMemo(
+    () => lineFilter.filterRows(lines),
+    [lineFilter.filterRows, lines],
+  );
 
   // ----------------------------------------------------------
   // 弹窗打开：初始化编辑行（自动延伸到缺口 0）
@@ -482,11 +490,11 @@ export default function AllocationView({ documentId }: { documentId: string }) {
   // Excel 式即时保存：单行失焦自动提交
   // ----------------------------------------------------------
   const commitRow = useCallback(
-    async (idx: number) => {
+    async (idx: number, override?: Partial<EditRow>) => {
       if (viewLocked) return;
       if (!editingLine || !editOriginLine) return;
 
-      const row = editRows[idx];
+      const row = { ...editRows[idx], ...override };
       if (!row || row.removed) return;
 
       const lineKey = `${editingLine.lineId}-${idx}`;
@@ -598,21 +606,6 @@ export default function AllocationView({ documentId }: { documentId: string }) {
     ]);
   }, [shortageTip]);
 
-  const handleShortageBackorder = useCallback(async () => {
-    const tip = shortageTip;
-    if (!tip) return;
-    setBackorderSaving(true);
-    try {
-      await createBackorder({ lineId: tip.lineId, warehouseId: tip.warehouseId, qty: tip.qty });
-      message.success(`已挂欠库 ${fmtQty(tip.qty)} 件，补货入库后自动冲抵`);
-      setShortageTip(null);
-    } catch (e) {
-      message.error((e as Error).message || '挂欠库失败');
-    } finally {
-      setBackorderSaving(false);
-    }
-  }, [shortageTip, message]);
-
   // ----------------------------------------------------------
   // 锁定/解锁视图
   // ----------------------------------------------------------
@@ -661,31 +654,84 @@ export default function AllocationView({ documentId }: { documentId: string }) {
       // 1. 商品（v5.0：使用 productRef 快照，variant 关系不再暴露 fullName）
       {
         key: 'productRef',
-        title: '商品',
-        dataIndex: 'productRef',
-        align: 'center',
-        renderMode: 'static',
-        ellipsis: true,
-        render: (val: string | null) => (
-          <span style={{ fontWeight: 500, color: 'var(--text-default)' }}>
-            {val ?? '—'}
-          </span>
+        title: (
+          <HeaderCascadeFilter
+            field="product"
+            placeholder="产品名"
+            selectedName={lineFilter.filterProductName}
+            fetcher={lineFilter.fetchProductFacet}
+            onSelect={lineFilter.selectProduct}
+            onClear={lineFilter.clearProductFilter}
+          />
         ),
+        dataIndex: 'productRef',
+        minWidth: COL_WIDTHS.NAME_QUOTE,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'static',
+        render: (_val: string | null, r) => {
+          if (r.hideProductName) return <span />;
+          const name = r.productName || r.productRef;
+          return (
+            <span style={{ fontWeight: 500, color: 'var(--text-default)' }}>
+              {name || '—'}
+            </span>
+          );
+        },
       },
-      // 4. 规格（v8.0：spec 行上快照 + brand.product.specModel 实时档案 fallback）
+      {
+        key: 'brandName',
+        title: (
+          <HeaderCascadeFilter
+            field="brand"
+            placeholder="品牌"
+            selectedName={lineFilter.filterBrandName}
+            fetcher={lineFilter.fetchBrandFacet}
+            onSelect={lineFilter.selectBrand}
+            onClear={lineFilter.clearBrandFilter}
+          />
+        ),
+        dataIndex: 'brandName',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'static',
+        render: (_v, r) => {
+          if (r.hideBrandName) return <span />;
+          const name = r.brandName || r.brand?.name;
+          return name ? (
+            <span style={{ color: 'var(--text-default)' }}>{name}</span>
+          ) : (
+            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+          );
+        },
+      },
       {
         key: 'spec',
-        title: '规格',
-        dataIndex: 'spec',
-        minWidth: 110,
-        align: 'center',
-        renderMode: 'static',
-        ellipsis: true,
-        render: (_v, r) => (
-          <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
-            {r.spec ?? r.brand?.product?.specModel ?? '—'}
-          </span>
+        title: (
+          <HeaderCascadeFilter
+            field="specModel"
+            placeholder="规格"
+            selectedName={lineFilter.filterSpecModel}
+            fetcher={lineFilter.fetchSpecFacet}
+            onSelect={lineFilter.selectSpec}
+            onClear={lineFilter.clearSpecFilter}
+          />
         ),
+        dataIndex: 'spec',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'static',
+        render: (_v, r) => {
+          if (r.hideSpecModel) return <span />;
+          const spec = r.spec ?? r.brand?.product?.specModel;
+          return spec ? (
+            <span style={{ color: 'var(--text-default)' }}>{spec}</span>
+          ) : (
+            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+          );
+        },
       },
       // 5. 单位
       {
@@ -776,7 +822,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
       {
         key: 'sources',
         title: '来源',
-        minWidth: 200,
+        minWidth: COL_WIDTHS.NAME_M,
         align: 'center',
         renderMode: 'custom',
         render: (_v, r) => {
@@ -877,7 +923,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
         },
       },
     ],
-    [viewLocked, openEditDialog],
+    [viewLocked, openEditDialog, lineFilter],
   );
 
   // ----------------------------------------------------------
@@ -1017,6 +1063,14 @@ export default function AllocationView({ documentId }: { documentId: string }) {
         ),
       }}
       bizStrip={{
+        left:
+          lineFilter.chips.length > 0 ? (
+            <span className="ds-filter-row">
+              {lineFilter.chips.map((c) => (
+                <ArchiveFilterChip key={c.key} label={c.label} value={c.value} onClear={c.onClear} />
+              ))}
+            </span>
+          ) : undefined,
         right: (
           <>
             <BizField label="需求总量" tone="brand" mono strong>
@@ -1080,18 +1134,19 @@ export default function AllocationView({ documentId }: { documentId: string }) {
             open={!!editingLine}
             onClose={closeEditDialog}
             anchorRef={allocAnchorRef}
+            panelId="alloc-edit"
           title={
             <div className="alloc-modal-title">
-              <span>📦 配货编辑</span>
+              <span>配货编辑</span>
               {editingLine && (
-                <span style={{ color: 'var(--text-tertiary)', fontSize: '12px', fontWeight: 400 }}>
-                  · {editingLine.productRef}（第 {editingLine.seq} 行）
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--body-xs-font-size)', fontWeight: 400 }}>
+                  · {editingLine.productRef}
                 </span>
               )}
             </div>
           }
-          width={780}
-          maxHeight={600}
+          width={COL_WIDTHS.CONFIRM}
+          maxHeight={320}
         >
           {editingLine && (
             <div className="alloc-view">
@@ -1122,16 +1177,9 @@ export default function AllocationView({ documentId }: { documentId: string }) {
                   const checkState = inferCheckState(row);
                   const lineKey = `${editingLine.lineId}-${idx}`;
                   const isPendingRow = row.pendingStatus === 'pending';
-                  const source = findSourceInGroups(sources, row.sourceId);
-                  const sourceTagText = !row.sourceId
-                    ? '未标记'
-                    : isPendingRow
-                    ? `${source?.sourceType === 'warehouse' ? '仓库' : '外部'} · 代配`
-                    : `${source?.sourceType === 'warehouse' ? '仓库' : '外部'} · 已配`;
 
                   return (
                     <div key={idx} className="alloc-edit-row">
-                      {/* 三态勾选（22px） */}
                       <button
                         className={`alloc-check ${checkState === 'allocated' ? 'allocated' : checkState === 'pending' ? 'pending' : ''}`}
                         onClick={() => cycleCheckState(idx)}
@@ -1143,58 +1191,40 @@ export default function AllocationView({ documentId }: { documentId: string }) {
                         {checkState === 'pending' && '○'}
                       </button>
 
-                      {/* 出库方下拉（v9.4：改用 AllocationSourcePicker 形态C 组件） */}
                       <AllocationSourcePicker
-                        // value 带类型命名空间（wh:/sup:），区分同 id 的仓库与供应商
                         value={
                           row.sourceId
                             ? `${row.sourceType === 'warehouse' ? 'wh' : 'sup'}:${row.sourceId}`
                             : undefined
                         }
-                        onChange={(sourceId, sourceType) =>
-                          updateRow(idx, { sourceId, sourceType })
-                        }
+                        onChange={(sourceId, sourceType) => {
+                          updateRow(idx, { sourceId, sourceType });
+                          void commitRow(idx, { sourceId, sourceType });
+                        }}
                         sources={sources}
                         onSourcesChange={setSources}
                         disabled={viewLocked}
                         size="small"
-                        onBlur={() => {
-                          if (row.sourceId) commitRow(idx);
-                        }}
+                        parentPanelId="alloc-edit"
                       />
 
-                      {/* v4.2 数量输入（普通 text input + inputMode=decimal，对齐 Excel 范式禁用 number 控件） */}
-                      <input
-                        className="alloc-qty-input"
-                        type="text"
-                        inputMode="decimal"
-                        value={row.allocQty}
-                        onChange={(e) => updateRow(idx, { allocQty: e.target.value })}
-                        onBlur={() => commitRow(idx)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitRow(idx);
-                        }}
-                        disabled={viewLocked || isPendingRow}
-                        placeholder={isPendingRow ? '代配' : '数量'}
-                      />
-
-                      {/* v3 效率细节7：来源标签 + 保存状态点 */}
-                      <span className="alloc-source-tag">
-                        <span
-                          style={{
-                            color: isPendingRow
-                              ? 'var(--status-warning-default)'
-                              : checkState === 'allocated'
-                              ? 'var(--status-success-default)'
-                              : 'var(--text-tertiary)',
+                      <span style={{ minWidth: COL_WIDTHS.AMOUNT, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <WorkbenchFieldCell
+                          embed="inline"
+                          text={row.allocQty}
+                          placeholder={isPendingRow ? '代配' : '数量'}
+                          input="number"
+                          disabled={viewLocked || isPendingRow}
+                          title="配货数量"
+                          bullets={['确认后写入当前来源行。', '取消不保存。']}
+                          onApply={(next) => {
+                            updateRow(idx, { allocQty: next });
+                            void commitRow(idx, { allocQty: next });
                           }}
-                        >
-                          {sourceTagText}
-                        </span>
+                        />
                         <SaveStatusDot lineId={lineKey} />
                       </span>
 
-                      {/* v3 效率细节7：× 删除按钮（紧凑图标） */}
                       <button
                         className="alloc-del-btn"
                         onClick={() => removeEditRow(idx)}
@@ -1210,11 +1240,10 @@ export default function AllocationView({ documentId }: { documentId: string }) {
 
                 {/* v3 效率细节8：底部提示框（含自动补齐动态说明） */}
                 <div className="alloc-modal-hint">
-                  💡 第一行预填需求数量；点击「标记」切换状态：未标记 → ✓已配 → ○代配 ·
-                  出库方选定或数量输入后失焦自动保存 · 数量可超过缺口（超拿）
+                  ✓已配 · ○代配 · 点来源开两枝选仓或渠道
                   {editOriginLine && toQty(editOriginLine.qty) > toQty(editOriginLine.allocatedTotal) && (
-                    <span style={{ color: 'var(--status-warning-default)', marginLeft: '8px' }}>
-                      · 已配 {fmtQty(toQty(editOriginLine.allocatedTotal))} &lt; 需求 {fmtQty(toQty(editOriginLine.qty))}，系统已自动新增补齐行（剩余 {fmtQty(toQty(editOriginLine.shortageQty))}）
+                    <span style={{ color: 'var(--status-warning-default)', marginLeft: 'var(--spacer-8)' }}>
+                      · 已配 {fmtQty(toQty(editOriginLine.allocatedTotal))} &lt; 需求 {fmtQty(toQty(editOriginLine.qty))}，已补一行
                     </span>
                   )}
                 </div>
@@ -1231,6 +1260,8 @@ export default function AllocationView({ documentId }: { documentId: string }) {
             width={430}
             footer={null}
             closable
+            getContainer={overlayModalContainer}
+            centered
           >
             {shortageTip && (
               <div style={{ display: 'grid', gap: 12 }}>
@@ -1243,15 +1274,15 @@ export default function AllocationView({ documentId }: { documentId: string }) {
                   </b>
                   件。
                   <div style={{ marginTop: 4, color: 'var(--text-tertiary)', fontSize: 'var(--body-xs-font-size)' }}>
-                    已有库存已全额扣除，请选择快速处置：
+                    已有库存已全额扣除，缺口已自动挂欠库；补货入库后自动冲抵。也可立刻改走外部调货。
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <DsButton variant="secondary" size="sm" onClick={handleShortageExternal}>
-                    ① 新增外部来源补齐
+                  <DsButton variant="secondary" size="sm" onClick={() => setShortageTip(null)}>
+                    知道了
                   </DsButton>
-                  <DsButton variant="primary" size="sm" loading={backorderSaving} onClick={handleShortageBackorder}>
-                    ② 挂欠库标记
+                  <DsButton variant="primary" size="sm" onClick={handleShortageExternal}>
+                    改走外部调货
                   </DsButton>
                 </div>
               </div>
@@ -1263,7 +1294,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
       {/* v4.2 表格区（UnifiedTable disableEmptyRows，对齐 Excel 超级表格范式基线） */}
       <UnifiedTable<AllocationDocumentLineView>
         columns={columns}
-        rows={lines}
+        rows={visibleLines}
         rowKey={(r) => r.lineId}
         moreMenuRenderer={moreMenuRenderer}
         loading={loading}

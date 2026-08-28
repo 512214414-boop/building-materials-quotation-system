@@ -115,7 +115,9 @@ export const useDocumentStore = create<DocumentStoreState>((set, get) => ({
       event.type === 'allocation.changed' ||
       event.type === 'delivery.updated' ||
       event.type === 'cost.updated' ||
-      event.type === 'refund.updated'
+      event.type === 'refund.updated' ||
+      event.type === 'archive.sales_archived' ||
+      event.type === 'archive.sales_unarchived'
     ) {
       void get().refresh();
     }

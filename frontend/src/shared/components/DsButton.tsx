@@ -20,31 +20,35 @@ const SIZE_MAP: Record<DsButtonSize, NonNullable<ButtonProps['size']>> = {
   lg: 'large',
 };
 
+function border(color: string): CSSProperties {
+  return { borderWidth: 1, borderStyle: 'solid', borderColor: color };
+}
+
 function baseStyle(variant: DsButtonVariant): CSSProperties {
   switch (variant) {
     case 'primary':
       return {
         background: 'var(--bg-brand)',
         color: 'var(--text-onbrand)',
-        borderColor: 'var(--bg-brand)',
+        ...border('var(--bg-brand)'),
       };
     case 'secondary':
       return {
-        background: 'var(--bg-base-tertiary)',
+        background: 'var(--bg-base-secondary)',
         color: 'var(--text-default)',
-        borderColor: 'var(--border-neutral-l2)',
+        ...border('var(--border-neutral-l2)'),
       };
     case 'ghost':
       return {
         background: 'transparent',
         color: 'var(--text-default)',
-        borderColor: 'var(--border-neutral-l2)',
+        ...border('var(--border-neutral-l2)'),
       };
     case 'danger':
       return {
         background: 'var(--status-error-default)',
         color: 'var(--text-on-accent)',
-        borderColor: 'var(--status-error-default)',
+        ...border('var(--status-error-default)'),
       };
     default:
       return {};
@@ -73,11 +77,20 @@ function hoverStyle(variant: DsButtonVariant): CSSProperties {
 }
 
 export const DsButton = forwardRef<HTMLButtonElement, DsButtonProps>(function DsButton(props, ref) {
-  const { variant = 'primary', size = 'md', style, disabled, ...rest } = props;
+  const { variant = 'primary', size = 'md', style, disabled, className, ...rest } = props;
   const [hovered, setHovered] = useState(false);
 
   const merged: CSSProperties = {
     ...baseStyle(variant),
+    ...(size === 'sm'
+      ? {
+          height: 20,
+          minHeight: 20,
+          fontSize: 'var(--body-sm-font-size)',
+          lineHeight: '18px',
+          borderRadius: 'var(--radius-4)',
+        }
+      : {}),
     ...(hovered && !disabled ? hoverStyle(variant) : {}),
     ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
     ...style,
@@ -89,6 +102,9 @@ export const DsButton = forwardRef<HTMLButtonElement, DsButtonProps>(function Ds
       data-shared-badge="C01"
       type="default"
       size={SIZE_MAP[size]}
+      className={['ds-btn', size === 'sm' ? 'ds-btn-sm' : undefined, className]
+        .filter(Boolean)
+        .join(' ')}
       style={merged}
       disabled={disabled}
       onMouseEnter={() => setHovered(true)}

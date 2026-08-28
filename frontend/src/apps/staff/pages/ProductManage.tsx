@@ -5,82 +5,87 @@
 //   - purchase_price.supplierName → supplierId 外键 + isDefault
 //   - suppliers 表 → supplier 表（新结构）
 //
-// 列表页交互（用户最新设计指令）：
+// 列表页交互：
 //   - 操作列和序号列固定所有表格列前两列（固定列）
-//   - 列：操作 | # | 分类 | 产品图片 | 产品全名(品牌+产品名称+规格型号合并列) | 单位▾ | 售价▾ | 进价▾ | 备注信息
-//   - 点击分类/图片/产品全名列都进入产品编辑弹窗
+//   - 列：操作 | # | 分类 | 图 | 产品名 | 品牌 | 系列/规格 | 单位▾ | 售价▾ | 进价▾ | 备注 | 状态 | 更新时间
+//   - 档案管理拆列（不是选品那种拼在一起方便阅读）。点产品名进编辑弹窗。
+//   - 表体品牌/规格已是最后一级：没有下拉箭头，点文字直接打开确认浮层改这一条。
+//     借鉴的是选品「点值就能改」的速度，不是照抄开单格子输入形态。
+//   - 备注走点值确认层（ArchiveFieldCell → spec.remark），与四档案标量同一契约。
+//   - 筛选走档案框架槽：关键词独立 + 表头 HeaderCascadeFilter + 右侧状态。产品私有的是级联粒度（产品→品牌→规格）和标准条件同组只在第一条显示名称。
+//   - 全局关键词检索保留（匹配宽表），与列筛选 AND。
 //   - 单位▾：切换该行单位（影响售价/进价显示）
 //   - 售价▾：显示当前单位下价格，下拉切换价格类型
 //   - 进价▾：显示当前单位下进价，下拉切换供应商
-//   - 第一行始终显示创建入口（点击打开建档弹窗，预填搜索关键词）
+//   - 新建产品：工具栏「新建产品」或空表「新增产品」（预填当前关键词）
 //
 // 数据加载（两段式查询）：
-//   - 第一段：searchProducts(query) → SearchProductResult
-//     list[0] = CreationPrompt（创建入口，不计入分页）
-//     list[1..] = SkuSearchRow（SKU 行，含默认单位+最低价+主图）
+//   - 第一段：searchProducts(query) → SearchProductResult → SkuSearchRow[]
 //   - 第二段：getSkuOptions(brandId) → { units, conversions }
 //     点击单位/售价/进价下拉时按需加载，返回该品牌下所有单位及全部售价/进价
 //     conversions 数组提供品牌×单位换算率
 //     各行独立维护当前选中的单位/价格类型/供应商，互不影响
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { App as AntdApp, Menu, Popover } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  DownOutlined,
   StopOutlined,
   CheckCircleOutlined,
-  CloseOutlined,
 } from '@ant-design/icons';
-import { UnifiedTable } from '../../../shared/components/UnifiedTable.js';
+import ArchiveListPage from '../../../shared/components/ArchiveListPage.js';
 import type { UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
-import { DsInput, SuggestInput, confirmFillsBeforeSave } from '../../../shared/components/index.js';
-import DsSelect from '../../../shared/components/DsSelect.js';
+import { confirmFillsBeforeSave } from '../../../shared/components/index.js';
 import DsButton from '../../../shared/components/DsButton.js';
-import ViewFrame from '../../../shared/components/ViewFrame.js';
 import {
   NameLinkCell,
   ImageThumbCell,
-  TextCell,
   StatusTagCell,
   DateTimeCell,
-  EnumInlineEditCell,
   createSkuPriceColumns,
   type SkuPriceRowData,
 } from '../../../shared/components/cells/index.js';
+import { deriveTableColumns, mergeColumns } from '../../../shared/config/deriveTableColumns.js';
 import ProductEditDialog from './product-manage/ProductEditDialog.js';
 import BatchAdjustDialog from './product-manage/BatchAdjustDialog.js';
-import { DictRecordManagePanel } from '../../../shared/components/DictRefField.js';
-import { categoryDict } from '../../../shared/config/recordDicts.js';
+import ProductDeleteConfirmDialog from './product-manage/ProductDeleteConfirmDialog.js';
+import { HeaderCascadeFilter } from '../../../shared/components/archive/HeaderCascadeFilter.js';
+import {
+  ArchiveBrandCell,
+  ArchiveCategoryCell,
+  ArchiveSpecCell,
+} from './product-manage/ArchiveFieldCell.js';
+import { PickerEditGateProvider } from '../../../shared/components/product-picker/PickerEditGate.js';
+import { ArchiveFieldCell } from '../../../shared/components/product-picker/PickerInlineCells.js';
 import { QUICK_CREATE_LAYERS } from '../../../shared/config/quickCreateConfig.js';
 import {
   type SalePriceItem,
   type PurchasePriceItem,
   genRowKey,
 } from '../../../shared/components/UnitPriceExpandPanel.js';
-import { useDebounce } from '../../../shared/hooks/useDebounce.js';
 import useSkuPriceState from '../../../shared/hooks/useSkuPriceState.js';
 import {
   searchProducts,
   getSkuOptions,
-  deleteProduct,
   deactivateProduct,
   activateProduct,
-  getProductDocRefs,
+  batchDeactivateProducts,
+  batchActivateProducts,
   listPriceTypes,
   getProduct,
   saveProduct,
-  updateProduct,
   createUnit,
-  updateUnit,
+  rebindSpecUnit,
+  applyDictChange,
   deleteUnit,
   setUnitDisplay,
+  listSkuSearchFacets,
+  updateSpecBrandRemark,
   type SkuSearchRow,
-  type CreationPrompt,
   type SkuOptionUnit,
   type PriceTypeView,
   type ProductView,
@@ -88,27 +93,44 @@ import {
   type BrandConversionInput,
   type ProductSalePriceInput,
   type ProductPurchasePriceInput,
-  DEFAULT_SPEC_MODEL,
 } from '../../../shared/services/api/baseDataApi.js';
-import { smartPopupContainer } from '../../../shared/utils/smartPopupContainer.js';
 import { buildSaveProductInput } from '../../../shared/utils/buildSaveProductInput.js';
+import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
+import { useArchiveTableSelection } from '../../../shared/hooks/useArchiveTableSelection.js';
+import { ARCHIVE_ENABLED_STATUS_OPTIONS } from '../../../shared/components/archive/ArchiveListFilters.js';
 
 // ============================================================
-// §1 表格行类型（统一包装 CreationPrompt 与 SkuSearchRow）
+// §1 表格行类型（SkuSearchRow + 列展示辅助字段）
 // ============================================================
 
-/**
- * 表格行：第一行固定为创建入口（creation），其余为 SKU 行（sku）。
- * 创建入口行点击后打开建档弹窗，预填搜索关键词。
- */
+/** 表格行：SKU 宽表一行（规格×品牌）；批量操作按 productId 去重 */
 interface TableRow {
-  rowType: 'creation' | 'sku';
-  /** 创建入口行的关键词（来自 CreationPrompt.keyword） */
-  creationKeyword?: string;
-  /** SKU 行的数据（来自 SkuSearchRow） */
-  sku?: SkuSearchRow;
+  sku: SkuSearchRow;
   /** 行唯一 key */
   rowKey: string;
+  /** 给 fitContent 量宽用的纯文本（不能用 sku 对象，否则列宽全错） */
+  productName?: string;
+  brandName?: string;
+  specModel?: string;
+  remark?: string;
+  categoryName?: string;
+  /** 标准条件下列去重：同一组只在第一条显示名称 */
+  hideProductName?: boolean;
+  hideBrandName?: boolean;
+  hideSpecModel?: boolean;
+}
+
+/** 宽表多行可能同属一个 productId，批量操作按产品去重 */
+function dedupeSkusByProductId(rows: TableRow[]): SkuSearchRow[] {
+  const seen = new Set<string>();
+  const out: SkuSearchRow[] = [];
+  for (const row of rows) {
+    const pid = String(row.sku.productId);
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    out.push(row.sku);
+  }
+  return out;
 }
 
 // ============================================================
@@ -120,11 +142,7 @@ const STATUS_TAG_MAP: Record<number, { color: string; text: string }> = {
   0: { color: 'warning', text: '停用' },
 };
 
-const STATUS_OPTIONS = [
-  { label: '全部状态', value: -1 },
-  { label: '启用', value: 1 },
-  { label: '停用', value: 0 },
-];
+const STATUS_OPTIONS = ARCHIVE_ENABLED_STATUS_OPTIONS;
 
 // ============================================================
 // §3 行级 SKU 选项状态（单位/售价/进价下拉共享）
@@ -153,7 +171,7 @@ const STATUS_OPTIONS = [
 // ============================================================
 
 export default function ProductManage() {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
 
   // ---- 数据状态 ----
   const [loading, setLoading] = useState(false);
@@ -166,36 +184,40 @@ export default function ProductManage() {
 
   // ---- 筛选状态 ----
   const [keyword, setKeyword] = useState('');
-  const debouncedKeyword = useDebounce(keyword, 300);
-  const [filterCategoryId, setFilterCategoryId] = useState<number | null>(null);
-  // v1.5.5：分类筛选面板（与编辑弹窗同款：SuggestInput + DictRecordManagePanel）
-  //   按钮回显所选分类名；打开时清空检索词
-  const [filterCategoryName, setFilterCategoryName] = useState('');
-  const [filterCatOpen, setFilterCatOpen] = useState(false);
-  const [filterCatKeyword, setFilterCatKeyword] = useState('');
+  const [filterBrandId, setFilterBrandId] = useState<string | null>(null);
+  const [filterBrandName, setFilterBrandName] = useState('');
+  const [filterProductId, setFilterProductId] = useState<string | null>(null);
+  const [filterProductName, setFilterProductName] = useState('');
+  const [filterSpecModel, setFilterSpecModel] = useState('');
+  const [filterSpecExact, setFilterSpecExact] = useState(true);
   // v11.0：默认只显示启用产品（停用产品从检索结果中过滤，可切换「全部状态」查看）
   const [filterStatus, setFilterStatus] = useState<number>(1);
 
   // ---- 弹窗状态 ----
   const [dialogOpen, setDialogOpen] = useState(false);
   const [batchAdjustOpen, setBatchAdjustOpen] = useState(false);
-  // v11.3：从单产品进价明细点「点位」进入 → 携带上下文打开批量调整弹窗
-  const [batchAdjustCtx, setBatchAdjustCtx] = useState<{
-    supplierId: string;
-    supplierName: string;
-    brandName: string;
-    categoryName: string;
-    skuId: string;
-    specBrandId: string;
-    specId: string;
-    defaultUnitId: string | null;
-  } | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   // v1.5.5：打开编辑弹窗时点击的品牌 ID（弹窗预选该品牌，避免换算率/价格显示与列表脱节）
   const [editingBrandId, setEditingBrandId] = useState<string | null>(null);
   // v14.0：打开编辑弹窗时点击的规格 ID（弹窗定位到该规格，避免总是显示首个规格）
   const [editingSpecId, setEditingSpecId] = useState<string | null>(null);
   const [presetKeyword, setPresetKeyword] = useState('');
+  const formatSelectionSummary = useCallback((rows: TableRow[]) => {
+    const rowCount = rows.length;
+    const productCount = dedupeSkusByProductId(rows).length;
+    if (rowCount === 0) return null;
+    if (rowCount === productCount) return `已选 ${rowCount} 行`;
+    return `已选 ${rowCount} 行 · ${productCount} 个产品（表头批量按产品计）`;
+  }, []);
+  const {
+    selectedRef: selectedRowsRef,
+    selectionResetKey,
+    selectionSummary,
+    onSelectionChange: handleTableSelectionChange,
+    clearSelection,
+  } = useArchiveTableSelection<TableRow>({ formatSummary: formatSelectionSummary });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTargets, setDeleteTargets] = useState<SkuSearchRow[]>([]);
 
   // ---- 行级 SKU 选项状态：按 skuId（brandId）独立维护 ----
   // key = sku.id（brandId 唯一标识该 SKU 行）
@@ -219,6 +241,9 @@ export default function ProductManage() {
             priceTypeName: sp.priceTypeName,
             price: String(sp.price),
             isDefault: sp.isDefault,
+            point: sp.point ?? 1,
+            effectivePrice: sp.effectivePrice ?? null,
+            specPoint: sp.specPoint ?? false,
           });
         });
         u.purchasePrices.forEach((pp) => {
@@ -233,6 +258,7 @@ export default function ProductManage() {
             // v12.0：点位/进价由后端计算返回（进价 = 面价 × 点位，无规则默认 1），透传供进价明细展示
             point: pp.point ?? 1,
             effectivePrice: pp.effectivePrice ?? null,
+            specPoint: pp.specPoint ?? false,
           });
         });
       });
@@ -295,12 +321,18 @@ export default function ProductManage() {
   // 数据加载（第一段：searchProducts）
   // ============================================================
 
+  const loadedRef = useRef(false);
   const fetchList = useCallback(async () => {
-    setLoading(true);
+    if (!loadedRef.current) setLoading(true);
     try {
       const result = await searchProducts({
-        keyword: debouncedKeyword.trim() || undefined,
-        categoryId: filterCategoryId ?? undefined,
+        keyword: keyword.trim() || undefined,
+        brandId: filterBrandId ?? undefined,
+        brandName: !filterBrandId && filterBrandName.trim() ? filterBrandName.trim() : undefined,
+        productId: filterProductId ?? undefined,
+        productName: !filterProductId && filterProductName.trim() ? filterProductName.trim() : undefined,
+        specModel: filterSpecModel.trim() || undefined,
+        specExact: filterSpecModel.trim() ? (filterSpecExact ? 1 : 0) : undefined,
         // v1.5.6.2 修复【关键】：原实现把「全部状态」(-1) 转成 undefined 发送，
         //   后端把 undefined 当默认 status=1（仅启用），导致「全部状态」永远看不到停用产品。
         //   修复：直接发送 filterStatus 原值，-1 由后端识别为查全部。
@@ -308,42 +340,57 @@ export default function ProductManage() {
         page,
         size: pageSize,
       });
-      // 第一行固定为创建入口，其余为 SKU 行
       const tableRows: TableRow[] = [];
-      let creationKeyword = debouncedKeyword.trim();
-      const list = result.list ?? [];
-      const creationItem = list.find((item) => item.type === 'creation_prompt') as
-        | CreationPrompt
-        | undefined;
-      if (creationItem?.keyword) {
-        creationKeyword = creationItem.keyword;
+      const skuItems = (result.list ?? []).filter(
+        (item): item is SkuSearchRow => item.type === 'sku',
+      );
+      const outline =
+        !!filterProductId || !!filterBrandId || (!!filterSpecModel.trim() && filterSpecExact);
+      if (outline) {
+        skuItems.sort((a, b) => {
+          const p = (a.productName || '').localeCompare(b.productName || '', 'zh');
+          if (p) return p;
+          const br = (a.brandName || '').localeCompare(b.brandName || '', 'zh');
+          if (br) return br;
+          return (a.specModel || '').localeCompare(b.specModel || '', 'zh');
+        });
       }
-      // 创建入口行（始终置顶）
-      tableRows.push({
-        rowType: 'creation',
-        creationKeyword,
-        rowKey: '__creation__',
-      });
-      // SKU 行
-      for (const item of list) {
-        if (item.type !== 'sku') continue;
+      let lastPid = '';
+      let lastBid = '';
+      let lastSpec = '';
+      for (const item of skuItems) {
+        const pid = String(item.productId);
+        const bid = String(item.brandId);
+        const spec = item.specModel || '';
+        const hideProductName = !!filterProductId && pid === lastPid;
+        const hideBrandName = !!filterBrandId && bid === lastBid;
+        const hideSpecModel = !!(filterSpecExact && filterSpecModel.trim()) && spec === lastSpec;
+        if (filterProductId) lastPid = pid;
+        if (filterBrandId) lastBid = bid;
+        if (filterSpecExact && filterSpecModel.trim()) lastSpec = spec;
         tableRows.push({
-          rowType: 'sku',
           sku: item,
           rowKey: item.id,
+          productName: item.productName,
+          brandName: item.brandName,
+          specModel: item.specModel,
+          remark: item.remark,
+          categoryName: item.categoryName,
+          hideProductName,
+          hideBrandName,
+          hideSpecModel,
         });
       }
       setRows(tableRows);
       setTotal(result.total ?? 0);
-      // v10.1.6：移除 setVersion，UnifiedTable 已支持响应 rows 变化
-      // 重置行级 SKU 状态（数据变化后清空旧缓存）
+      loadedRef.current = true;
       resetRowSkuStates();
     } catch (e) {
       message.error((e as Error).message || '获取产品列表失败');
     } finally {
       setLoading(false);
     }
-  }, [debouncedKeyword, filterCategoryId, filterStatus, page, pageSize, message, resetRowSkuStates]);
+  }, [keyword, filterBrandId, filterBrandName, filterProductId, filterProductName, filterSpecModel, filterSpecExact, filterStatus, page, pageSize, message, resetRowSkuStates]);
 
   // v9.3：加载价格类型字典（UnitPriceExpandPanel 共享，组件挂载时一次性加载）
   useEffect(() => {
@@ -356,6 +403,67 @@ export default function ProductManage() {
   useEffect(() => {
     void fetchList();
   }, [fetchList]);
+
+  const clearSpecFilter = useCallback(() => {
+    setFilterSpecModel('');
+    setFilterSpecExact(true);
+    setPage(1);
+  }, []);
+
+  const clearBrandFilter = useCallback(() => {
+    setFilterBrandId(null);
+    setFilterBrandName('');
+    setFilterSpecModel('');
+    setPage(1);
+  }, []);
+
+  const clearProductFilter = useCallback(() => {
+    setFilterProductId(null);
+    setFilterProductName('');
+    setFilterBrandId(null);
+    setFilterBrandName('');
+    setFilterSpecModel('');
+    setPage(1);
+  }, []);
+
+  const fetchProductFacet = useCallback(
+    (kw: string) =>
+      listSkuSearchFacets({
+        field: 'product',
+        keyword: kw,
+        q: keyword.trim() || undefined,
+        status: filterStatus,
+      }),
+    [keyword, filterStatus],
+  );
+
+  const fetchBrandFacet = useCallback(
+    (kw: string) =>
+      listSkuSearchFacets({
+        field: 'brand',
+        keyword: kw,
+        q: keyword.trim() || undefined,
+        status: filterStatus,
+        productId: filterProductId ?? undefined,
+        productName: !filterProductId && filterProductName.trim() ? filterProductName.trim() : undefined,
+      }),
+    [keyword, filterStatus, filterProductId, filterProductName],
+  );
+
+  const fetchSpecFacet = useCallback(
+    (kw: string) =>
+      listSkuSearchFacets({
+        field: 'spec',
+        keyword: kw,
+        q: keyword.trim() || undefined,
+        status: filterStatus,
+        productId: filterProductId ?? undefined,
+        productName: !filterProductId && filterProductName.trim() ? filterProductName.trim() : undefined,
+        brandId: filterBrandId ?? undefined,
+        brandName: !filterBrandId && filterBrandName.trim() ? filterBrandName.trim() : undefined,
+      }),
+    [keyword, filterStatus, filterProductId, filterProductName, filterBrandId, filterBrandName],
+  );
 
   // ============================================================
   // 弹窗控制
@@ -395,92 +503,48 @@ export default function ProductManage() {
     void fetchList();
   }, [fetchList]);
 
-  // v11.3：单产品进价明细点「点位」→ 打开批量调整弹窗（带入 供应商/品牌/分类 上下文）
-  const handleOpenBatchAdjustFromProduct = useCallback(
-    (
-      sku: SkuSearchRow,
-      pp: { supplierId: string; supplierName: string },
-    ) => {
-      setBatchAdjustCtx({
-        supplierId: pp.supplierId,
-        supplierName: pp.supplierName,
-        brandName: sku.brandName,
-        categoryName: sku.categoryName,
-        skuId: sku.id,
-        specBrandId: sku.specBrandId,
-        specId: sku.specId,
-        defaultUnitId: sku.defaultUnitId,
-      });
-      setBatchAdjustOpen(true);
+  const handleCellCommit = useCallback(
+    (_rowIndex: number, _columnKey: string, _value: unknown, _record: TableRow) => {
+      // 列表标量/备注均已改点值确认层，此处保留空壳供 UnifiedTable 契约
     },
     [],
   );
 
-  // ============================================================
-  // 行操作：删除产品（v11.0 二次确认 + 引用计数提示）
-  // ============================================================
-
-  const handleDelete = useCallback(
-    async (sku: SkuSearchRow) => {
-      // v11.0.3 修复：用户反馈"列表显示多行（每品牌一行），删除一行导致整个产品被删除"
-      //   根因：列表基于 product_sku_search 宽表（每品牌一行），但删除操作基于 productId（删除整个产品）
-      //   修复：删除确认弹窗明确提示"将删除整个产品（含所有品牌）"，并查询实际品牌数量展示
-      //         如需删除单个品牌，应在编辑弹窗中操作
-      let brandCount = 0;
-      let unitCount = 0;
-      try {
-        const detail = await getProduct(sku.productId);
-        brandCount = detail.brands?.length ?? 0;
-        unitCount = detail.units?.length ?? 0;
-      } catch {
-        // 查询失败不阻塞删除流程
-      }
-      const hasMultipleBrands = brandCount > 1;
-      modal.confirm({
-        title: '确认物理删除整个产品？',
-        content: (
-          <div>
-            <div style={{ fontWeight: 500 }}>
-              {`${sku.productName} ${sku.specModel}`}
-            </div>
-            {hasMultipleBrands && (
-              <div style={{ color: 'var(--status-error)', marginTop: 6, fontWeight: 500 }}>
-                {`⚠ 该产品下有 ${brandCount} 个品牌（${sku.brandName} 等），删除将一并清除所有品牌数据`}
-              </div>
-            )}
-            <div style={{ color: 'var(--text-tertiary)', marginTop: 4 }}>
-              {`将删除整个产品，包括 ${brandCount} 个品牌、${unitCount} 个单位、所有售价/进价/图片数据。`}
-            </div>
-            <div style={{ color: 'var(--text-tertiary)', marginTop: 2 }}>
-              如需删除单个品牌，请在编辑弹窗中操作。
-            </div>
-            <div style={{ color: 'var(--text-tertiary)', marginTop: 2 }}>
-              历史单据的展示、账目核对、数据统计均不受影响。
-            </div>
-          </div>
+  const saveRemark = useCallback(
+    (record: TableRow, next: string) => {
+      const trimmed = next.trim();
+      const prev = (record.sku.remark ?? '').trim();
+      if (trimmed === prev) return;
+      setRows((prevRows) =>
+        prevRows.map((row) =>
+          row.rowKey === record.rowKey
+            ? { ...row, remark: trimmed, sku: { ...row.sku, remark: trimmed } }
+            : row,
         ),
-        okText: '物理删除整个产品',
-        okButtonProps: { danger: true },
-        cancelText: '取消',
-        onOk: async () => {
-          try {
-            // v11.0：先获取引用计数用于审计日志展示
-            const refs = await getProductDocRefs(sku.productId);
-            const result = await deleteProduct(sku.productId);
-            const refCount = result.deletedDocLineRefs ?? refs.docLineCount;
-            message.success(
-              refCount > 0
-                ? `已删除（历史单据 ${refCount} 行保留快照展示）`
-                : '已删除',
-            );
-            void fetchList();
-          } catch (e) {
-            message.error((e as Error).message || '删除失败');
-          }
-        },
+      );
+      updateSpecBrandRemark(record.sku.specBrandId, trimmed).catch((e) => {
+        message.error((e as Error).message || '保存备注失败');
+        void fetchList();
       });
     },
-    [modal, message, fetchList],
+    [fetchList, message],
+  );
+
+  // ============================================================
+  // 行操作：删除产品（DsDialog 分步确认）
+  // ============================================================
+
+  const openDeleteDialog = useCallback((skus: SkuSearchRow[]) => {
+    if (skus.length === 0) return;
+    setDeleteTargets(skus);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleDelete = useCallback(
+    (sku: SkuSearchRow) => {
+      openDeleteDialog([sku]);
+    },
+    [openDeleteDialog],
   );
 
   // ============================================================
@@ -506,25 +570,96 @@ export default function ProductManage() {
     [message, fetchList],
   );
 
-  // ============================================================
-  // v1.5.3：分类行内编辑（PATCH /staff/products/:id 更新产品分类，宽表由后端 syncSkuSearchByProduct 同步）
-  // 分类是 product 级（所有品牌共享），修改后整行/整个产品的分类变化
-  // ============================================================
-
-  const handleCategoryChange = useCallback(
-    async (sku: SkuSearchRow, categoryId: number) => {
-      // v1.5.3：categoryId 为 BigInt 序列化的 string，统一转 number 再比较/提交
-      const currentId = Number(sku.categoryId ?? 0);
-      if (categoryId === currentId) return;
-      try {
-        await updateProduct(sku.productId, { categoryId });
-        message.success('分类已更新');
-        void fetchList();
-      } catch (e) {
-        message.error((e as Error).message || '更新分类失败');
-      }
+  const handleBatchDeactivate = useCallback(
+    (rows?: TableRow[]) => {
+      const targets = dedupeSkusByProductId(rows ?? selectedRowsRef.current).filter((s) => s.status === 1);
+      if (targets.length === 0) return;
+      modal.confirm({
+        title: `确认停用所选 ${targets.length} 个产品？`,
+        content: '列表按规格×品牌展示，同一产品多行勾选只计一次。停用后默认检索不可见，可切换「全部状态」查看。',
+        okText: '停用',
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            await batchDeactivateProducts(targets.map((s) => s.productId));
+            clearSelection();
+            message.success(`已停用 ${targets.length} 个产品`);
+            void fetchList();
+          } catch (e) {
+            message.error((e as Error).message || '批量停用失败');
+          }
+        },
+      });
     },
-    [message, fetchList],
+    [modal, message, fetchList, clearSelection],
+  );
+
+  const handleBatchActivate = useCallback(
+    (rows?: TableRow[]) => {
+      const targets = dedupeSkusByProductId(rows ?? selectedRowsRef.current).filter((s) => s.status !== 1);
+      if (targets.length === 0) return;
+      modal.confirm({
+        title: `确认启用所选 ${targets.length} 个产品？`,
+        okText: '启用',
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            await batchActivateProducts(targets.map((s) => s.productId));
+            clearSelection();
+            message.success(`已启用 ${targets.length} 个产品`);
+            void fetchList();
+          } catch (e) {
+            message.error((e as Error).message || '批量启用失败');
+          }
+        },
+      });
+    },
+    [modal, message, fetchList, clearSelection],
+  );
+
+  const handleBatchDelete = useCallback(
+    (rows?: TableRow[]) => {
+      const targets = dedupeSkusByProductId(rows ?? selectedRowsRef.current);
+      if (targets.length === 0) return;
+      void openDeleteDialog(targets);
+    },
+    [openDeleteDialog],
+  );
+
+  const headerMoreMenuRenderer = useCallback(
+    (selected: TableRow[]): ReactNode => {
+      const skus = dedupeSkusByProductId(selected);
+      const n = skus.length;
+      const activeCount = skus.filter((s) => s.status === 1).length;
+      const inactiveCount = n - activeCount;
+      const items: MenuProps['items'] = [
+        {
+          key: 'deactivate',
+          icon: <StopOutlined />,
+          label: n > 0 ? `停用已勾选 (${activeCount})` : '停用已勾选',
+          disabled: activeCount === 0,
+          onClick: () => handleBatchDeactivate(selected),
+        },
+        {
+          key: 'activate',
+          icon: <CheckCircleOutlined />,
+          label: n > 0 ? `启用已勾选 (${inactiveCount})` : '启用已勾选',
+          disabled: inactiveCount === 0,
+          onClick: () => handleBatchActivate(selected),
+        },
+        { type: 'divider' },
+        {
+          key: 'deleteSelected',
+          icon: <DeleteOutlined />,
+          label: n > 0 ? `物理删除已勾选 (${n})` : '物理删除已勾选',
+          danger: true,
+          disabled: n === 0,
+          onClick: () => handleBatchDelete(selected),
+        },
+      ];
+      return <Menu items={items} />;
+    },
+    [handleBatchDeactivate, handleBatchActivate, handleBatchDelete],
   );
 
   // ============================================================
@@ -533,18 +668,6 @@ export default function ProductManage() {
 
   const moreMenuRenderer = useCallback(
     (record: TableRow): React.ReactNode => {
-      if (record.rowType !== 'sku' || !record.sku) {
-        // 创建入口行：显示「新建」菜单项
-        const items: MenuProps['items'] = [
-          {
-            key: 'create',
-            icon: <PlusOutlined />,
-            label: '新建产品',
-            onClick: () => handleOpenAddDialog(record.creationKeyword),
-          },
-        ];
-        return <Menu items={items} />;
-      }
       const sku = record.sku;
       const isActive = sku.status === 1;
       const items: MenuProps['items'] = [
@@ -571,7 +694,7 @@ export default function ProductManage() {
       ];
       return <Menu items={items} />;
     },
-    [handleOpenAddDialog, handleOpenEditDialog, handleDelete, handleToggleStatus],
+    [handleOpenEditDialog, handleDelete, handleToggleStatus],
   );
 
   // ============================================================
@@ -705,38 +828,30 @@ export default function ProductManage() {
 
   // v11.3：批量调整成功后 → 刷新列表 + 重载该 SKU 的价格面板数据（点位/进价更新）
   const handleBatchAdjustDone = useCallback(() => {
-    const ctx = batchAdjustCtx;
-    if (ctx) {
-      void loadSkuOptions({
-        skuId: ctx.skuId,
-        specBrandId: ctx.specBrandId,
-        specId: ctx.specId,
-        productId: '',
-        defaultUnitId: ctx.defaultUnitId,
-      });
-    }
     void fetchList();
-    setBatchAdjustCtx(null);
-  }, [batchAdjustCtx, loadSkuOptions, fetchList]);
+  }, [fetchList]);
 
   // ============================================================
   // 列定义（UnifiedTable）
   // v8.0：操作 + 序号 固定前两列，产品全名合并列，单位/售价/进价分离
   // v1.4 组件抽象与复用规范：各列改用共享列组件（NameLinkCell/ImageThumbCell/
-  //   TextCell/StatusTagCell/DateTimeCell/EnumInlineEditCell/createSkuPriceColumns），
+  //   StatusTagCell/DateTimeCell/createSkuPriceColumns），
   //   以产品管理自身为唯一基准原型，杜绝页面手写与共享组件双份代码。
   // ============================================================
 
   // SKU 行 → 结构化多行列取值映射（createSkuPriceColumns 用）
   const getRowData = useCallback(
     (record: TableRow): SkuPriceRowData | null => {
-      if (record.rowType !== 'sku' || !record.sku) return null;
       const sku = record.sku;
       return {
         id: sku.id,
         specBrandId: sku.specBrandId,
         specId: sku.specId,
         productId: sku.productId,
+        brandName: sku.brandName,
+        categoryName: sku.categoryName,
+        categoryId: sku.categoryId ? Number(sku.categoryId) : null,
+        brandId: sku.brandId,
         defaultUnitId: sku.defaultUnitId,
         defaultUnitName: sku.defaultUnitName,
         retailPrice: sku.retailPrice,
@@ -755,7 +870,24 @@ export default function ProductManage() {
         const trimmed = name.trim();
         if (!trimmed) return;
         try {
-          await updateUnit(unitId, { unitName: trimmed });
+          await rebindSpecUnit(row.specId, unitId, trimmed);
+          message.success('单位已更换');
+          loadSkuOptions({
+            skuId: row.id,
+            specBrandId: row.specBrandId,
+            specId: row.specId,
+            productId: row.productId,
+            defaultUnitId: row.defaultUnitId,
+          });
+        } catch (e) {
+          message.error((e as Error).message || '单位更换失败');
+        }
+      },
+      onRenameGlobal: async (row: SkuPriceRowData, unitId: string, name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        try {
+          await applyDictChange({ kind: 'unit', fromId: unitId, toName: trimmed });
           message.success('单位已改名');
           loadSkuOptions({
             skuId: row.id,
@@ -834,7 +966,7 @@ export default function ProductManage() {
       },
       onSetDisplay: async (row: SkuPriceRowData, unitId: string) => {
         try {
-          await setUnitDisplay(unitId, true);
+          await setUnitDisplay(unitId, true, row.specId);
           message.success('默认单位已更新');
           loadSkuOptions({
             skuId: row.id,
@@ -849,7 +981,7 @@ export default function ProductManage() {
       },
       onDelete: async (row: SkuPriceRowData, unitId: string) => {
         try {
-          const res = await deleteUnit(unitId);
+          const res = await deleteUnit(unitId, row.specId);
           message.success(res.softDeleted ? '单位已停用（存在引用）' : '单位已删除');
           loadSkuOptions({
             skuId: row.id,
@@ -914,9 +1046,15 @@ export default function ProductManage() {
         getRowData,
         priceTypes,
         onPriceTypesChange: setPriceTypes,
-        onEditPoint: (row, pp) => {
-          const sku = rows.find((r) => r.rowKey === row.id)?.sku;
-          if (sku) handleOpenBatchAdjustFromProduct(sku, pp);
+        onPointPersisted: (row) => {
+          loadSkuOptions({
+            skuId: row.id,
+            specBrandId: row.specBrandId,
+            specId: row.specId,
+            productId: row.productId,
+            defaultUnitId: row.defaultUnitId,
+          });
+          void fetchList();
         },
         unitManage: unitManageActions,
       }),
@@ -932,44 +1070,22 @@ export default function ProductManage() {
       saveRowPrices,
       getRowData,
       priceTypes,
-      rows,
       unitManageActions,
     ],
   );
 
   const columns = useMemo<UnifiedTableColumn<TableRow>[]>(
-    () => [
-      // 1. 分类（tag列，3-4字，TAG_M=56px）——枚举行内编辑列（EnumInlineEditCell 共享组件）
+    () => mergeColumns(deriveTableColumns('product', 'archive'), [
+      // 1. 分类（最后一级：点值打开确认浮层，字典检索 + 可改全局）
       {
         key: 'categoryName',
         title: '分类',
-        dataIndex: 'sku',
-        minWidth: COL_WIDTHS.TAG_M,
+        dataIndex: 'categoryName',
+        minWidth: COL_WIDTHS.TAG_L,
         renderMode: 'custom',
         align: 'center',
         render: (_v, record) => {
-          if (record.rowType === 'creation' || !record.sku) return '—';
-          const catName = record.sku.categoryName;
-          return (
-            <EnumInlineEditCell
-              // v15.3：未分类按空值处理，触发 emptyWarning 系统补全语义色。
-              //   「未分类」是 name='未分类' 的真实分类记录（宽表冗余 categoryName），
-              //   以文本判断而非 categoryId=0 魔数——未分类记录 id 由 name 解析，不预设 0
-              value={catName === '未分类' ? '' : catName}
-              emptyText="未分类"
-              emptyWarning
-              suggestField="category"
-              suggestPlaceholder="搜索/新建分类"
-              onSelect={(item) => handleCategoryChange(record.sku!, Number(item.id))}
-              panel={
-                <DictRecordManagePanel
-                  dict={categoryDict}
-                  currentId={Number(record.sku!.categoryId ?? 0)}
-                  onSelect={(catId) => handleCategoryChange(record.sku!, Number(catId))}
-                />
-              }
-            />
-          );
+          return <ArchiveCategoryCell sku={record.sku} onSaved={() => void fetchList()} />;
         },
       },
       // 2. 产品图片（icon列，ICON=36px）——ImageThumbCell 共享组件
@@ -978,14 +1094,11 @@ export default function ProductManage() {
         title: '图',
         dataIndex: 'sku',
         minWidth: COL_WIDTHS.ICON,
+        fitContent: false,
         renderMode: 'custom',
         align: 'center',
         render: (_v, record) => {
-          if (record.rowType === 'creation') {
-            return <ImageThumbCell creation />;
-          }
           const sku = record.sku;
-          if (!sku) return '—';
           return (
             <ImageThumbCell
               url={sku.mainImageUrl}
@@ -995,66 +1108,120 @@ export default function ProductManage() {
           );
         },
       },
-      // 3. 产品全名（name列）——NameLinkCell 共享组件（含创建入口行）
+      // 3. 产品名（表头级联筛；格子点开编辑弹窗。列宽跟采购报价一样随内容撑开）
       {
-        key: 'productFullName',
-        title: '产品全名',
-        dataIndex: 'sku',
-        minWidth: COL_WIDTHS.NAME_L,
-        wrap: true,
+        key: 'productName',
+        title: (
+          <HeaderCascadeFilter
+            field="product"
+            placeholder="产品名"
+            selectedName={filterProductName}
+            fetcher={fetchProductFacet}
+            onSelect={(id, name) => {
+              setFilterProductId(id || null);
+              setFilterProductName(name);
+              setFilterBrandId(null);
+              setFilterBrandName('');
+              setFilterSpecModel('');
+              setFilterSpecExact(true);
+              setPage(1);
+            }}
+            onClear={clearProductFilter}
+          />
+        ),
+        dataIndex: 'productName',
+        minWidth: COL_WIDTHS.NAME_QUOTE,
+        className: 'ds-cascade-col',
         renderMode: 'custom',
         align: 'left',
         render: (_v, record) => {
-          if (record.rowType === 'creation') {
-            return (
-              <NameLinkCell
-                creation={{
-                  keyword: record.creationKeyword,
-                  onClick: () => handleOpenAddDialog(record.creationKeyword),
-                }}
-              />
-            );
-          }
           const sku = record.sku;
-          if (!sku) return '—';
-          const segments = [
-            ...(sku.brandName ? [{ text: sku.brandName, variant: 'brand' as const }] : []),
-            ...(sku.productName ? [{ text: sku.productName }] : []),
-            // v1.8：规格为默认填充值「通用」时用系统补全语义色（用户一眼可辨需自行补充）
-            ...(sku.specModel
-              ? [
-                  {
-                    text: sku.specModel,
-                    variant: (
-                      sku.specModel === DEFAULT_SPEC_MODEL ? 'placeholder' : 'tertiary'
-                    ) as 'placeholder' | 'tertiary',
-                  },
-                ]
-              : []),
-          ];
-          if (segments.length === 0) return '—';
+          if (record.hideProductName) return <span />;
+          if (!sku.productName) return '—';
           return (
             <NameLinkCell
-              segments={segments}
+              segments={[{ text: sku.productName }]}
+              nowrap
               onClick={() => handleOpenEditDialog(sku.productId, sku.specBrandId, sku.specId)}
             />
           );
         },
       },
+      // 4. 品牌（表头从当前结果里选；格子点开选品同款确认浮层改档）
+      {
+        key: 'brandName',
+        title: (
+          <HeaderCascadeFilter
+            field="brand"
+            placeholder="品牌"
+            selectedName={filterBrandName}
+            fetcher={fetchBrandFacet}
+            onSelect={(id, name) => {
+              setFilterBrandId(id || null);
+              setFilterBrandName(name);
+              setFilterSpecModel('');
+              setFilterSpecExact(true);
+              setPage(1);
+            }}
+            onClear={clearBrandFilter}
+          />
+        ),
+        dataIndex: 'brandName',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        renderMode: 'custom',
+        align: 'left',
+        render: (_v, record) => {
+          if (record.hideBrandName) return <span />;
+          return <ArchiveBrandCell sku={record.sku} onSaved={() => void fetchList()} />;
+        },
+      },
+      // 5. 系列/规格（品牌下变体；点开确认浮层改这一条）
+      {
+        key: 'specModel',
+        title: (
+          <HeaderCascadeFilter
+            field="specModel"
+            placeholder="系列/规格"
+            selectedName={filterSpecModel}
+            fetcher={fetchSpecFacet}
+            onSelect={(id, name) => {
+              setFilterSpecModel(name);
+              setFilterSpecExact(!!id);
+              setPage(1);
+            }}
+            onClear={clearSpecFilter}
+          />
+        ),
+        dataIndex: 'specModel',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        renderMode: 'custom',
+        align: 'left',
+        render: (_v, record) => {
+          if (record.hideSpecModel) return <span />;
+          return <ArchiveSpecCell sku={record.sku} onSaved={() => void fetchList()} />;
+        },
+      },
       // 4/5/6. 单位 / 售价 / 进价（结构化多行三列）——createSkuPriceColumns 共享工厂
-      ...skuPriceColumns,
-      // 7. 备注（短文本）——TextCell 共享组件
+      ...skuPriceColumns.map((c) => ({ ...c, slot: 'skuPrice' })),
+      // 7. 备注（spec.remark）——点值确认层
       {
         key: 'remark',
         title: '备注',
-        dataIndex: 'sku',
+        dataIndex: 'remark',
         minWidth: COL_WIDTHS.REMARK_S,
         renderMode: 'custom',
         align: 'center',
-        render: (_v, record) => {
-          if (record.rowType === 'creation') return '—';
-          return <TextCell value={record.sku?.remark} />;
-        },
+        render: (_v, record) => (
+          <ArchiveFieldCell
+            value={record.sku.remark ?? ''}
+            placeholder="—"
+            title="修改备注"
+            align="center"
+            onApply={(v) => saveRemark(record, v)}
+          />
+        ),
       },
       // 8. 状态（tag列）——StatusTagCell 共享组件
       {
@@ -1062,13 +1229,13 @@ export default function ProductManage() {
         title: '状态',
         dataIndex: 'sku',
         minWidth: COL_WIDTHS.TAG_S,
+        fitContent: false,
         renderMode: 'custom',
         align: 'center',
         render: (_v, record) => {
-          if (record.rowType === 'creation') return '—';
           return (
             <StatusTagCell
-              value={record.sku?.status ?? 1}
+              value={record.sku.status ?? 1}
               statusMap={STATUS_TAG_MAP as Record<string, { color: any; text: string }>}
             />
           );
@@ -1080,19 +1247,31 @@ export default function ProductManage() {
         title: '更新时间',
         dataIndex: 'sku',
         minWidth: COL_WIDTHS.DATETIME,
+        fitContent: false,
         renderMode: 'custom',
         align: 'center',
         render: (_v, record) => {
-          if (record.rowType === 'creation') return '—';
-          return <DateTimeCell value={record.sku?.updateTime} />;
+          return <DateTimeCell value={record.sku.updateTime} />;
         },
       },
-    ],
+    ]),
     [
-      handleOpenAddDialog,
       handleOpenEditDialog,
-      handleCategoryChange,
       skuPriceColumns,
+      fetchList,
+      filterProductName,
+      filterProductId,
+      filterBrandName,
+      filterBrandId,
+      filterSpecModel,
+      filterSpecExact,
+      fetchProductFacet,
+      fetchBrandFacet,
+      fetchSpecFacet,
+      clearProductFilter,
+      clearBrandFilter,
+      clearSpecFilter,
+      saveRemark,
     ],
   );
 
@@ -1108,16 +1287,11 @@ export default function ProductManage() {
 
   const tableEmptyStateRenderer = useCallback(() => {
     return (
-      <DsButton
-        variant="primary"
-        size="sm"
-        icon={<PlusOutlined />}
-        onClick={() => handleOpenAddDialog(debouncedKeyword)}
-      >
-        新增产品
-      </DsButton>
+      <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--body-sm-font-size)' }}>
+        暂无产品，请使用工具栏「新建产品」
+      </span>
     );
-  }, [handleOpenAddDialog, debouncedKeyword]);
+  }, []);
 
   const tablePagination = useMemo(
     () => ({
@@ -1135,20 +1309,19 @@ export default function ProductManage() {
     [page, pageSize, total],
   );
 
-  // 筛选栏已移入 ViewFrame.bizStrip（对齐其他页面结构），toolbar 常量已废弃
-  // v1.5.5：分类筛选改为与编辑弹窗同款下拉（SuggestInput + DictRecordManagePanel）
-  //   分类数量由 DictRecordManagePanel「产品数」列展示，不再单独维护 categoryOptions
+  // 筛选栏已移入 ViewFrame.bizStrip：关键词、条件词、状态各自独立，不塞进检索框
 
   // ============================================================
   // 渲染
   // ============================================================
 
   return (
-    <ViewFrame
+    <PickerEditGateProvider>
+    <ArchiveListPage<TableRow>
       actionBar={{
         count: total,
         countUnit: '条',
-        statusHint: '产品档案管理：搜索/筛选/行内编辑，点击产品进入详情',
+        defaultStatusHint: '表头点选或手输都会变成条件词，列上仍留着当前值，可以接着改。',
         actions: (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
             <DsButton
@@ -1163,111 +1336,61 @@ export default function ProductManage() {
               variant="primary"
               size="sm"
               icon={<PlusOutlined />}
-              onClick={() => handleOpenAddDialog(debouncedKeyword)}
+              onClick={() => handleOpenAddDialog(keyword)}
             >
               新建产品
             </DsButton>
           </div>
         ),
       }}
-      bizStrip={{
-        left: (
-          <>
-            <DsInput
-              size="sm"
-              placeholder="搜索产品名/品牌/规格/分类"
-              value={keyword}
-              onChange={(e) => {
-                setKeyword(e.target.value);
-                setPage(1);
-              }}
-              allowClear
-              style={{ width: 220 }}
-            />
-            {/* v1.5.5：分类筛选 = 编辑弹窗同款下拉（SuggestInput 检索/新建 + DictRecordManagePanel 表格列表） */}
-            <Popover
-              trigger="click"
-              placement="bottomLeft"
-              open={filterCatOpen}
-              onOpenChange={(o) => {
-                setFilterCatOpen(o);
-                if (o) setFilterCatKeyword('');
-              }}
-              getPopupContainer={smartPopupContainer}
-              content={
-                <div style={{ width: 320 }}>
-                  <SuggestInput
-                    field="category"
-                    value={filterCatKeyword}
-                    onChange={setFilterCatKeyword}
-                    onSelect={(item) => {
-                      // v15.3：所有筛选项（含「未分类」默认项）均带真实分类 id（后端 ensure 按名解析），
-                      //   无 0 兜底——无 id 项（如新建）不触发筛选
-                      if (!item.id) return;
-                      setFilterCategoryId(Number(item.id));
-                      setFilterCategoryName(item.name || '未分类');
-                      setPage(1);
-                      setFilterCatOpen(false);
-                    }}
-                    placeholder="搜索分类"
-                    size="sm"
-                    autoFocus
-                  />
-                  <div
-                    style={{
-                      height: 1,
-                      background: 'var(--border-neutral-l2)',
-                      margin: '6px 0',
-                    }}
-                  />
-                  <DictRecordManagePanel
-                    dict={categoryDict}
-                    currentId={filterCategoryId ?? 0}
-                    onSelect={(catId, catName) => {
-                      setFilterCategoryId(Number(catId));
-                      setFilterCategoryName(catName);
-                      setPage(1);
-                      setFilterCatOpen(false);
-                    }}
-                  />
-                </div>
-              }
-            >
-              <DsButton
-                size="sm"
-                variant={filterCategoryId != null ? 'secondary' : 'ghost'}
-                icon={<DownOutlined />}
-                style={{ minWidth: 120 }}
-              >
-                {filterCategoryName || '按分类筛选'}
-              </DsButton>
-            </Popover>
-            {filterCategoryId != null && (
-              <DsButton
-                size="sm"
-                variant="ghost"
-                icon={<CloseOutlined />}
-                onClick={() => {
-                  setFilterCategoryId(null);
-                  setFilterCategoryName('');
-                  setPage(1);
-                }}
-                title="清除分类筛选"
-              />
-            )}
-            <DsSelect
-              value={filterStatus}
-              onChange={(val: number) => {
-                setFilterStatus(val);
-                setPage(1);
-              }}
-              options={STATUS_OPTIONS}
-              size="sm"
-              style={{ width: 100 }}
-            />
-          </>
-        ),
+      filters={{
+        onKeywordChange: (v) => {
+          setKeyword(v);
+          setPage(1);
+        },
+        chips: [
+          ...(filterProductName
+            ? [{ key: 'product', label: '产品名', value: filterProductName, onClear: clearProductFilter }]
+            : []),
+          ...(filterBrandName
+            ? [{ key: 'brand', label: '品牌', value: filterBrandName, onClear: clearBrandFilter }]
+            : []),
+          ...(filterSpecModel
+            ? [{ key: 'spec', label: '系列/规格', value: filterSpecModel, onClear: clearSpecFilter }]
+            : []),
+        ],
+        status: {
+          value: filterStatus,
+          options: STATUS_OPTIONS,
+          onChange: (val) => {
+            setFilterStatus(Number(val));
+            setPage(1);
+          },
+        },
       }}
+      selection={{
+        selectionResetKey,
+        onSelectionChange: handleTableSelectionChange,
+        selectionSummary,
+      }}
+      tableWrapperClassName="product-list-container"
+      tableWrapperStyle={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}
+      columns={columns}
+      rows={rows}
+      rowKey={tableRowKey}
+      moreMenuRenderer={moreMenuRenderer}
+      headerMoreMenuRenderer={headerMoreMenuRenderer}
+      onCellCommit={handleCellCommit}
+      loading={loading}
+      minHeight={400}
+      disableEmptyRows
+      emptyStateRenderer={tableEmptyStateRenderer}
+      pagination={tablePagination}
       dialogs={
         <>
           <ProductEditDialog
@@ -1281,47 +1404,21 @@ export default function ProductManage() {
           />
           <BatchAdjustDialog
             open={batchAdjustOpen}
-            onClose={() => {
-              setBatchAdjustOpen(false);
-              setBatchAdjustCtx(null);
-            }}
+            onClose={() => setBatchAdjustOpen(false)}
             onDone={handleBatchAdjustDone}
-            initialContext={
-              batchAdjustCtx
-                ? {
-                    supplierId: batchAdjustCtx.supplierId,
-                    supplierName: batchAdjustCtx.supplierName,
-                    brandName: batchAdjustCtx.brandName,
-                    categoryName: batchAdjustCtx.categoryName,
-                  }
-                : undefined
-            }
+          />
+          <ProductDeleteConfirmDialog
+            open={deleteDialogOpen}
+            skus={deleteTargets}
+            onClose={() => setDeleteDialogOpen(false)}
+            onDeleted={() => {
+              clearSelection();
+              void fetchList();
+            }}
           />
         </>
       }
-    >
-      <div
-        className="product-list-container"
-        style={{
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: 0,
-        }}
-      >
-        <UnifiedTable<TableRow>
-          columns={columns}
-          rows={rows}
-          rowKey={tableRowKey}
-          selectable={false}
-          moreMenuRenderer={moreMenuRenderer}
-          loading={loading}
-          minHeight={400}
-          disableEmptyRows
-          emptyStateRenderer={tableEmptyStateRenderer}
-          pagination={tablePagination}
-        />
-      </div>
-    </ViewFrame>
+    />
+    </PickerEditGateProvider>
   );
 }

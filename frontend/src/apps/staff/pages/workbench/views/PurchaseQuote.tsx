@@ -3,10 +3,13 @@
 // v4.1 重构（恢复表格录入）：
 //   - 恢复 ViewFrame + UnifiedTable + bizStrip 三段式布局
 //   - 放弃 DocumentPaperView 作为日常工作视图（仅打印时使用）
-//   - UnifiedTable 列：序号(自动) / 产品名称规格 / 数量 / 单位 / 单价 / 金额(自动) / 备注
-//   - 产品名称列：ProductPicker 触发（picker 模式，dropdown 触发）
-//   - 单位列：UnitPicker 触发（picker 模式）
-//   - 数量/单价：number 模式行内编辑；备注：text 模式行内编辑
+//   - UnifiedTable 列：序号(自动) / 产品名 / 品牌 / 规格 / 数量 / 单位 / 单价 / 金额(自动) / 备注
+//   - 产品名/品牌/规格：分列显示；点击同一套选品（拼在一起检索）；确认层空格向后拆分
+//   - 产品名/品牌/规格表头：HeaderCascadeFilter（当前单据行 facets）
+//   - 产品名称列：ProductPicker 检索主行（search）
+//   - 单位列：标准行同一套 ProductPicker（unit 槽）；非标行 UnitPicker 常见单位
+//   - 单价列：格子手输 + 标准行箭头展开 ProductPicker 价格叶子
+//   - 数量/备注：点值格，确认层确认才写
 //   - 金额：static 模式自动计算 qty * unitPrice
 //   - bizStrip：左侧（单行）项目数量/合计数量/订单金额/优惠/税额(点击触发浮动面板)/订单应收
 //   - actionBar：锁定/解锁、识别订单、打印
@@ -15,25 +18,47 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { App as AntdApp, Checkbox, Spin, Menu, type MenuProps } from 'antd';
+import { Checkbox, Spin, Menu, type MenuProps } from 'antd';
 import {
+  DeleteOutlined,
   LinkOutlined,
   LockOutlined,
   PrinterOutlined,
   ScanOutlined,
   UnlockOutlined,
+  SortAscendingOutlined,
 } from '@ant-design/icons';
 import { UnifiedTable, type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
 import { DsButton, DsDialog, DsInput } from '../../../../../shared/components/index.js';
+import {
+  toNullableId,
+  insertSeqFromIndex,
+  splicePersistedLineAtIndex,
+  insertSeqAfterLine,
+  spliceLineAfterIndex,
+  isRecognizedGoods,
+} from '../../../../../shared/utils/documentLineInvariants.js';
+import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import FloatPanel from '../../../../../shared/components/FloatPanel.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
+import { HeaderCascadeFilter } from '../../../../../shared/components/archive/HeaderCascadeFilter.js';
+import { ArchiveFilterChip } from '../../../../../shared/components/archive/ArchiveListFilters.js';
 import ProductPicker, {
   buildQuickCreateSelection,
   type SelectedPrice,
 } from '../../../../../shared/components/ProductPicker.js';
 import BatchStandardizeDialog from '../../../../../shared/components/BatchStandardizeDialog.js';
 import UnitPicker from '../../../../../shared/components/UnitPicker.js';
+import { unitDict } from '../../../../../shared/config/recordDicts.js';
+import { deriveTableColumns, mergeColumns } from '../../../../../shared/config/deriveTableColumns.js';
+import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { CellSwitchProvider } from '../../../../../shared/components/product-picker/cellSwitch.js';
+import {
+  composeSkuSearchText,
+  displayProductName,
+  skuLineDraftToPatch,
+} from '../../../../../shared/components/product-picker/skuLineSplit.js';
 import QuickCreateConfirmDialog from '../../../../../shared/components/QuickCreateConfirmDialog.js';
 import DocumentPaperView, {
   type DocumentPaperViewProps,
@@ -49,6 +74,7 @@ import {
   recognizeOrder,
   lockDemandConfirmView,
   unlockDemandConfirmView,
+  resequenceLines,
   type StaffDocumentLine,
   type DocumentLineInput,
   type DocumentLineUpdateInput,
@@ -61,6 +87,9 @@ import { calcDocumentTotalV21, round2 } from '../../../../../shared/engines/pric
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
 import { useStaffAuthStore } from '../../../../../shared/stores/auth.js';
+import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useArchiveTableSelection } from '../../../../../shared/hooks/useArchiveTableSelection.js';
+import { useDocumentLineCascadeFilter } from '../../../../../shared/hooks/useDocumentLineCascadeFilter.js';
 
 // ============================================================
 // 工具函数
@@ -78,6 +107,33 @@ function formatMoney(n: number): string {
   return `¥${n.toFixed(2)}`;
 }
 
+function rowHasSku(row: PaperRow): boolean {
+  return !!row.specId && !!row.brandId && String(row.specId) !== '0';
+}
+
+/** 选品插入价：点了具体售价/进价用所选；否则走单位取值链 */
+function priceFromPick(
+  unit: SkuOptionUnit,
+  selectedPrice: SelectedPrice | null,
+): { price: number; priceSource: 'sale' | 'derived' | 'purchase' | null } {
+  if (selectedPrice?.sale?.price != null) {
+    return { price: Number(selectedPrice.sale.price), priceSource: 'sale' };
+  }
+  if (selectedPrice?.purchase?.price != null) {
+    return { price: Number(selectedPrice.purchase.price), priceSource: 'purchase' };
+  }
+  if (unit.defaultSalePrice != null) {
+    return { price: Number(unit.defaultSalePrice), priceSource: 'sale' };
+  }
+  if (unit.derivedSalePrice != null) {
+    return { price: Number(unit.derivedSalePrice), priceSource: 'derived' };
+  }
+  if (unit.defaultPurchasePrice != null) {
+    return { price: Number(unit.defaultPurchasePrice), priceSource: 'purchase' };
+  }
+  return { price: 0, priceSource: null };
+}
+
 function createEmptyRow(seq: number): PaperRow {
   return {
     id: undefined,
@@ -87,6 +143,7 @@ function createEmptyRow(seq: number): PaperRow {
     productId: null,
     unitId: null,
     productRef: '',
+    productName: '',
     brandName: '',
     spec: null,
     unit: '',
@@ -105,7 +162,7 @@ function createEmptyRow(seq: number): PaperRow {
 // ============================================================
 
 export default function PurchaseQuote({ documentId }: { documentId: string }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const { trackSave } = useSaveStatus();
   const { activeDocument, refresh } = useDocumentStore();
   const { hasView } = useStaffAuthStore();
@@ -131,6 +188,9 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
 
   // 批量补全产品档案弹窗（非标行 → 匹配档案升级）
   const [standardizeOpen, setStandardizeOpen] = useState(false);
+  const { getSelected, selectionResetKey, onSelectionChange, clearSelection } =
+    useArchiveTableSelection<PaperRow>();
+  const lineFilter = useDocumentLineCascadeFilter(documentId);
 
   // v11.5：快速新增产品二次确认弹窗（视图层持有——避免弹窗挂在选品面板子树内随面板关闭卸载）
   const [quickCreateCtx, setQuickCreateCtx] = useState<{ row: PaperRow; keyword: string } | null>(null);
@@ -144,9 +204,11 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
 
   const isVoided = pqStatus === 'voided';
   const isLocked = isVoided || viewLocked;
-  const canPersist = canWrite && !isLocked;
-  /** 是否存在未关联产品档案的行（非标行）——批量补全入口启用条件 */
-  const hasNonStandardLine = lines.some((l) => !l.productId);
+  const salesArchived =
+    activeDocument?.salesArchiveStatus === 'archived' || activeDocument?.status === 'archived';
+  const canPersist = canWrite && !isLocked && !salesArchived;
+  /** 未认成货的行（规格、牌子、单位没齐）——批量补全入口 */
+  const hasNonStandardLine = lines.some((l) => !isRecognizedGoods(l));
 
   // 提交排队
   const submittingRef = useRef<Set<string>>(new Set());
@@ -225,7 +287,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
     setViewLocked(!!activeDocument.viewLocks?.purchaseQuote);
   }, [activeDocument, documentId]);
 
-  useWsAutoRefresh(load, ['document.lines_updated', 'quote.lines_updated', 'document.status_changed']);
+  useWsAutoRefresh(load, ['document.lines_updated', 'quote.lines_updated', 'document.status_changed', 'archive.sales_archived', 'archive.sales_unarchived']);
 
   useEffect(() => {
     const map: Record<string, StaffDocumentLine> = {};
@@ -261,41 +323,47 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
       ): DocumentLineUpdateInput[K] | undefined =>
         key in linePatch ? linePatch[key] : row[key as keyof PaperRow] as DocumentLineUpdateInput[K] | undefined;
 
-      // 空行升级：addLine
+      // 空行升级：addLine。页底空行没有产品名就不落库（避免只改数量也建成空行）。
+      // 「下方插入」走 handleInsertBelow，不经过这里。
       if (!row.id) {
+        const productRef = String(pickField('productRef') ?? '').trim();
+        const hasProduct = productRef.length > 0 || !!pickField('productId');
+        if (!hasProduct) return;
+
         const input: DocumentLineInput = {
           brandId: pickField('brandId') ?? undefined,
-          // v14.0：规格变体 ID（选品时由 onCommitCell 写入 patch.specId）
           specId: pickField('specId') ?? undefined,
           productId: pickField('productId') ?? undefined,
           unitId: pickField('unitId') ?? undefined,
-          productRef: pickField('productRef') ?? '',
+          productRef: productRef || String(pickField('productRef') ?? ''),
+          productName: pickField('productName') ?? undefined,
+          brandName: pickField('brandName') ?? undefined,
           spec: pickField('spec') ?? undefined,
           unit: linePatch.unit || row.unit || '个',
-          // 空行升级：qty 空串/0 兜底为 1（否则 Number('')=0 被后端 positive 校验 422 拒绝）
           qty: (() => {
             const raw = linePatch.qty ?? row.qty ?? 1;
             const n = Number(raw === '' ? 1 : raw);
             return Number.isFinite(n) && n > 0 ? n : 1;
           })(),
           unitPrice: Number(linePatch.unitPrice ?? row.unitPrice ?? 0),
-          // isStandardized：显式 patch 优先；否则按 brandId 是否存在判定
           isStandardized:
             'isStandardized' in linePatch
               ? !!linePatch.isStandardized
               : !!(linePatch.brandId !== undefined ? linePatch.brandId : row.brandId),
           remark: pickField('remark') ?? undefined,
           thumbnailUrl: pickField('thumbnailUrl') ?? undefined,
+          insertSeq: insertSeqFromIndex(
+            (row as PaperRow & { __insertIndex?: number }).__insertIndex,
+          ),
         };
         try {
           const newLine = (await trackSave('add', addLine(documentId, input))) as StaffDocumentLine;
-          // v11.15 防重复：addLine 广播的 WS 事件可能先于 HTTP 响应触发 load（该行已在列表），
-          //   再追加会重复。仅当行不存在时才追加。
-          setLines((prev) =>
-            prev.some((p) => String(p.id) === String(newLine.id))
-              ? prev
-              : [...prev, { ...newLine, ...sourcePatch }],
-          );
+          setLines((prev) => {
+            if (prev.some((p) => String(p.id) === String(newLine.id))) return prev;
+            const idx = (row as PaperRow & { __insertIndex?: number }).__insertIndex;
+            const nextLine = { ...newLine, ...sourcePatch };
+            return splicePersistedLineAtIndex(prev, nextLine, idx);
+          });
         } catch (e) {
           message.error((e as Error).message || '保存失败');
           void refresh();
@@ -370,25 +438,17 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
       if (!canPersist || !row.id) return;
       try {
         const input: DocumentLineInput = {
-          specId: row.specId ?? undefined,
-          brandId: row.brandId ?? undefined,
-          productId: row.productId ?? undefined,
-          unitId: row.unitId ?? undefined,
-          productRef: row.productRef,
-          spec: row.spec ?? undefined,
-          unit: row.unit,
+          productRef: '',
+          unit: '个',
           qty: 1,
-          unitPrice: Number(row.unitPrice),
-          isStandardized: true,
-          thumbnailUrl: row.thumbnailUrl ?? undefined,
+          unitPrice: 0,
+          isStandardized: false,
+          insertSeq: insertSeqAfterLine(row.seq),
         };
         const newLine = (await trackSave('add', addLine(documentId, input))) as StaffDocumentLine;
         setLines((prev) => {
           const idx = prev.findIndex((l) => l.id === row.id);
-          if (idx === -1) return [...prev, newLine];
-          const next = [...prev];
-          next.splice(idx + 1, 0, newLine);
-          return next;
+          return spliceLineAfterIndex(prev, idx, newLine);
         });
       } catch (e) {
         message.error((e as Error).message || '插入失败');
@@ -397,6 +457,31 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
     },
     [canPersist, documentId, message, trackSave, refresh],
   );
+
+  const handleBatchDelete = useCallback((rows?: PaperRow[]) => {
+    const targets = (rows ?? getSelected()).filter((r) => r.id);
+    if (!canPersist || targets.length === 0) return;
+    modal.confirm({
+      title: `确认删除所选 ${targets.length} 行？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          for (const row of targets) {
+            if (!row.id) continue;
+            await trackSave(row.id, removeLine(documentId, row.id, row.lineVersion));
+          }
+          clearSelection();
+          message.success(`已删除 ${targets.length} 行`);
+          await load();
+        } catch (e) {
+          message.error((e as Error).message || '删除失败');
+          await load();
+        }
+      },
+    });
+  }, [canPersist, getSelected, modal, trackSave, documentId, message, load, clearSelection]);
 
   // ============================================================
   // 锁定/解锁
@@ -413,6 +498,17 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
       .then(async () => { setViewLocked(true); await refresh(); message.success('已锁定编辑', 0.8); })
       .catch((e) => message.error((e as Error).message || '锁定失败'));
   }, [documentId, isVoided, message, refresh, viewLocked]);
+
+  const handleOrganizeData = useCallback(async () => {
+    if (!canPersist) return;
+    try {
+      await trackSave('reseq', resequenceLines(documentId));
+      message.success('已按当前顺序整理行号');
+      await load();
+    } catch (e) {
+      message.error((e as Error).message || '整理失败');
+    }
+  }, [canPersist, documentId, message, trackSave, load]);
 
   // ============================================================
   // 识别订单
@@ -509,8 +605,9 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
         productId: l.productId ?? null,
         unitId: l.unitId ?? null,
         productRef: l.productRef,
+        productName: l.productName ?? '',
         brandName: l.brandName ?? '',
-        spec: l.spec,
+        spec: l.spec ?? l.specModel ?? null,
         unit: l.unit,
         qty: l.qty,
         unitPrice: l.unitPrice,
@@ -524,9 +621,17 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
     [lines],
   );
 
+  const visibleRows: PaperRow[] = useMemo(
+    () => lineFilter.filterRows(tableRows),
+    [lineFilter.filterRows, tableRows],
+  );
+
   const emptyRowFactory = useCallback(
-    () => createEmptyRow(tableRows.length + 1),
-    [tableRows.length],
+    (insertIndex: number) => {
+      const row = createEmptyRow(-(insertIndex + 1));
+      return { ...row, __insertIndex: insertIndex } as PaperRow & { __insertIndex: number };
+    },
+    [],
   );
 
   // ============================================================
@@ -578,13 +683,13 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
         priceSource = null;
       }
       const patch: Partial<DocumentLineUpdateInput> & { priceSource?: 'sale' | 'derived' | 'purchase' | null } = {
-        brandId: sku.brandId,
-        // v14.0 修复：规格变体 ID 必须随选品落库（缺失 → 库存扣减条件
-        //   specId && brandId && unitId 不满足 → 配货内部出库被跳过、缺口弹窗永不触发）
-        specId: sku.specId,
-        productId: sku.productId,
-        unitId: unit.unitId,
+        brandId: toNullableId(sku.brandId),
+        specId: toNullableId(sku.specId),
+        productId: toNullableId(sku.productId),
+        unitId: toNullableId(unit.unitId),
         productRef: fullName,
+        productName: sku.productName,
+        brandName: sku.brandName,
         spec: sku.specModel,
         unit: unit.unitName,
         // v11.1 修复：选品 = 关联到档案 → 必须标记标准化（否则手输创建的旧行 updateLine
@@ -594,6 +699,31 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
         priceSource,
         thumbnailUrl: sku.mainImageThumbUrl ?? sku.mainImageUrl ?? undefined,
       };
+      void commitCell(row, patch);
+    },
+    [commitCell],
+  );
+
+  const applySkuDraft = useCallback(
+    (row: PaperRow, raw: string) => {
+      const parts = skuLineDraftToPatch(raw);
+      const patch: Partial<DocumentLineUpdateInput> = {
+        productRef: parts.productRef,
+        productName: parts.productName,
+        brandName: parts.brandName,
+        spec: parts.spec,
+        specId: 0,
+        productId: null,
+        brandId: null,
+        isStandardized: false,
+      };
+      if (parts.qty != null) patch.qty = parts.qty;
+      if (parts.unit != null) {
+        patch.unit = parts.unit;
+        patch.unitId = null;
+      }
+      if (parts.unitPrice != null) patch.unitPrice = parts.unitPrice;
+      if (parts.remark != null) patch.remark = parts.remark;
       void commitCell(row, patch);
     },
     [commitCell],
@@ -694,19 +824,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
         //   · 行内显示 InfoCircleOutlined 提示「待确认：未匹配档案记录」
         //   · 后续可点下拉箭头从档案选择填充替换（覆盖为标准数据）
         if (typeof value === 'string') {
-          const trimmed = value.trim();
-          // v11.0.11 原子更新：清空关联 ID 标记为非标数据
-          //   必须同时清空 specId（v14.0 规格变体 ID）：只清 productId/brandId/unitId 会残留
-          //   specId → 后端快照仍按 spec 反查产品，产生「手输文字 + 原产品快照」混合态（使用-引用断裂）
-          //   兜底值 0 = 未关联规格（与后端 addLine 兜底语义一致），后端 validation 已支持
-          void commitCell(record, {
-            productRef: trimmed,
-            specId: 0,
-            productId: null,
-            brandId: null,
-            unitId: null,
-            isStandardized: false,
-          });
+          applySkuDraft(record, value);
           return;
         }
         // value 是 { sku, unit, selectedPrice } 由 renderEditor onCommit 传入
@@ -719,21 +837,38 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
           // v11.4：dropdown 模式文本自由输入失焦 → 快速建档/纯文字
           handleUnitFreeText(record, value);
         } else {
-          // value 是 { unitName, unitId }（UnitPicker v3 回传）
-          const unit = value as { unitName: string; unitId: string | null };
-          handleUnitSelect(record, unit);
+          // 选品框架回传 { sku, unit, selectedPrice }（标准行单位列）或 { unitName, unitId }（非标 UnitPicker）
+          if (value && typeof value === 'object' && value.sku && value.unit) {
+            const picked = value as { sku: SkuSearchRow; unit: SkuOptionUnit; selectedPrice: SelectedPrice | null };
+            const priced = priceFromPick(picked.unit, picked.selectedPrice);
+            handleUnitSelect(record, {
+              unitName: picked.unit.unitName,
+              unitId: picked.unit.unitId,
+              price: priced.price,
+              priceSource: priced.priceSource,
+            });
+          } else {
+            const unit = value as { unitName: string; unitId: string | null };
+            handleUnitSelect(record, unit);
+          }
         }
       } else if (columnKey === 'qty') {
         const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
         void commitCell(record, { qty: numVal });
       } else if (columnKey === 'unitPrice') {
-        const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-        void commitCell(record, { unitPrice: numVal });
+        if (value && typeof value === 'object' && value.unit) {
+          const picked = value as { sku: SkuSearchRow; unit: SkuOptionUnit; selectedPrice: SelectedPrice | null };
+          const priced = priceFromPick(picked.unit, picked.selectedPrice);
+          void commitCell(record, { unitPrice: priced.price, priceSource: priced.priceSource });
+        } else {
+          const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+          void commitCell(record, { unitPrice: numVal });
+        }
       } else if (columnKey === 'remark') {
         void commitCell(record, { remark: String(value ?? '') });
       }
     },
-    [commitCell, handleProductSelect, handleUnitSelect, handleUnitFreeText],
+    [commitCell, handleProductSelect, handleUnitSelect, handleUnitFreeText, applySkuDraft],
   );
 
   // ============================================================
@@ -744,7 +879,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
       const items: MenuProps['items'] = [
         {
           key: 'insertBelow',
-          label: '下方插入',
+          label: '下方插入空行',
           disabled: !canPersist || !record.id,
           onClick: () => void handleInsertBelow(record),
         },
@@ -771,118 +906,277 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
     [canPersist, handleInsertBelow, handleRemoveLine, modal],
   );
 
+  const headerMoreMenuRenderer = useCallback(
+    (selected: PaperRow[]): ReactNode => {
+      const n = selected.filter((r) => r.id).length;
+      const items: MenuProps['items'] = [
+        {
+          key: 'deleteSelected',
+          icon: <DeleteOutlined />,
+          label: n > 0 ? `删除已勾选 (${n})` : '删除已勾选',
+          danger: true,
+          disabled: !canPersist || n === 0,
+          onClick: () => handleBatchDelete(selected),
+        },
+        { type: 'divider' },
+        {
+          key: 'organize',
+          icon: <SortAscendingOutlined />,
+          label: '整理数据',
+          disabled: !canPersist,
+          onClick: () => void handleOrganizeData(),
+        },
+      ];
+      return <Menu items={items} />;
+    },
+    [canPersist, handleBatchDelete, handleOrganizeData],
+  );
+
   // ============================================================
   // UnifiedTable 列定义
   // ============================================================
   const isRowDisabled = useCallback(() => !canPersist, [canPersist]);
 
   const columns: UnifiedTableColumn<PaperRow>[] = useMemo(
-    () => [
-      // 1. 产品名称/规格（picker 模式 + dropdown 触发）
-      // v11.0.10：用户「输入什么就是什么，可以从列表选择填充替换，无ID行内做小标识」
-      //   · pickerTrigger='dropdown' 启用「自由输入 + 旁边下拉箭头触发 ProductPicker」复合 UI
-      //   · isStandardValue 基于 productId 判定：有 ID=标准数据（档案匹配填充），无 ID=非标（手输）
-      //   · 非标数据行内显示 InfoCircleOutlined 黄色提示「待确认：未匹配档案记录」
-      //   · 工作流：先快速录入确定部分（自由输入）→ 后续点下拉箭头逐个关联到真正产品
+    () => {
+      const skuSearchOf = (record: PaperRow) =>
+        composeSkuSearchText({
+          productName: displayProductName(record),
+          brandName: record.brandName,
+          spec: record.spec,
+          productRef: record.productRef,
+        });
+      const renderSkuPick = (
+        record: PaperRow,
+        opts: { colKey: string; text: string; title: string; warn?: boolean },
+      ) => (
+        <WorkbenchFieldCell
+          text={opts.text}
+          fromText={skuSearchOf(record)}
+          placeholder="—"
+          disabled={isRowDisabled()}
+          title={opts.title}
+          bullets={[
+            '点开后输入是拼在一起的，空格向后拆到品牌/规格/数量/单位。',
+            '从列表插入才整份抄档案。',
+            '取消不保存。',
+          ]}
+          warnNonStandard={opts.warn}
+          cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: opts.colKey }}
+          onApply={(next) => applySkuDraft(record, next)}
+          pickerRender={(ctx) => (
+            <ProductPicker
+              open
+              hostedInGate
+              parentPanelId={ctx.panelId}
+              hostedKeyword={ctx.keyword}
+              onHostedKeywordChange={ctx.setKeyword}
+              hostedListExpanded={ctx.listExpanded}
+              hostReady={ctx.hostReady}
+              anchorRef={ctx.inputHostRef}
+              initialKeyword={skuSearchOf(record)}
+              onClose={ctx.close}
+              onSelect={(sku, unit, selectedPrice) => {
+                handleProductSelect(record, sku, unit, selectedPrice);
+                ctx.close();
+              }}
+              isStaff
+              onQuickCreate={(kw) => {
+                ctx.close();
+                setQuickCreateCtx({ row: record, keyword: kw });
+              }}
+            />
+          )}
+        />
+      );
+      return mergeColumns(deriveTableColumns('product', 'workbench'), [
       {
         key: 'productRef',
-        title: '产品名称/规格',
-        dataIndex: 'productRef',
-        minWidth: 220,
-        align: 'center',
-        // v11.19：对齐公共组件规格「固定宽度全程锁定 + 内容超出自动换行」
-        //   列宽恒 220px（colgroup 锁定），超长产品名自动换行完整可见（不再截断省略号），行高自适应
-        wrap: true,
-        renderMode: 'picker',
-        pickerTrigger: 'dropdown',
-        isStandardValue: (_value: string, record: PaperRow) => !!record.productId,
-        isDisabled: isRowDisabled,
-        render: (value: string) => (
-          <span style={{ color: value ? 'var(--text-default)' : 'var(--text-tertiary)' }}>
-            {value || '—'}
-          </span>
-        ),
-        renderEditor: (value, record, _ri, anchor, onCommit, onCancel, isOpen) => (
-          <ProductPicker
-            open={isOpen}
-            anchorRef={anchor}
-            // v11.4：优先用激活时传入的当前输入值（编辑态点下拉箭头携带），
-            //   否则回退记录值 —— 解决「有值重新输入 → 展开面板丢失当前输入值」
-            initialKeyword={value ?? record.productRef}
-            onClose={onCancel}
-            onSelect={(sku, unit, selectedPrice) => {
-              onCommit({ sku, unit, selectedPrice });
-            }}
-            isStaff
-            dropdownMode
-            // v11.5：新建档案 → 上抛关键词，视图层弹「快速新增产品」二次确认窗
-            //   （字段分开编辑 + 缺省值确认；弹窗在视图层，不随选品面板关闭卸载）
-            onQuickCreate={(kw) => setQuickCreateCtx({ row: record, keyword: kw })}
+        title: (
+          <HeaderCascadeFilter
+            field="product"
+            placeholder="产品名"
+            selectedName={lineFilter.filterProductName}
+            fetcher={lineFilter.fetchProductFacet}
+            onSelect={lineFilter.selectProduct}
+            onClear={lineFilter.clearProductFilter}
           />
         ),
+        dataIndex: 'productRef',
+        minWidth: COL_WIDTHS.NAME_PRODUCT,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'custom',
+        isDisabled: isRowDisabled,
+        getFitText: (record) => (record.hideProductName ? '' : displayProductName(record)),
+        render: (_value: string, record: PaperRow) =>
+          record.hideProductName ? (
+            <span />
+          ) : (
+            renderSkuPick(record, {
+              colKey: 'productRef',
+              text: displayProductName(record),
+              title: '产品名',
+              warn: !!record.productRef && !isRecognizedGoods(record),
+            })
+          ),
       },
-      // 2. 单位（picker 模式：UnitPicker 触发；v11.3 列序调整——单位紧跟产品全名）
-      //    v11.4：pickerTrigger='dropdown' 与产品列视觉一致（文本自由输入 + 下拉箭头）。
-      //    文本自由输入失焦 → handleUnitFreeText（标准行输入新单位=补充档案建档 / 非标行纯文字）；
-      //    下拉箭头 → 展开 UnitPicker 浮动面板（选已有单位 / 新增到该产品）
+      {
+        key: 'brandName',
+        title: (
+          <HeaderCascadeFilter
+            field="brand"
+            placeholder="品牌"
+            selectedName={lineFilter.filterBrandName}
+            fetcher={lineFilter.fetchBrandFacet}
+            onSelect={lineFilter.selectBrand}
+            onClear={lineFilter.clearBrandFilter}
+          />
+        ),
+        dataIndex: 'brandName',
+        minWidth: COL_WIDTHS.NAME_BRAND,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'custom',
+        isDisabled: isRowDisabled,
+        getFitText: (record) => (record.hideBrandName ? '' : record.brandName?.trim() || ''),
+        render: (_value: string, record: PaperRow) =>
+          record.hideBrandName ? (
+            <span />
+          ) : (
+            renderSkuPick(record, {
+              colKey: 'brandName',
+              text: record.brandName?.trim() || '',
+              title: '品牌',
+            })
+          ),
+      },
+      {
+        key: 'spec',
+        title: (
+          <HeaderCascadeFilter
+            field="specModel"
+            placeholder="规格"
+            selectedName={lineFilter.filterSpecModel}
+            fetcher={lineFilter.fetchSpecFacet}
+            onSelect={lineFilter.selectSpec}
+            onClear={lineFilter.clearSpecFilter}
+          />
+        ),
+        dataIndex: 'spec',
+        minWidth: COL_WIDTHS.NAME_SPEC,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'custom',
+        isDisabled: isRowDisabled,
+        getFitText: (record) => (record.hideSpecModel ? '' : record.spec?.trim() || ''),
+        render: (_value: string, record: PaperRow) =>
+          record.hideSpecModel ? (
+            <span />
+          ) : (
+            renderSkuPick(record, {
+              colKey: 'spec',
+              text: record.spec?.trim() || '',
+              title: '规格',
+            })
+          ),
+      },
       {
         key: 'unit',
         title: '单位',
         dataIndex: 'unit',
-        minWidth: 70,
+        minWidth: COL_WIDTHS.TAG_L,
         align: 'center',
-        renderMode: 'picker',
-        pickerTrigger: 'dropdown',
-        // 单位列不显示「待确认」非标提示（仅产品列语义），恒视为标准值
-        isStandardValue: () => true,
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
-        render: (value: string) => (
-          <span style={{ color: value ? 'var(--text-default)' : 'var(--text-tertiary)' }}>
-            {value || '—'}
-          </span>
-        ),
-        renderEditor: (value, record, _ri, anchor, onCommit, onCancel, isOpen) => (
-          <UnitPicker
-            open={isOpen}
-            value={value || record.unit}
-            anchorRef={anchor}
-            // v11.3：标准行传 SKU 规格变体 ID → 在该 SKU 下选单位/新增到该产品；
-            //        非标行（specId=0/null）→ 全局检索 + 纯文字
-            specId={record.specId ?? null}
-            // v11.14：标准行传品牌 ID → 解析 specBrandId 加载该 SKU 单位（含价格/换算率），
-            //        换单位自动插入对应价格（按来源着色），非基础单位显示换算链
-            brandId={record.brandId ?? null}
-            isStaff
-            onSelect={(unit) => onCommit(unit)}
-            onClose={onCancel}
+        render: (_value: string, record: PaperRow) => (
+          <WorkbenchFieldCell
+            text={record.unit || ''}
+            placeholder="—"
+            align="center"
+            disabled={isRowDisabled()}
+            title="单位"
+            bullets={['确认后写入当前行。', '取消不保存。']}
+            cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'unit' }}
+            onApply={(next) => handleUnitFreeText(record, next)}
+            pickerRender={(ctx) =>
+              rowHasSku(record) ? (
+                <ProductPicker
+                  open
+                  hostedInGate
+                  parentPanelId={ctx.panelId}
+                  hostedKeyword={ctx.keyword}
+                  onHostedKeywordChange={ctx.setKeyword}
+                  hostedListExpanded={ctx.listExpanded}
+                  hostReady={ctx.hostReady}
+                  entrySlot="unit"
+                  lockedContext={{
+                    specId: String(record.specId),
+                    brandId: String(record.brandId),
+                    productId: record.productId,
+                    productName: record.productRef,
+                    brandName: record.brandName,
+                    specModel: record.spec ?? '',
+                    unitId: record.unitId,
+                    unitName: record.unit,
+                  }}
+                  anchorRef={ctx.inputHostRef}
+                  onClose={ctx.close}
+                  onSelect={(_sku, unit, selectedPrice) => {
+                    const priced = priceFromPick(unit, selectedPrice);
+                    handleUnitSelect(record, {
+                      unitName: unit.unitName,
+                      unitId: unit.unitId,
+                      price: priced.price,
+                      priceSource: priced.priceSource,
+                    });
+                    ctx.close();
+                  }}
+                  isStaff
+                  onQuickCreate={() => {}}
+                />
+              ) : null
+            }
+            dictConfig={rowHasSku(record) ? undefined : unitDict}
+            suggestField={rowHasSku(record) ? undefined : 'unit'}
           />
         ),
       },
-      // 3. 数量（number 模式：行内编辑）
       {
         key: 'qty',
         title: '数量',
         dataIndex: 'qty',
-        minWidth: 80,
+        minWidth: COL_WIDTHS.AMOUNT,
         align: 'center',
-        renderMode: 'number',
-        placeholder: '0',
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
+        render: (_v, record: PaperRow) => (
+          <WorkbenchFieldCell
+            text={record.qty == null ? '' : String(record.qty)}
+            placeholder="0"
+            align="center"
+            mono
+            input="number"
+            disabled={isRowDisabled()}
+            title="数量"
+            bullets={['确认后写入当前行。改数量不刷产品名。', '取消不保存。']}
+            cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'qty' }}
+            onApply={(next) => {
+              const numVal = parseFloat(next) || 0;
+              void commitCell(record, { qty: numVal });
+            }}
+          />
+        ),
       },
-      // 4. 单价（number 模式：行内编辑）
       {
         key: 'unitPrice',
         title: '单价',
         dataIndex: 'unitPrice',
-        minWidth: 100,
+        minWidth: COL_WIDTHS.AMOUNT,
         align: 'center',
-        renderMode: 'number',
-        placeholder: '0.00',
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
-        // v11.12 单价来源着色（防止把进价/推算价当真实售价报给客户）：
-        //   进价 → 红（参考价，需改价后才能报）；推算售价 → 推算色（基准价推算，需人工核对）；
-        //   真实售价/手输 → 普通色
-        render: (value: string, record: PaperRow) => {
+        render: (_v, record: PaperRow) => {
           const color =
             record.priceSource === 'purchase'
               ? 'var(--status-discount-default)'
@@ -890,23 +1184,64 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
                 ? 'var(--text-placeholder-accent)'
                 : 'var(--text-default)';
           return (
-            <span
-              style={{
-                color,
-                fontWeight: 500,
-                fontVariantNumeric: 'tabular-nums',
+            <WorkbenchFieldCell
+              text={record.unitPrice == null ? '' : String(record.unitPrice)}
+              placeholder="0.00"
+              align="center"
+              mono
+              color={color}
+              input="number"
+              disabled={isRowDisabled()}
+              title="单价"
+              bullets={['确认后写入当前行。', '插入价格叶子才换来源。', '取消不保存。']}
+              cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'unitPrice' }}
+              onApply={(next) => {
+                const numVal = parseFloat(next) || 0;
+                void commitCell(record, { unitPrice: numVal });
               }}
-            >
-              {value || '—'}
-            </span>
+              pickerRender={
+                rowHasSku(record)
+                  ? (ctx) => (
+                      <ProductPicker
+                        open
+                        hostedInGate
+                        parentPanelId={ctx.panelId}
+                        hostedKeyword={ctx.keyword}
+                        onHostedKeywordChange={ctx.setKeyword}
+                        hostedListExpanded={ctx.listExpanded}
+                        hostReady={ctx.hostReady}
+                        entrySlot="price"
+                        lockedContext={{
+                          specId: String(record.specId),
+                          brandId: String(record.brandId),
+                          productId: record.productId,
+                          productName: record.productRef,
+                          brandName: record.brandName,
+                          specModel: record.spec ?? '',
+                          unitId: record.unitId,
+                          unitName: record.unit,
+                        }}
+                        anchorRef={ctx.inputHostRef}
+                        onClose={ctx.close}
+                        onSelect={(_sku, unit, selectedPrice) => {
+                          const priced = priceFromPick(unit, selectedPrice);
+                          void commitCell(record, { unitPrice: priced.price, priceSource: priced.priceSource });
+                          ctx.close();
+                        }}
+                        isStaff
+                        onQuickCreate={() => {}}
+                      />
+                    )
+                  : undefined
+              }
+            />
           );
         },
       },
-      // 5. 金额（static 模式：自动计算 qty * unitPrice）
       {
         key: 'amount',
         title: '金额',
-        minWidth: 110,
+        minWidth: COL_WIDTHS.AMOUNT,
         align: 'center',
         renderMode: 'static',
         render: (_v, record) => {
@@ -924,19 +1259,33 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
           );
         },
       },
-      // 6. 备注（text 模式：行内编辑）
       {
         key: 'remark',
         title: '备注',
         dataIndex: 'remark',
-        minWidth: 140,
+        minWidth: COL_WIDTHS.REMARK_S,
         align: 'center',
-        renderMode: 'text',
-        placeholder: '备注',
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
+        render: (_v, record: PaperRow) => (
+          <WorkbenchFieldCell
+            text={record.remark || ''}
+            placeholder="备注"
+            align="center"
+            disabled={isRowDisabled()}
+            title="备注"
+            bullets={['确认后写入当前行。', '取消不保存。']}
+            cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'remark' }}
+            onApply={(next) => {
+              void commitCell(record, { remark: next });
+            }}
+            allowEmpty
+          />
+        ),
       },
-    ],
-    [isRowDisabled, lineAmount],
+    ]);
+    },
+    [isRowDisabled, lineAmount, commitCell, handleProductSelect, handleUnitSelect, handleUnitFreeText, lineFilter, applySkuDraft],
   );
 
   // ============================================================
@@ -1070,6 +1419,13 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
       bizStrip={{
         left: (
           <>
+            {lineFilter.chips.length > 0 ? (
+              <span className="ds-filter-row">
+                {lineFilter.chips.map((c) => (
+                  <ArchiveFilterChip key={c.key} label={c.label} value={c.value} onClear={c.onClear} />
+                ))}
+              </span>
+            ) : null}
             <BizField label="项目数量" mono>
               {lines.length}
             </BizField>
@@ -1084,16 +1440,19 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
               <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-secondary)' }}>
                 优惠:
               </span>
-              <DsInput
-                variant="embedded"
-                size="sm"
-                value={bizDiscount}
-                onChange={(e) => setBizDiscount(e.target.value)}
-                onBlur={() => saveBiz({ orderDiscountAmount: toNum(bizDiscount) })}
-                onPressEnter={() => saveBiz({ orderDiscountAmount: toNum(bizDiscount) })}
-                style={{ width: 70, height: 20, textAlign: 'right', color: 'var(--status-danger-default)' }}
+              <span style={{ minWidth: 56, color: 'var(--status-danger-default)' }}>
+              <WorkbenchFieldCell
+                embed="inline"
+                text={bizDiscount}
+                placeholder="0"
+                input="number"
+                color="var(--status-danger-default)"
                 disabled={!canPersist}
+                title="优惠"
+                bullets={['确认后写入本单。', '取消不保存。']}
+                onApply={(next) => saveBiz({ orderDiscountAmount: toNum(next) })}
               />
+              </span>
             </span>
             {/* 税额 - 点击触发辅助浮动面板 */}
             <span
@@ -1147,15 +1506,15 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
                     <td style={{ padding: '4px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>税点</td>
                     <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        <DsInput
-                          variant="embedded"
-                          size="sm"
-                          value={bizTaxRate}
-                          onChange={(e) => setBizTaxRate(e.target.value)}
-                          onBlur={() => saveBiz({ taxRate: toNum(bizTaxRate) })}
-                          onPressEnter={() => saveBiz({ taxRate: toNum(bizTaxRate) })}
-                          style={{ width: 50, height: 20, textAlign: 'center' }}
+                        <WorkbenchFieldCell
+                          embed="inline"
+                          text={bizTaxRate}
+                          placeholder="0"
+                          input="number"
                           disabled={!bizNeedInvoice || !canPersist}
+                          title="税点"
+                          bullets={['确认后写入本单。', '取消不保存。']}
+                          onApply={(next) => saveBiz({ taxRate: toNum(next) })}
                         />
                         <span>%</span>
                       </div>
@@ -1217,15 +1576,21 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
         </>
       }
     >
-      <UnifiedTable<PaperRow>
-        columns={columns}
-        rows={tableRows}
-        rowKey={(r) => r.id ?? `__empty_${r.seq}`}
-        moreMenuRenderer={moreMenuRenderer}
-        onCellCommit={handleCellCommit}
-        emptyRowFactory={emptyRowFactory}
-        loading={loading && lines.length === 0}
-      />
+      <CellSwitchProvider colOrder={['productRef', 'unit', 'qty', 'unitPrice', 'remark']}>
+        <UnifiedTable<PaperRow>
+          columns={columns}
+          rows={visibleRows}
+          rowKey={(r) => r.id ?? `__empty_${r.seq}`}
+          selectable
+          selectionResetKey={selectionResetKey}
+          onSelectionChange={onSelectionChange}
+          moreMenuRenderer={moreMenuRenderer}
+          headerMoreMenuRenderer={headerMoreMenuRenderer}
+          onCellCommit={handleCellCommit}
+          emptyRowFactory={emptyRowFactory}
+          loading={loading && lines.length === 0}
+        />
+      </CellSwitchProvider>
     </ViewFrame>
   );
 }

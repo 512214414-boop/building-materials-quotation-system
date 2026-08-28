@@ -17,12 +17,22 @@ import { wsManager } from '../ws/index.js';
 import { logger } from '../utils/logger.js';
 import { round2 } from '../engines/pricing-engine.js';
 import type { refund_type } from '@prisma/client';
+import { increaseInventory, decreaseInventory } from './inventoryService.js';
+import { getMainWarehouse } from './warehouseService.js';
+import {
+  searchNeedlesOrRaw,
+  entryAnyFieldMatches,
+  tokenizeKeyword,
+  segmentizeKeyword,
+  scoreSkuByCustomWeights,
+} from './search-scoring.js';
 
 export interface RefundLineCreateInput {
   lineId: bigint;
   refundType: refund_type;
   refundQty: number;
   reason?: string;
+  restock?: boolean;
 }
 
 export interface RefundLineUpdateInput {
@@ -104,6 +114,7 @@ export async function listByDocument(documentId: bigint) {
       refundStatus: r.refund_status,
       refundAt: r.refund_at,
       reason: r.reason,
+      restock: r.restock,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       documentLine: {
@@ -155,6 +166,9 @@ export async function addRefundLine(
       qty: true,
       documentId: true,
       unitPrice: true,
+      specId: true,
+      brandId: true,
+      unitId: true,
     },
   });
   if (!docLine || docLine.documentId !== documentId) {
@@ -191,8 +205,39 @@ export async function addRefundLine(
       reason: input.reason ?? null,
       refund_at: new Date(),
       created_by: actor.id,
+      restock: !!input.restock,
+      restock_warehouse_id: null,
     },
   });
+
+  if (input.restock && !(docLine.specId && docLine.brandId && docLine.unitId)) {
+    throw Errors.unprocessable('规格、牌子、单位都认上了才能回仓。钱可以退，货不能当库存收。');
+  }
+
+  if (input.restock && docLine.specId && docLine.brandId && docLine.unitId) {
+    const wh = await getMainWarehouse();
+    const whId = BigInt(wh.id);
+    await increaseInventory(
+      whId,
+      docLine.specId,
+      docLine.brandId,
+      docLine.unitId,
+      input.refundQty,
+      unitPrice,
+      {
+        bizType: 'refund_in',
+        bizNo: String(documentId),
+        lineId: input.lineId,
+        userId: actor.id,
+        userName: actor.name,
+        remark: '售后退货回库',
+      },
+    );
+    await prisma.refund_lines.update({
+      where: { id: created.id },
+      data: { restock_warehouse_id: whId },
+    });
+  }
 
   broadcastRefundChanged(documentId);
 
@@ -312,16 +357,47 @@ export async function updateRefundLine(
 export async function removeRefundLine(refundLineId: bigint, actor: { id: bigint; name: string }) {
   const existing = await prisma.refund_lines.findUnique({
     where: { id: refundLineId },
-    select: { id: true, line_id: true },
+    select: {
+      id: true,
+      line_id: true,
+      restock: true,
+      restock_warehouse_id: true,
+      refund_qty: true,
+    },
   });
   if (!existing) throw Errors.notFound('退换售后行不存在');
 
-  await prisma.refund_lines.delete({ where: { id: refundLineId } });
-
   const docLine = await prisma.document_lines.findUnique({
     where: { id: existing.line_id },
-    select: { documentId: true },
+    select: { documentId: true, specId: true, brandId: true, unitId: true },
   });
+
+  if (
+    existing.restock &&
+    existing.restock_warehouse_id &&
+    docLine?.specId &&
+    docLine.brandId &&
+    docLine.unitId
+  ) {
+    await decreaseInventory(
+      existing.restock_warehouse_id,
+      docLine.specId,
+      docLine.brandId,
+      docLine.unitId,
+      Number(existing.refund_qty),
+      {
+        bizType: 'refund_out',
+        bizNo: String(docLine.documentId),
+        lineId: existing.line_id,
+        userId: actor.id,
+        userName: actor.name,
+        remark: '撤销退货回库',
+      },
+    );
+  }
+
+  await prisma.refund_lines.delete({ where: { id: refundLineId } });
+
   if (docLine) {
     broadcastRefundChanged(docLine.documentId);
   }
@@ -332,4 +408,103 @@ export async function removeRefundLine(refundLineId: bigint, actor: { id: bigint
   });
 
   return { id: refundLineId };
+}
+
+const SOLD_LINE_MAX_DOCS = 30;
+const SOLD_LINE_RECALL = 200;
+const SOLD_LINE_TAKE = 40;
+
+/**
+ * 在已勾原单的已卖行上检索。documentIds 必填（P-013，禁止全表扫）。
+ * 匹配当时的名称/牌子/规格。空关键词返回这些单里仍可退的行。
+ */
+export async function searchSoldLines(keyword: string, documentIds: bigint[]) {
+  const ids = documentIds.filter((id) => id > 0n).slice(0, SOLD_LINE_MAX_DOCS);
+  if (!ids.length) return [];
+
+  const kw = keyword.trim();
+  if (kw && !searchNeedlesOrRaw(kw).length) return [];
+
+  const lines = await prisma.document_lines.findMany({
+    where: { documentId: { in: ids } },
+    select: {
+      id: true,
+      documentId: true,
+      seq: true,
+      productRef: true,
+      productName: true,
+      brandName: true,
+      spec: true,
+      specModel: true,
+      unit: true,
+      unitName: true,
+      qty: true,
+      unitPrice: true,
+      specId: true,
+      brandId: true,
+      unitId: true,
+      document: {
+        select: { document_no: true, customerName: true, customerPhone: true },
+      },
+    },
+    orderBy: [{ documentId: 'asc' }, { seq: 'asc' }],
+    take: SOLD_LINE_RECALL,
+  });
+
+  const lineIds = lines.map((l) => l.id);
+  const refundSums = lineIds.length
+    ? await prisma.refund_lines.groupBy({
+        by: ['line_id'],
+        where: { line_id: { in: lineIds } },
+        _sum: { refund_qty: true },
+      })
+    : [];
+  const refundedMap = new Map(refundSums.map((s) => [s.line_id, Number(s._sum.refund_qty ?? 0)]));
+
+  const tokens = kw ? tokenizeKeyword(kw) : [];
+  const segments = kw ? segmentizeKeyword(kw) : [];
+
+  const hits = lines
+    .map((l) => {
+      const qty = Number(l.qty);
+      const refunded = refundedMap.get(l.id) ?? 0;
+      const remaining = Math.max(0, qty - refunded);
+      if (remaining <= 0) return null;
+      const nameFields = [l.productRef, l.productName, l.brandName, l.spec, l.specModel];
+      if (kw && !entryAnyFieldMatches(nameFields, kw)) return null;
+      const score = kw
+        ? scoreSkuByCustomWeights(
+            {
+              productName: l.productName || l.productRef || '',
+              specModel: l.specModel || l.spec || '',
+              brandName: l.brandName || '',
+              remark: '',
+              categoryName: '',
+            },
+            tokens,
+            segments,
+            kw,
+          )
+        : 0;
+      return {
+        lineId: String(l.id),
+        documentId: String(l.documentId),
+        documentNo: l.document.document_no,
+        customerName: l.document.customerName,
+        productRef: l.productRef,
+        productName: l.productName,
+        brandName: l.brandName,
+        spec: l.spec || l.specModel,
+        unit: l.unitName || l.unit,
+        qty,
+        unitPrice: Number(l.unitPrice),
+        remaining,
+        recognized: !!(l.specId && l.brandId && l.unitId),
+        score,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  hits.sort((a, b) => (kw ? b.score - a.score : a.documentId.localeCompare(b.documentId)));
+  return hits.slice(0, SOLD_LINE_TAKE).map(({ score: _s, ...rest }) => rest);
 }

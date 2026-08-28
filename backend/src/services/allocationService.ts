@@ -89,14 +89,9 @@ async function getDefaultExternalCost(docLine: {
   categoryName: string | null;
 }) {
   if (!docLine.specId || !docLine.brandId || !docLine.unitId) return 0;
-  // v14.0：specId + brandId → spec_brand → specBrandId（SKU 维度锚点）
-  const specBrand = await prisma.spec_brand.findFirst({
-    where: { specId: docLine.specId, brandId: docLine.brandId },
-    select: { id: true },
-  });
-  if (!specBrand) return 0;
+  // v22：document_lines.specId 即为 SKU 规格行 id（原 spec_brand.id）
   const prices = await prisma.purchase_price.findMany({
-    where: { specBrandId: specBrand.id, unitId: docLine.unitId },
+    where: { specId: docLine.specId, unitId: docLine.unitId },
     select: { supplierId: true, price: true },
   });
   if (prices.length === 0) return 0;
@@ -144,6 +139,48 @@ async function syncWarehouseStockTx(
   const avgCost = cur ? Number(cur.weighted_avg_cost) : 0;
   await increaseInventoryTx(tx, warehouseId, specId, brandId, unitId, -delta, avgCost, ctx);
   return { deducted: 0, shortage: 0, unitCost: 0, delta };
+}
+
+/** 内部出库缺口自动挂欠库（同单据行+仓库 pending 行累加，避免漏挂） */
+async function upsertShortageBackorder(input: {
+  lineId: bigint;
+  documentId: bigint;
+  warehouseId: bigint;
+  specId: bigint;
+  brandId: bigint;
+  unitId: bigint;
+  shortage: number;
+  actor: { id: bigint; name: string };
+}) {
+  const qtyNum = round2(input.shortage);
+  if (qtyNum <= 0) return;
+  const existing = await prisma.backorders.findFirst({
+    where: {
+      line_id: input.lineId,
+      warehouse_id: input.warehouseId,
+      status: 'pending',
+    },
+  });
+  if (existing) {
+    await prisma.backorders.update({
+      where: { id: existing.id },
+      data: { qty: round2(Number(existing.qty) + qtyNum) },
+    });
+    return;
+  }
+  await prisma.backorders.create({
+    data: {
+      document_id: input.documentId,
+      line_id: input.lineId,
+      warehouse_id: input.warehouseId,
+      spec_id: input.specId,
+      brand_id: input.brandId,
+      unit_id: input.unitId,
+      qty: qtyNum,
+      note: '配货库存不足，系统自动挂欠库',
+      status: 'pending',
+    },
+  });
 }
 
 /**
@@ -459,12 +496,31 @@ export async function upsertLine(
     return { row: finalRow!, stock, rebalanced };
   });
 
-  const result = txResult.row;
+    const result = txResult.row;
   broadcastAllocationChanged(documentId);
   try {
     await maybeAdvanceAllocationInProgress(documentId, actor);
   } catch (e) {
     logger.warn('自动推进 allocation_in_progress 失败', { err: e });
+  }
+
+  if (
+    txResult.stock.shortage > 0 &&
+    input.sourceType === 'warehouse' &&
+    docLine.specId &&
+    docLine.brandId &&
+    docLine.unitId
+  ) {
+    await upsertShortageBackorder({
+      lineId: input.lineId,
+      documentId,
+      warehouseId: input.sourceId,
+      specId: docLine.specId,
+      brandId: docLine.brandId,
+      unitId: docLine.unitId,
+      shortage: txResult.stock.shortage,
+      actor,
+    });
   }
 
   logger.info('配货行upsert', {
@@ -594,6 +650,25 @@ export async function updateLine(
 
   broadcastAllocationChanged(docLine.documentId);
 
+  if (
+    txResult.stock.shortage > 0 &&
+    existing.source_type === 'warehouse' &&
+    docLine.specId &&
+    docLine.brandId &&
+    docLine.unitId
+  ) {
+    await upsertShortageBackorder({
+      lineId: existing.line_id,
+      documentId: docLine.documentId,
+      warehouseId: existing.source_id,
+      specId: docLine.specId,
+      brandId: docLine.brandId,
+      unitId: docLine.unitId,
+      shortage: txResult.stock.shortage,
+      actor,
+    });
+  }
+
   logger.info('配货行更新', {
     allocationLineId: String(allocationLineId),
     allocQty: input.allocQty,
@@ -702,17 +777,30 @@ export async function listSources(query: Record<string, unknown>) {
     select: {
       id: true,
       name: true,
-      code: true,
       isMain: true,
       sortOrder: true,
     },
   });
   // 外部供应商：启用优先 + 名称排序
-  const suppliers = await prisma.supplier.findMany({
+  const supplierRows = await prisma.supplier.findMany({
     where: { status: 1 },
     orderBy: [{ name: 'asc' }],
-    select: { id: true, name: true, contacts: true, address: true },
+    include: {
+      contacts: { orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }] },
+      addresses: { orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }] },
+    },
   });
+  const suppliers = supplierRows.map((s) => ({
+    id: s.id,
+    name: s.name,
+    contacts: s.contacts.map((c) => ({
+      name: c.name,
+      method: c.method,
+      value: c.value,
+      isDefault: c.isDefault,
+    })),
+    address: (s.addresses.find((a) => a.isDefault) ?? s.addresses[0])?.addressText ?? null,
+  }));
 
   if (!keyword) {
     return {
@@ -724,16 +812,29 @@ export async function listSources(query: Record<string, unknown>) {
   // 关键词打分排序（共用全局检索打分）
   const tokens = tokenizeKeyword(keyword);
   const segments = segmentizeKeyword(keyword);
-  const scored = (list: Array<{ name: string }>) =>
+  const scoredName = <T extends { name: string }>(list: T[]) =>
     list
       .map((item) => ({ item, score: scoreNameByWeights(item.name, tokens, segments, keyword) }))
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .map((x) => x.item);
 
+  const scoredSuppliers = suppliers
+    .map((s) => {
+      const fields = [s.name, ...s.contacts.map((c) => c.value), ...s.contacts.map((c) => c.name)];
+      const score = Math.max(
+        ...fields.map((f) => (f ? scoreNameByWeights(f, tokens, segments, keyword) : 0)),
+        0,
+      );
+      return { item: s, score };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((x) => x.item);
+
   return {
-    warehouses: scored(warehouses).map((w) => ({ ...w, sourceType: 'warehouse' as const })),
-    suppliers: scored(suppliers),
+    warehouses: scoredName(warehouses).map((w) => ({ ...w, sourceType: 'warehouse' as const })),
+    suppliers: scoredSuppliers,
   };
 }
 
@@ -747,7 +848,7 @@ export async function quickCreateSource(input: { kind: 'warehouse' | 'supplier';
     return { kind: 'warehouse' as const, id: created.id, name: created.name, sourceType: 'warehouse' as const };
   }
   const created = await supplierSvc.quickAddSupplier(input.name.trim());
-  return { kind: 'supplier' as const, id: created.id, name: created.name };
+  return { kind: 'supplier' as const, id: BigInt(created.id), name: created.name };
 }
 
 // ============================================================

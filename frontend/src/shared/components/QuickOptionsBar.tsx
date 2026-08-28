@@ -38,50 +38,20 @@ export function QuickOptionsBar({
 }: QuickOptionsBarProps) {
   if (!options.length) return null;
   return (
-    <div
-      data-shared-badge="C27"
-      style={{
-        padding: '4px 0 0',
-        display: 'flex',
-        flexWrap: 'nowrap',
-        overflowX: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        gap: 4,
-        borderTop: '1px dashed var(--border-neutral-l1)',
-        marginTop: 4,
-      }}
-    >
-      <span
-        style={{
-          fontSize: 10,
-          color: 'var(--text-tertiary)',
-          alignSelf: 'center',
-          marginRight: 4,
-        }}
-      >
-        {prefix}
-      </span>
+    <div data-shared-badge="C27" className="ds-quick-options">
+      <span className="ds-quick-options-label">{prefix}</span>
       {options.map((opt) => {
         const used = usedValues.includes(opt.value);
         return (
           <button
             key={opt.value}
             type="button"
+            className="ds-quick-options-chip"
             onClick={() => {
               if (used || disabled) return;
               onPick(opt);
             }}
             disabled={used || disabled}
-            style={{
-              padding: '2px 6px',
-              fontSize: 'var(--body-sm-font-size)',
-              border: '1px solid var(--border-neutral-l2)',
-              borderRadius: 'var(--radius-2)',
-              background: 'var(--bg-base-tertiary)',
-              cursor: used || disabled ? 'not-allowed' : 'pointer',
-              color: used ? 'var(--text-quaternary)' : 'var(--text-default)',
-              whiteSpace: 'nowrap',
-            }}
           >
             {opt.label}
           </button>

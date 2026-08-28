@@ -12,12 +12,19 @@
    会自动放大文字（text-size-adjust），导致"元素看到多大就是多大"
    被破坏（输入框显示字数骤减）；全局锁死 100% */
 html {
+  color-scheme: light;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 input, textarea, select, button {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+input, textarea, select {
+  /* 点格出键盘：允许选择文字；manipulation 去掉 300ms 延迟，仍可滑动画布 */
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 html, body, #root {
@@ -34,13 +41,9 @@ body {
   line-height: var(--body-base-line-height);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* v10.32 固定1200px画布模式：
-     - position: relative：FloatPanel 的 position: absolute 相对 body 定位
-     - overflow-x: auto：画布超出视口时，用户可横向拖动页面查看
-     - 居中由 .ds-app-shell 自身的 margin: 0 auto 完成
-     - 禁止在 body 上用 flex + justify-content:center 居中：
-       flex 居中存在溢出 bug，画布宽于视口时左侧会被裁切且无法滚动到
-     - 电脑端/移动端视觉完全一致，1200px固定画布不缩放不重排 */
+  /* 固定1200px画布：overflow-x 让用户横向拖动画布查看。
+     居中由 .ds-canvas-stage 的 margin: 0 auto 完成。
+     禁止在 body 上用 flex + justify-content:center 居中（溢出时左侧裁切）。 */
   position: relative;
   overflow-x: auto;
   /* 防止 iOS 输入框聚焦时自动放大（画布固定，不缩放） */
@@ -67,29 +70,23 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-overlay-l3);
+  background: var(--border-neutral-l1);
   border-radius: var(--radius-4);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--bg-overlay-l4);
+  background: var(--text-tertiary);
 }
 
-/* ── Antd 暗色主题覆盖 ──────────────────────────────────── */
+/* ── Antd 主题覆盖 ──────────────────────────────────── */
 .ant-config-provider {
   height: 100%;
 }
 
 /* v10.26 ProductPicker 二级面板改用 FloatPanel（无箭头），原 Popover 箭头覆盖样式已废弃移除 */
 
-/* v11.16 独立模态「画布居中」（顶层设计更正：一切以画布为基准，替代 v11.10 视口居中）
- * 用户更正：① 之前「弹窗相对视口居中」理解错误且过度扩散；② 现统一为——需要用户
- *   交互确认的独立模态（确认/提示/编辑弹窗 Modal）相对**画布**居中（弹窗中心 = 画布中心）；
- *   消息通知（toast）保持顶部位置，不参与画布居中；
- *   FloatPanel 类定位型浮层（产品实时匹配/单位面板等）锚定触发元素原位，不参与居中。
- * 定位由 canvasModalCentering（JS）统一接管：.ant-modal-wrap 设 flex 居中 + transform
- *   平移至画布中心（弹窗 fixed 不随画布 zoom 缩放），.ant-modal margin:auto（超宽时
- *   从两侧溢出可横向滚动查看完整内容）。以下 CSS 是双端兜底，与 JS inline 一致不冲突。 */
+/* 独立模态相对画布居中：挂进 .ds-overlay-modal 后 wrap 铺满舞台 + flex。
+ * 消息通知贴视口顶，不进叠加层、不参与画布居中。 */
 .ant-modal-wrap {
   display: flex;
   align-items: center;
@@ -107,6 +104,45 @@ a:hover {
 }
 .ant-modal-content {
   border-radius: var(--radius-4) !important;
+  padding: 0 !important;
+}
+.ant-modal .ant-modal-container {
+  padding: 0 !important;
+}
+
+/* 弹窗/浮层高密度：少留白，宽度吃内容。双端同一套，禁止为手机改全屏 */
+.ant-modal .ant-modal-header {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x) !important;
+  min-height: var(--shell-row-h);
+}
+.ant-modal .ant-modal-title {
+  font-size: var(--heading-xs-font-size);
+  line-height: var(--shell-row-h);
+}
+.ant-modal .ant-modal-body {
+  padding: var(--overlay-pad-x) !important;
+}
+.ant-modal .ant-modal-footer {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x) !important;
+  margin-top: 0;
+}
+.ant-select-dropdown .ant-select-item {
+  min-height: var(--shell-row-h);
+  padding: 0 var(--overlay-pad-x);
+  font-size: var(--body-sm-font-size);
+  line-height: var(--shell-row-h);
+}
+
+/* 远程桌面式整体缩放：zoom 只打在 .ds-canvas-stage（见 elements.css）。
+ * 浮层/弹窗住在舞台叠加层里一起缩。缩放控件在舞台外。
+ * 禁止 zoom 打在 html/body，禁止再给 portal 节点列清单打 zoom。 */
+html.ds-zoom-text-compensate .ds-canvas-stage {
+  -webkit-text-size-adjust: calc(100% * var(--shell-zoom));
+  text-size-adjust: calc(100% * var(--shell-zoom));
+}
+html.ds-zoom-text-compensate .ds-canvas-stage :is(input, textarea, select, button) {
+  -webkit-text-size-adjust: calc(100% * var(--shell-zoom));
+  text-size-adjust: calc(100% * var(--shell-zoom));
 }
 
 /* v11.17：Drawer 保持固定宽度（DsDrawer 1200/1000/800 层级递减），不随设备全屏化；
@@ -127,7 +163,7 @@ a:hover {
 }
 
 /* v11.10 画布缩放控件（body 层 fixed 右上角，不随画布缩放）
- * 层级：高于画布头部/导航（shell-z-header 之下 900 内），低于弹窗/消息（1000+）
+ * 层级：高于弹窗遮罩（打开弹窗时手机仍能点缩放，才能把字和浮层一起缩小多看见一块）
  * 交互：− / ＋ 步进 0.1；百分比按钮点击恢复 100% */
 .ds-zoom-controls {
   position: fixed;
@@ -135,7 +171,7 @@ a:hover {
      固定的放大缩小按钮）——底部操作栏内容靠左，右下角不重叠；不随画布缩放 */
   bottom: calc(var(--safe-area-bottom, 0px) + 8px);
   right: 8px;
-  z-index: 950;
+  z-index: 2000;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -203,4 +239,18 @@ a:hover {
   to {
     opacity: 1;
   }
+}
+
+/* ── 确认层源格高亮：确认层从某格展开时，源格一眼看出 ─── */
+.ds-gate-source-active {
+  outline: 1px solid var(--border-brand);
+  outline-offset: -1px;
+  background: var(--bg-brand-subtle, rgba(0, 102, 255, 0.06));
+  border-radius: var(--radius-4);
+}
+
+/* ── 展开钮高亮：选用检索/字典管理钮在展开态时图标高亮 ─── */
+.ds-addon-btn.ds-addon-btn-active {
+  color: var(--text-brand, var(--color-primary));
+  background: var(--bg-brand-subtle, rgba(0, 102, 255, 0.08));
 }

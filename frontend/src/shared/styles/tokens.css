@@ -1,6 +1,7 @@
 /**
- * Trae Design System Tokens
- * 暗色主题专用
+ * 设计令牌（浅纸色）
+ * 色板对标文档可视化：纸面 / 墨色字 / 实线描边。
+ * 字号、行高、间距、圆角、骨架尺寸不在此改。
  */
 
 :root {
@@ -24,13 +25,13 @@
   --spacer-40: 40px;
 
   /* font */
-  --font-family-default: "SF Pro Text", system-ui, -apple-system, sans-serif;
-  --font-family-heading: "SF Pro", system-ui, -apple-system, sans-serif;
-  --font-family-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-family-default: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-family-heading: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-family-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-weight-default: 400;
   --font-weight-code: 450;
   --font-weight-medium: 500;
-  --font-weight-strong: 600;
+  --font-weight-strong: 650;
 
   /* body typography */
   --body-xs-font-size: 10px;
@@ -43,102 +44,94 @@
   --body-base-font-size: 13px;
   --body-base-line-height: 20px;
   --body-base-strong-font-size: 13px;
-  --body-base-strong-font-weight: 500;
+  --body-base-strong-font-weight: 650;
 
   /* heading typography */
   --heading-xs-font-size: 13px;
-  --heading-xs-font-weight: 600;
+  --heading-xs-font-weight: 650;
   --heading-sm-font-size: 16px;
   --heading-md-font-size: 20px;
   --heading-lg-font-size: 22px;
   --heading-xl-font-size: 24px;
 
-  /* bg */
-  --bg-base-default: #1A1B1D;
-  --bg-base-secondary: #222427;
-  --bg-base-tertiary: #2A2D31;
-  --bg-overlay-l1: rgba(224, 226, 242, 0.04);
-  --bg-overlay-l2: rgba(224, 226, 242, 0.06);
-  --bg-overlay-l3: rgba(224, 226, 242, 0.08);
-  --bg-overlay-l4: rgba(224, 226, 242, 0.12);
-  --bg-menu: #202123;
-  --bg-tooltip: #1A1B1D;
+  /* bg：纸面 / 面板 / 表头 */
+  --bg-base-default: #f4f1ea;
+  --bg-base-secondary: #fffdf8;
+  --bg-base-tertiary: #f0ece3;
+  --bg-overlay-l1: rgba(28, 28, 28, 0.04);
+  --bg-overlay-l2: rgba(28, 28, 28, 0.07);
+  --bg-overlay-l3: rgba(28, 28, 28, 0.10);
+  --bg-overlay-l4: rgba(28, 28, 28, 0.14);
+  --bg-menu: #fffdf8;
 
-  /* bg-brand */
-  --bg-brand: #32F08C;
-  --bg-brand-hover: #0FDC78;
-  --bg-brand-disabled: rgba(50, 240, 140, 0.2);
-  --bg-brand-popup: rgba(50, 240, 140, 0.12);
+  /* bg-brand：森绿，不用霓虹 */
+  --bg-brand: #1f4d3a;
+  --bg-brand-hover: #16382b;
+  --bg-brand-disabled: rgba(31, 77, 58, 0.18);
+  --bg-brand-popup: #e7f0eb;
+  --bg-overlay-brand: var(--bg-brand-popup);
 
   /* text */
-  --text-default: #D1D3DB;
-  --text-default-hover: #F5F9FE;
-  --text-secondary: #9599A6;
-  --text-tertiary: #666B75;
-  --text-disabled: #666B75;
-  --text-quaternary: #4A4E58;
-  --text-onbrand: #0C0C0D;
-  --text-brand: #32F08C;
-  --text-brand-hover: #0FDC78;
-  /* 彩色芯片（仓库/供应商来源等）上的文字色，单一信息源 */
-  --text-on-accent: #FFFFFF;
+  --text-default: #1c1c1c;
+  --text-default-hover: #000000;
+  --text-secondary: #3d3d3d;
+  --text-tertiary: #6e6a62;
+  --text-disabled: #9a958b;
+  --text-quaternary: #9a958b;
+  --text-onbrand: #fffdf8;
+  --text-brand: #1f4d3a;
+  --text-brand-hover: #16382b;
+  --text-on-accent: #ffffff;
 
   /* icon */
-  --icon-default: #D1D3DB;
-  --icon-secondary: #9599A6;
-  --icon-tertiary: #666B75;
-  --icon-onbrand: #0C0C0D;
-  --icon-brand: #32F08C;
+  --icon-default: #1c1c1c;
+  --icon-secondary: #3d3d3d;
+  --icon-tertiary: #6e6a62;
+  --icon-onbrand: #fffdf8;
+  --icon-brand: #1f4d3a;
 
-  /* border */
-  --border-neutral-l1: rgba(224, 226, 242, 0.1);
-  --border-neutral-l2: rgba(224, 226, 242, 0.16);
-  --border-neutral-l3: rgba(224, 226, 242, 0.2);
-  --border-brand: #32F08C;
+  /* border：内部分割用线色，控件/卡片用墨色实线 */
+  --border-neutral-l1: #cfc8ba;
+  --border-neutral-l2: #1c1c1c;
+  --border-neutral-l3: #1c1c1c;
+  --border-brand: #1f4d3a;
 
-  /* status */
-  --status-primary-default: #387BFF;
-  --status-primary-surface-l1: rgba(53, 121, 255, 0.18);
-  --status-success-default: #33C192;
-  --status-success-surface-l1: rgba(0, 165, 110, 0.18);
-  --status-alert-default: #D29D00;
-  --status-alert-surface-l1: rgba(210, 157, 0, 0.16);
-  --status-warning-default: #D27E24;
-  --status-warning-surface-l1: rgba(210, 126, 36, 0.16);
-  --status-error-default: #F65A5A;
-  --status-error-surface-l1: rgba(246, 70, 70, 0.18);
-  --status-danger-default: #F65A5A;
-  --status-danger-surface-l1: rgba(246, 70, 70, 0.18);
-  --status-danger-surface-l2: rgba(246, 70, 70, 0.28);
-  --status-danger-popup: rgba(246, 70, 70, 0.08);
-  /* 配货来源类型语义色（单一信息源）：
-     仓库来源 → 紫，外部供应商来源 → 青。配货来源芯片/图例统一引用，禁止硬编码 */
-  --status-warehouse-default: #8B5CF6;
-  --status-supplier-default: #06B6D4;
-  /* 扣减类/优惠/进价红色（单据折扣、进价显示）。与 --status-danger-default 为当前并存的两套红，
-     收敛时需由用户决策统一标准，此处暂保留原值做单一来源 */
-  --status-discount-default: #cf1322;
+  /* status：浅底上加深一档，保证对比 */
+  --status-primary-default: #2b5a9e;
+  --status-primary-surface-l1: rgba(43, 90, 158, 0.12);
+  --status-success-default: #1f6b45;
+  --status-success-surface-l1: #e7f0eb;
+  --status-alert-default: #9a6b00;
+  --status-alert-surface-l1: rgba(154, 107, 0, 0.14);
+  --status-warning-default: #8a5a12;
+  --status-warning-surface-l1: #f6eadc;
+  --status-error-default: #c62828;
+  --status-error-surface-l1: rgba(198, 40, 40, 0.12);
+  --status-danger-default: #c62828;
+  --status-danger-surface-l1: rgba(198, 40, 40, 0.12);
+  --status-danger-surface-l2: rgba(198, 40, 40, 0.22);
+  --status-warehouse-default: #6d28d9;
+  --status-supplier-default: #0e7490;
+  --status-discount-default: #b42318;
 
   /* star/highlight（必填星号、主图标记等） */
-  --status-star-default: #ffc53d;
+  --status-star-default: #c17a2b;
 
-  /* 系统补全语义色（单一信息源）：推算值/占位默认值/默认填充值（未分类/通用/件/待完善等）
-     系统替用户补全、需用户确认或补充的信息统一使用，醒目区别于录入数据
-     （用户「占位/推算/默认填充统一醒目色，暗色看不见」指令，禁止各场景用 text-secondary/tertiary 暗色） */
-  --text-placeholder-accent: #E8A33D;
+  /* 系统补全：推算/占位/缺省，浅底上也要一眼能认 */
+  --text-placeholder-accent: #8a5a12;
 
-  /* shadow（单一信息源，禁止散写 rgba 阴影） */
-  --shadow-panel: 0 2px 12px rgba(0, 0, 0, 0.15);
-  --shadow-float: 0 8px 32px rgba(0,0,0,0.24), 0 0 0 1px rgba(0,0,0,0.08);
-  --shadow-bar-top: 0 -4px 12px rgba(0, 0, 0, 0.04);
+  /* shadow：硬偏移，不用大面积暗光晕 */
+  --shadow-panel: 3px 3px 0 rgba(28, 28, 28, 0.12);
+  --shadow-float: 3px 3px 0 rgba(28, 28, 28, 0.12);
+  --shadow-bar-top: 0 -1px 0 #cfc8ba;
 
-  /* overlay（模态遮罩，单一信息源） */
-  --bg-overlay-modal: rgba(0, 0, 0, 0.5);
+  /* overlay（模态遮罩） */
+  --bg-overlay-modal: rgba(28, 28, 28, 0.35);
 
-  /* print（打印/纸张场景专用，白底黑字体系，与暗色主题隔离） */
+  /* print（打印专用，白底黑字，与屏幕纸色分开） */
   --print-bg-paper: #ffffff;
   --print-bg-subtle: #f5f5f5;
-  --print-bg-highlight: #e6f7ff;
+  --print-bg-highlight: #e7f0eb;
   --print-text-primary: #1a1a1a;
   --print-text-secondary: #555555;
   --print-text-tertiary: #777777;
@@ -148,10 +141,7 @@
   --print-border-medium: #999999;
   --print-border-light: #d0d0d0;
   --print-border-lighter: #e8e8e8;
-  --print-brand: #0FDC78;
-
-  /* special */
-  --special-bgtabsoverlay: rgba(0, 0, 0, 0.2);
+  --print-brand: #1f4d3a;
 
   /* breakpoint tokens（仅作为文档参考，CSS 中仍需用 @media 显式查询） */
   --bp-mobile-max: 767px;
@@ -183,13 +173,14 @@
   --shell-canvas-border: 1px;          /* 主容器浅灰细边框（确认边界） */
   /* 内部盒子最小宽度 = 画布宽度 - 2*内边距 - 2*边框 = 1194px */
   --shell-inner-min-w: calc(var(--shell-canvas-width) - 2 * var(--shell-canvas-pad) - 2 * var(--shell-canvas-border));
-  /* v11.10 画布缩放（开放）：CSS zoom 布局级缩放，任意设备任意时刻可放大/缩小
-   *   - 由 AppShell 缩放控件 / Ctrl+滚轮 修改（范围 0.4~2，默认 1 = 原始尺寸）
-   *   - zoom 改变布局尺寸（非视觉 transform）→ FloatPanel/表格滚动等定位自动正确
-   *   - v11.16 更正：需要用户交互确认的独立模态 portal 到 body（画布外）不随缩放，
-   *     相对**画布**居中（canvasModalCentering 接管）；消息通知保持顶部；
-   *     FloatPanel 定位浮层锚定原位，位置/大小均为画布特性，不随屏幕变化 */
+  /* 画布缩放（远程桌面式整幅画面）：只打在 .ds-canvas-stage。
+   *   浮层/弹窗在舞台叠加层里一起缩。不持久化；100% 时键盘必须可用 */
   --shell-zoom: 1;
+
+  /* 浮层/弹窗信息密度：手机挪画布看完不方便，少留白、宽度吃满内容。双端同一套，禁止为手机另做全屏 */
+  --overlay-pad-y: 4px;
+  --overlay-pad-x: 8px;
+  --overlay-gap: 4px;
 
   /* 骨架行高：所有行统一24px（除内容区高度不确定外） */
   --shell-row-h: 24px;               /* 通用行高（除内容区外所有行高度固定） */

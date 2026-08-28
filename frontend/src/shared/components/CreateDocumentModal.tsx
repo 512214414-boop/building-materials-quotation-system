@@ -1,8 +1,8 @@
 // v2.7 新建单据弹窗（共享组件）
 // 设计：
 //   1. 单据编号自动生成（YY-MM-DD-序号），只读展示
-//   2. 整单备注：可选
-//   3. 客户：可选，使用 CustomerPicker 匹配检索
+//   2. 单据标题：可选（与采购清单标题同一意思）
+//   3. 客户信息：可选，使用 CustomerPicker（姓名 + 当时挑的一条联系）
 //   4. 创建成功后通过 onCreated(doc) 回调
 
 import { useState, useMemo } from 'react';
@@ -12,6 +12,7 @@ import DsButton from './DsButton.js';
 import DsInput from './DsInput.js';
 import CustomerPicker, { type CustomerPickerValue } from './CustomerPicker.js';
 import { createDocument, type StaffDocumentDetail } from '../services/api/documentApi.js';
+import { formatCustomerInfo } from '../utils/customerInfo.js';
 
 export interface CreateDocumentModalProps {
   open: boolean;
@@ -53,7 +54,10 @@ export default function CreateDocumentModal({
     try {
       const doc = await createDocument({
         customerId: customer?.id,
+        title: note.trim() || undefined,
         note: note.trim() || undefined,
+        customerPhone: customer?.phone || undefined,
+        customerContactMethod: customer?.contactMethod || undefined,
       });
       message.success('单据创建成功');
       reset();
@@ -102,7 +106,7 @@ export default function CreateDocumentModal({
         {/* 备注：可选 */}
         <div>
           <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
-            整单备注 <span style={{ color: 'var(--text-tertiary)' }}>（可选，可后续补充）</span>
+            单据标题 <span style={{ color: 'var(--text-tertiary)' }}>（可选，可后续补充）</span>
           </label>
           <DsInput
             autoFocus
@@ -117,12 +121,11 @@ export default function CreateDocumentModal({
         {/* 客户：可选 */}
         <div>
           <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
-            客户 <span style={{ color: 'var(--text-tertiary)' }}>（可选，可后续补关联）</span>
+            客户信息 <span style={{ color: 'var(--text-tertiary)' }}>（可选，可后续补关联）</span>
           </label>
           <CustomerPicker
             value={customer?.id ?? null}
             onChange={(c) => setCustomer(c)}
-            placeholder="输入手机号/姓名搜索"
             style={{ width: '100%' }}
           />
           {customer && (
@@ -140,10 +143,10 @@ export default function CreateDocumentModal({
               }}
             >
               <span>
-                姓名：<strong style={{ color: 'var(--text-default)' }}>{customer.name ?? '—'}</strong>
-              </span>
-              <span>
-                电话：<strong style={{ color: 'var(--text-default)' }}>{customer.phone || '—'}</strong>
+                客户信息：
+                <strong style={{ color: 'var(--text-default)' }}>
+                  {formatCustomerInfo(customer.name, customer.phone, customer.contactMethod) || '—'}
+                </strong>
               </span>
             </div>
           )}

@@ -10,7 +10,7 @@
 //  4. 自动联动：cost_adjust = actual_cost - preset_unit_cost
 //  5. 毛利告警：行毛利率 < 0% 红色告警，0-15% 黄色警告
 //  6. 退换货扣减：refund_lines 在 V8 处理，V7 仅展示扣减后预计毛利
-// 编辑模式：Excel 式即时保存（行字段 onBlur 自动提交单行，无保存按钮）
+// 编辑模式：格子只展示，确认层确认才写（取消不保存）
 //
 // 效率文档改造要点：
 //  1. 视图级防误触锁定（lockCostVerifyView/unlockCostVerifyView）
@@ -20,12 +20,17 @@
 
 import { useMemo, useState, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { App as AntdApp, Spin, Menu, type MenuProps } from 'antd';
+import { Spin, Menu, type MenuProps } from 'antd';
 import { LockOutlined, UndoOutlined, UnlockOutlined } from '@ant-design/icons';
 import { DsButton, DsTag } from '../../../../../shared/components/index.js';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
+import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
+import { HeaderCascadeFilter } from '../../../../../shared/components/archive/HeaderCascadeFilter.js';
+import { ArchiveFilterChip } from '../../../../../shared/components/archive/ArchiveListFilters.js';
+import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
+import { useDocumentLineCascadeFilter } from '../../../../../shared/hooks/useDocumentLineCascadeFilter.js';
 import {
   listCostLines,
   batchUpdateCostLines,
@@ -53,6 +58,7 @@ import { useSaveStatus } from '../../../../../shared/components/common/SaveStatu
 import type { CostChannelType } from '../../../../../shared/types/index.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
+import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
 
 // ============================================================
 // 毛利告警阈值
@@ -74,8 +80,15 @@ interface CostRow {
   lineId: string;
   seq: number;
   productRef: string;
+  productId: string | null;
+  brandId: string | null;
+  productName?: string | null;
+  brandName?: string | null;
   /** v5.0：规格快照（原 v4.0 specModel 改名） */
   spec: string | null;
+  hideProductName?: boolean;
+  hideBrandName?: boolean;
+  hideSpecModel?: boolean;
   unit: string;
   qty: number;
   /** v1.7.0 成本分层段（internal / external_agreed / external_excess） */
@@ -367,9 +380,10 @@ function SourceInfoPanel({
 // ============================================================
 
 export default function CostVerify({ documentId }: { documentId: string }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const { trackSave } = useSaveStatus();
   const [docLines, setDocLines] = useState<CostDocumentLineView[]>([]);
+  const lineFilter = useDocumentLineCascadeFilter(documentId);
   const [docDetail, setDocDetail] = useState<StaffDocumentDetail | null>(null);
   const [sourceInfo, setSourceInfo] = useState<SourceInfo | null>(null);
   const [drafts, setDrafts] = useState<Record<string, CostDraft>>({});
@@ -463,6 +477,10 @@ export default function CostVerify({ documentId }: { documentId: string }) {
           lineId: dl.lineId,
           seq: dl.seq,
           productRef: dl.productRef,
+          productId: dl.productId,
+          brandId: dl.brandId,
+          productName: dl.productName,
+          brandName: dl.brandName,
           spec: dl.spec,
           unit: dl.unit,
           qty: dl.qty,
@@ -489,6 +507,11 @@ export default function CostVerify({ documentId }: { documentId: string }) {
     }
     return result;
   }, [docLines, drafts]);
+
+  const visibleRows = useMemo(
+    () => lineFilter.filterRows(rows),
+    [lineFilter.filterRows, rows],
+  );
 
   // ----------------------------------------------------------
   // 顶部汇总（基于所有行实时算价）
@@ -543,27 +566,6 @@ export default function CostVerify({ documentId }: { documentId: string }) {
 
   const dirtyRows = useMemo(() => rows.filter((r) => r.dirty), [rows]);
 
-  // ----------------------------------------------------------
-  // 操作：更新草稿
-  // ----------------------------------------------------------
-  const updateDraft = useCallback(
-    (rowKey: string, field: 'actualCost' | 'freight' | 'remark', value: number | string) => {
-      setDrafts((prev) => {
-        const existing = prev[rowKey];
-        const next: CostDraft = existing
-          ? { ...existing }
-          : { actualCost: 0, freight: 0, remark: '' };
-        if (field === 'remark') {
-          next.remark = String(value);
-        } else {
-          next[field] = Number(value) || 0;
-        }
-        return { ...prev, [rowKey]: next };
-      });
-    },
-    [],
-  );
-
   const resetDraft = useCallback((rowKey: string) => {
     setDrafts((prev) => {
       const next = { ...prev };
@@ -605,8 +607,56 @@ export default function CostVerify({ documentId }: { documentId: string }) {
   void saveCosts;
 
   // ----------------------------------------------------------
-  // Excel 式即时保存：onBlur 时自动提交单行
+  // 点值格：确认后写入单行
   // ----------------------------------------------------------
+  const persistCostField = useCallback(
+    async (
+      record: CostRow,
+      patch: { actualCost?: number; freight?: number; remark?: string },
+    ) => {
+      if (viewLocked || record.verified) return;
+      if (submittingRef.current.has(record.rowKey)) return;
+      const actualCost = patch.actualCost ?? record.actualCost;
+      const freight = patch.freight ?? record.freight;
+      const remark = (patch.remark ?? record.remark ?? '').trim();
+      if (
+        actualCost === record.actualCost &&
+        freight === record.freight &&
+        remark === (record.remark ?? '')
+      ) {
+        return;
+      }
+      submittingRef.current.add(record.rowKey);
+      try {
+        const items: CostLineBatchItem[] = [
+          {
+            lineId: record.lineId,
+            costSegment: record.costSegment,
+            channelType: record.channelType,
+            sourceId: record.sourceId,
+            unitCost: actualCost,
+            freight,
+            remark: remark || undefined,
+          },
+        ];
+        const result = (await trackSave(
+          record.rowKey,
+          batchUpdateCostLines(documentId, items),
+        )) as { costLines: CostDocumentLineView[]; updated: number };
+        setDocLines(result.costLines);
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[record.rowKey];
+          return next;
+        });
+      } catch (e) {
+        void e;
+      } finally {
+        submittingRef.current.delete(record.rowKey);
+      }
+    },
+    [viewLocked, documentId, trackSave],
+  );
   const commitLine = useCallback(
     async (rowKey: string) => {
       if (viewLocked) return;
@@ -670,6 +720,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
     },
     [drafts, docLines, documentId, viewLocked, trackSave],
   );
+  void commitLine;
 
   // ----------------------------------------------------------
   // 锁定/解锁视图（防误触，与行级 verified 独立）
@@ -757,24 +808,74 @@ export default function CostVerify({ documentId }: { documentId: string }) {
       // 1. 商品名称
       {
         key: 'productRef',
-        title: '商品名称',
+        title: (
+          <HeaderCascadeFilter
+            field="product"
+            placeholder="产品名"
+            selectedName={lineFilter.filterProductName}
+            fetcher={lineFilter.fetchProductFacet}
+            onSelect={lineFilter.selectProduct}
+            onClear={lineFilter.clearProductFilter}
+          />
+        ),
         dataIndex: 'productRef',
-        align: 'center',
+        minWidth: COL_WIDTHS.NAME_QUOTE,
+        className: 'ds-cascade-col',
+        align: 'left',
         renderMode: 'static',
-        ellipsis: true,
-        render: (v: string) => <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>{v}</span>,
+        render: (_v: string, r: CostRow) => {
+          if (r.hideProductName) return <span />;
+          const name = r.productName || r.productRef;
+          return <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>{name || '—'}</span>;
+        },
       },
-      // 4. 规格型号（v5.0：spec 快照）
+      {
+        key: 'brandName',
+        title: (
+          <HeaderCascadeFilter
+            field="brand"
+            placeholder="品牌"
+            selectedName={lineFilter.filterBrandName}
+            fetcher={lineFilter.fetchBrandFacet}
+            onSelect={lineFilter.selectBrand}
+            onClear={lineFilter.clearBrandFilter}
+          />
+        ),
+        dataIndex: 'brandName',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'static',
+        render: (_v, r: CostRow) => {
+          if (r.hideBrandName) return <span />;
+          return r.brandName ? (
+            <span style={{ color: 'var(--text-default)' }}>{r.brandName}</span>
+          ) : (
+            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+          );
+        },
+      },
       {
         key: 'spec',
-        title: '规格',
+        title: (
+          <HeaderCascadeFilter
+            field="specModel"
+            placeholder="规格"
+            selectedName={lineFilter.filterSpecModel}
+            fetcher={lineFilter.fetchSpecFacet}
+            onSelect={lineFilter.selectSpec}
+            onClear={lineFilter.clearSpecFilter}
+          />
+        ),
         dataIndex: 'spec',
-        minWidth: 110,
-        align: 'center',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        align: 'left',
         renderMode: 'static',
-        ellipsis: true,
-        render: (v: string | null) =>
-          v ? v : <span style={{ color: 'var(--text-tertiary)' }}>—</span>,
+        render: (_v: string | null, r: CostRow) => {
+          if (r.hideSpecModel) return <span />;
+          return r.spec ? r.spec : <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+        },
       },
       // 5. 单位
       {
@@ -846,16 +947,27 @@ export default function CostVerify({ documentId }: { documentId: string }) {
           </span>
         ),
       },
-      // 11. 实际成本（number 模式：普通 text input + inputMode=decimal，禁用 number 控件）
+      // 11. 实际成本
       {
         key: 'actualCost',
         title: '实际成本',
         dataIndex: 'actualCost',
         minWidth: 110,
         align: 'center',
-        renderMode: 'number',
-        placeholder: '0.00',
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
+        render: (_v: number, record: CostRow) => (
+          <WorkbenchFieldCell
+            text={record.actualCost == null ? '' : String(record.actualCost)}
+            placeholder="0.00"
+            align="center"
+            mono
+            input="number"
+            disabled={isRowDisabled(record)}
+            title="实际成本"
+            onApply={(next) => void persistCostField(record, { actualCost: parseFloat(next) || 0 })}
+          />
+        ),
       },
       // 12. 调整额
       {
@@ -886,9 +998,20 @@ export default function CostVerify({ documentId }: { documentId: string }) {
         dataIndex: 'freight',
         minWidth: 100,
         align: 'center',
-        renderMode: 'number',
-        placeholder: '0.00',
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
+        render: (_v: number, record: CostRow) => (
+          <WorkbenchFieldCell
+            text={record.freight == null ? '' : String(record.freight)}
+            placeholder="0.00"
+            align="center"
+            mono
+            input="number"
+            disabled={isRowDisabled(record)}
+            title="运费分摊"
+            onApply={(next) => void persistCostField(record, { freight: parseFloat(next) || 0 })}
+          />
+        ),
       },
       // 14. 成本小计
       {
@@ -971,9 +1094,19 @@ export default function CostVerify({ documentId }: { documentId: string }) {
         dataIndex: 'remark',
         minWidth: 160,
         align: 'center',
-        renderMode: 'text',
-        placeholder: '成本备注',
+        renderMode: 'custom',
         isDisabled: isRowDisabled,
+        render: (_v: string, record: CostRow) => (
+          <WorkbenchFieldCell
+            text={record.remark || ''}
+            placeholder="成本备注"
+            align="center"
+            allowEmpty
+            disabled={isRowDisabled(record)}
+            title="核定备注"
+            onApply={(next) => void persistCostField(record, { remark: next })}
+          />
+        ),
       },
       // 19. 状态
       {
@@ -987,7 +1120,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
           v ? <DsTag color="success">已核定</DsTag> : <DsTag>待核定</DsTag>,
       },
     ],
-    [isRowDisabled],
+    [isRowDisabled, persistCostField, lineFilter],
   );
 
   // ----------------------------------------------------------
@@ -1007,28 +1140,6 @@ export default function CostVerify({ documentId }: { documentId: string }) {
       return <Menu items={items} />;
     },
     [viewLocked, resetDraft],
-  );
-
-  // ----------------------------------------------------------
-  // v4.3 onCellCommit：路由 actualCost/freight/remark 到 updateDraft + commitLine
-  // ----------------------------------------------------------
-  const handleCellCommit = useCallback(
-    (_rowIndex: number, columnKey: string, value: any, record: CostRow) => {
-      if (viewLocked || record.verified) return;
-      if (columnKey === 'actualCost') {
-        const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-        updateDraft(record.rowKey, 'actualCost', numVal);
-        void commitLine(record.rowKey);
-      } else if (columnKey === 'freight') {
-        const numVal = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
-        updateDraft(record.rowKey, 'freight', numVal);
-        void commitLine(record.rowKey);
-      } else if (columnKey === 'remark') {
-        updateDraft(record.rowKey, 'remark', String(value ?? ''));
-        void commitLine(record.rowKey);
-      }
-    },
-    [viewLocked, updateDraft, commitLine],
   );
 
   // ----------------------------------------------------------
@@ -1058,7 +1169,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
           <>
             {dirtyRows.length > 0
               ? `有 ${dirtyRows.length} 行未保存`
-              : '所有修改已自动保存'}
+              : '确认后写入，取消不保存'}
             {viewLocked ? ' · 已锁定·防误触' : ''}
           </>
         ),
@@ -1086,6 +1197,14 @@ export default function CostVerify({ documentId }: { documentId: string }) {
         ),
       }}
       bizStrip={{
+        left:
+          lineFilter.chips.length > 0 ? (
+            <span className="ds-filter-row">
+              {lineFilter.chips.map((c) => (
+                <ArchiveFilterChip key={c.key} label={c.label} value={c.value} onClear={c.onClear} />
+              ))}
+            </span>
+          ) : undefined,
         right: (
           <>
             <BizField label="销售合计" mono>
@@ -1157,10 +1276,9 @@ export default function CostVerify({ documentId }: { documentId: string }) {
       {/* 成本行表格（v4.3：UnifiedTable disableEmptyRows + 首列更多菜单 + 行级禁用） */}
       <UnifiedTable<CostRow>
         columns={columns}
-        rows={rows}
+        rows={visibleRows}
         rowKey={(r) => r.rowKey}
         moreMenuRenderer={moreMenuRenderer}
-        onCellCommit={handleCellCommit}
         loading={loading && rows.length === 0}
       />
     </ViewFrame>

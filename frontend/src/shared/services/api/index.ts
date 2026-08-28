@@ -14,3 +14,7 @@ export * from './archiveApi.js';
 export * from './customerApi.js';
 export * from './baseDataApi.js';
 export * from './systemApi.js';
+export * from './inventoryApi.js';
+export * from './purchaseInboundApi.js';
+export * from './opsReportApi.js';
+export * from './payableApi.js';

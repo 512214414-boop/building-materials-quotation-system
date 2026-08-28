@@ -17,9 +17,11 @@ import {
   listSupplierPayables,
   settlePayable,
   downloadPayablesExport,
+  getPayableAging,
   type PayableListView,
   type PayableRow,
   type PayableSummaryRow,
+  type PayableAgingResult,
 } from '../../../shared/services/api/payableApi.js';
 import { listAllocationSources, type AllocationSourcesResult } from '../../../shared/services/api/allocationApi.js';
 
@@ -43,6 +45,7 @@ export default function SupplierPayableManage() {
   const [supplierId, setSupplierId] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [keyword, setKeyword] = useState('');
+  const [aging, setAging] = useState<PayableAgingResult | null>(null);
 
   useEffect(() => {
     listAllocationSources()
@@ -69,6 +72,12 @@ export default function SupplierPayableManage() {
   useEffect(() => {
     void fetchList();
   }, [fetchList]);
+
+  useEffect(() => {
+    getPayableAging()
+      .then(setAging)
+      .catch(() => setAging(null));
+  }, [data.list]);
 
   const handleSettle = (row: PayableRow) => {
     Modal.confirm({
@@ -285,7 +294,22 @@ export default function SupplierPayableManage() {
         ),
       }}
       preContent={
-        data.summary.length > 0 ? (
+        <>
+          {aging && (
+            <div style={{ display: 'flex', gap: 12, padding: '4px 12px', fontSize: 'var(--body-xs-font-size)', color: 'var(--text-secondary)' }}>
+              <span>应付账龄</span>
+              {(['0-30', '31-60', '61-90', '90+'] as const).map((k) => (
+                <span key={k}>
+                  {k}日{' '}
+                  <b style={{ color: 'var(--text-default)', fontFamily: 'var(--font-family-mono)' }}>
+                    {formatMoney(aging.buckets[k].amount)}
+                  </b>
+                  <span style={{ color: 'var(--text-tertiary)' }}>（{aging.buckets[k].count}）</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {data.summary.length > 0 ? (
           <div style={{ display: 'flex', gap: 8, padding: '0 12px 6px', overflowX: 'auto' }}>
             {data.summary.map((s: PayableSummaryRow) => (
               <button
@@ -316,7 +340,8 @@ export default function SupplierPayableManage() {
               </button>
             ))}
           </div>
-        ) : null
+          ) : null}
+        </>
       }
     >
       <UnifiedTable<PayableRow>

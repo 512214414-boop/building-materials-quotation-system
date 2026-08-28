@@ -26,6 +26,8 @@ export const CELL_SHARED_STYLE: CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   boxSizing: 'border-box',
+  minWidth: 0,
+  maxWidth: '100%',
 };
 
 export const CELL_TEXT_STYLE: CSSProperties = {
@@ -42,12 +44,17 @@ export const CELL_INPUT_STYLE: CSSProperties = {
   ...CELL_SHARED_STYLE,
   width: '100%',
   height: '100%',
-  border: 'none',
+  borderWidth: 0,
+  borderStyle: 'none',
+  borderColor: 'transparent',
   outline: 'none',
   background: 'transparent',
   margin: 0,
   color: 'inherit',
   textAlign: 'center',
+  // 禁止原生 input 默认 ~20 字宽把列撑开（点格列宽跳动的根因）
+  minWidth: 0,
+  maxWidth: '100%',
 };
 
 export const CELL_INPUT_FOCUS_STYLE: CSSProperties = {
@@ -61,7 +68,7 @@ export const CELL_INPUT_FOCUS_STYLE: CSSProperties = {
 
 export interface UnifiedTableColumn<T = any> {
   key: string;
-  title: string;
+  title: ReactNode;
   /** 数据字段名（keyof T 或自定义字符串；操作列等自定义渲染列可不设） */
   dataIndex?: string | keyof T;
   /** 列级样式类（渲染容器追加，供页面自定义视觉） */
@@ -93,8 +100,18 @@ export interface UnifiedTableColumn<T = any> {
   ) => ReactNode;
   placeholder?: string;
   ellipsis?: boolean;
-  /** 是否允许内容换行（true = 超出宽度自动换行，行高自适应；默认 false = 不换行） */
+  /** 超出换行、行高跟着长（档案列表名称）。开单产品名不要用，改用 fitContent */
   wrap?: boolean;
+  /**
+   * 单行完整显示：列宽取当前页最长内容（不低于 minWidth）。
+   * 数据列默认就是这样；设 false 才锁死为 minWidth。wrap 列不走这条。
+   */
+  fitContent?: boolean;
+  /**
+   * 量列宽用的纯文本。多记录列（▾）没有 dataIndex，必须用格子里实际看见的字，
+   * 否则列宽停在 minWidth，内容溢出叠到下一列。
+   */
+  getFitText?: (record: T) => string;
   /** 行级禁用判定：返回 true 时该单元格不可编辑 */
   isDisabled?: (record: T) => boolean;
   /** 下划线链接视觉提示 */
@@ -105,6 +122,10 @@ export interface UnifiedTableColumn<T = any> {
   pickerTrigger?: 'cell' | 'dropdown';
   /** dropdown 模式非标数据判定函数 */
   isStandardValue?: (value: any, record: T) => boolean;
+  /** 常驻输入的文字色/字重（点格不换节点，不能靠 render 包一层 span） */
+  cellTextStyle?: (value: any, record: T) => CSSProperties;
+  /** 常驻输入右侧固定后缀（如 %），不随点格出现/消失 */
+  displaySuffix?: string;
 }
 
 // ============================================================

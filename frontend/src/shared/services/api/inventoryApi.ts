@@ -6,6 +6,7 @@
 
 import request from '../request.js';
 import type { PaginationResult } from '../request.js';
+import type { SuggestOption } from './baseDataApi.js';
 
 // ============================================================
 // 类型
@@ -13,19 +14,28 @@ import type { PaginationResult } from '../request.js';
 
 /** 多库区点位 */
 export interface WarehouseZoneItem {
+  id?: string;
   name: string;
   sortOrder?: number;
 }
 
+export interface WarehouseContactView {
+  name: string;
+  method: string;
+  value: string;
+  isDefault?: boolean;
+}
+
 /** 内部仓库档案视图 */
 export interface WarehouseView {
-  /** BigInt 序列化为 string */
   id: string;
   name: string;
-  code: string | null;
-  /** 多库区点位 [{ name, sortOrder }] */
   zones: WarehouseZoneItem[] | null;
+  contacts?: WarehouseContactView[];
   address: string | null;
+  lng?: number | null;
+  lat?: number | null;
+  coordSource?: 'geocoded' | 'manual' | null;
   manager: string | null;
   /** 是否主自有库房（超额入库默认入仓；同店有且仅有一个 true） */
   isMain: boolean;
@@ -39,9 +49,12 @@ export interface WarehouseView {
 /** 仓库创建/更新入参 */
 export interface SaveWarehouseInput {
   name: string;
-  code?: string;
   zones?: WarehouseZoneItem[];
+  contacts?: WarehouseContactView[];
   address?: string;
+  lng?: number | null;
+  lat?: number | null;
+  coordSource?: 'geocoded' | 'manual' | null;
   manager?: string;
   isMain?: boolean;
   sortOrder?: number;
@@ -102,12 +115,31 @@ export interface InventoryLedgerRow {
 export function listWarehouses(query: {
   keyword?: string;
   status?: number | 'all';
+  name?: string;
+  nameExact?: boolean;
+  nameId?: string;
   page?: number;
   pageSize?: number;
 }): Promise<PaginationResult<WarehouseView>> {
   return request.get<unknown, PaginationResult<WarehouseView>>('/api/staff/warehouses', {
     params: query,
   });
+}
+
+export function listWarehouseFacets(query: {
+  field: 'name';
+  keyword?: string;
+  q?: string;
+  status?: number | 'all';
+  name?: string;
+  nameExact?: boolean;
+  nameId?: string;
+}): Promise<SuggestOption[]> {
+  return request
+    .get<unknown, { options: SuggestOption[] }>('/api/staff/warehouses/facets', {
+      params: query,
+    })
+    .then((res) => res.options ?? []);
 }
 
 /** 启用仓库列表（配货来源内部组 / 下拉，无分页） */
@@ -134,6 +166,16 @@ export function updateWarehouse(id: string, data: Partial<SaveWarehouseInput>): 
 
 export function setWarehouseStatus(id: string, status: number): Promise<WarehouseView> {
   return request.post<unknown, WarehouseView>(`/api/staff/warehouses/${id}/status`, { status });
+}
+
+export function batchSetWarehouseStatus(
+  ids: string[],
+  status: number,
+): Promise<{ count: number; status: number }> {
+  return request.post<unknown, { count: number; status: number }>(
+    '/api/staff/warehouses/batch-status',
+    { ids, status },
+  );
 }
 
 /** 仓库引用计数（删除确认时调用） */
@@ -200,6 +242,19 @@ export function listInventoryLedgers(query: {
   });
 }
 
-export function adjustInventory(id: string, data: { targetQty: number; remark?: string }): Promise<InventoryRow> {
+export function adjustInventory(id: string, data: { targetQty: number; remark?: string; unitCost?: number }): Promise<InventoryRow> {
   return request.post<unknown, InventoryRow>(`/api/staff/inventory/${id}/adjust`, data);
+}
+
+/** 期初入库（尚无库存行时按 SKU × 仓写入数量和成本） */
+export function openingInventory(data: {
+  warehouseId: string;
+  specId: string;
+  brandId: string;
+  unitId: string;
+  qty: number;
+  unitCost: number;
+  remark?: string;
+}): Promise<InventoryRow> {
+  return request.post<unknown, InventoryRow>('/api/staff/inventory/opening', data);
 }

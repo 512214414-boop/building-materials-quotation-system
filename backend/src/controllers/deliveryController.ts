@@ -32,6 +32,7 @@ export async function createDeliveryHandler(req: Request, res: Response) {
       receiverPhone: parsed.data.receiverPhone,
       note: parsed.data.note,
       attachmentUrls: parsed.data.attachmentUrls,
+      freight: parsed.data.freight,
     },
     { id: req.user!.userId, name: req.user!.realName ?? req.user!.username },
   );
@@ -58,6 +59,7 @@ export async function updateDeliveryHandler(req: Request, res: Response) {
       status: parsed.data.status,
       note: parsed.data.note,
       attachmentUrls: parsed.data.attachmentUrls,
+      freight: parsed.data.freight,
     },
     { id: req.user!.userId, name: req.user!.realName ?? req.user!.username },
   );

@@ -20,10 +20,11 @@
 //   5. 键盘导航：Enter(下移) / Esc(回滚) / Tab(右移) / Shift+Tab(左移) / ArrowUp/Down
 //   6. 弹性虚数列：表格末尾自动补齐右侧空白
 //   7. 分页 + 空行填充（手写单据式翻页）
+//   8. 档案勾选：TableSelectionStore 跨页保留，配合 useArchiveTableSelection + selectionResetKey
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Button, Checkbox, Dropdown, Pagination, Select } from 'antd';
+import { Button, Dropdown, Pagination, Select } from 'antd';
 import type { TableColumnType } from 'antd';
 import {
   DeleteOutlined,
@@ -35,6 +36,13 @@ import {
 import DsShellRow from './DsShellRow.js';
 import InteractionLayer from './table/InteractionLayer.js';
 import DataViewLayer from './table/DataViewLayer.js';
+import {
+  TableHeaderCheckbox,
+  TableRowCheckbox,
+  TableSelectionProvider,
+  useSelectionRowsSync,
+  useStableSelectionStore,
+} from './table/TableSelection.js';
 import type { FocusBus } from './FocusBus.js';
 
 import type {
@@ -60,11 +68,15 @@ export interface UnifiedTableProps<T extends Record<string, any>> {
   onChange?: (rows: T[]) => void;
   /** 单元格提交回调 */
   onCellCommit?: (rowIndex: number, columnKey: string, value: any, record: T) => void;
-  /** 是否显示勾选 checkbox（默认 true） */
+  /** 是否显示勾选（默认 false；有批量操作时再打开） */
   selectable?: boolean;
   onSelectionChange?: (selectedRowKeys: string[], selectedRows: T[]) => void;
-  /** 更多菜单自定义渲染 */
+  /** 变化时清空表内勾选（批量操作成功后递增） */
+  selectionResetKey?: number;
+  /** 行级更多菜单（当前行） */
   moreMenuRenderer?: (record: T, rowIndex: number) => ReactNode;
+  /** 表头更多菜单（已勾选行；无勾选时菜单项自行禁用。范围是勾选或全部，不是当前行） */
+  headerMoreMenuRenderer?: (selectedRows: T[]) => ReactNode;
   onDelete?: (record: T, rowIndex: number) => void;
   /** 虚拟滚动（默认数据量 > 50 时自动启用） */
   virtual?: boolean;
@@ -96,8 +108,8 @@ export interface UnifiedTableProps<T extends Record<string, any>> {
   pageSize?: number;
   /** 禁用空行填充（只读视角） */
   disableEmptyRows?: boolean;
-  /** 创建空行的工厂函数 */
-  emptyRowFactory?: () => T;
+  /** 创建空行的工厂函数；翻页场景传入全局插入下标，避免每页空行序号撞车 */
+  emptyRowFactory?: (insertIndex: number) => T;
   /** 空状态渲染器（只读列表数据为空时显示） */
   emptyStateRenderer?: () => ReactNode;
 }
@@ -120,7 +132,8 @@ const TABLE_CSS = `
 }
 .unified-table .ant-table-container {
   border-radius: var(--radius-4);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 /* !important 用于覆盖 Ant Design 6 CSS-in-JS 注入样式，非 hack */
 .unified-table .ant-table-thead > tr > th {
@@ -131,6 +144,8 @@ const TABLE_CSS = `
   text-transform: uppercase;
   letter-spacing: 0.04em;
   text-align: center !important;
+  height: ${ROW_HEIGHT}px;
+  box-sizing: border-box;
 }
 .unified-table .ant-table-tbody > tr > td {
   border-bottom: 1px solid var(--border-neutral-l1);
@@ -185,12 +200,21 @@ const TABLE_CSS = `
   background-image: none !important;
   border-bottom: 1px solid var(--border-neutral-l2) !important;
 }
-/* auto 布局下表格撑满容器 + 横向滚动 */
+/* 列宽按设计值（table-layout:fixed）；fit 列靠 scroll.x 像素总和横滑，禁止 max-content 按格子内容撑列 */
 .unified-table .ant-table-content {
   overflow-x: auto !important;
 }
-.unified-table .ant-table-content > table {
-  width: 100% !important;
+.unified-table .ant-table-content > table,
+.unified-table .ant-table-body > table,
+.unified-table .ant-table-header > table {
+  min-width: 100% !important;
+}
+.unified-table .ant-table-tbody > tr > td input,
+.unified-table .ant-table-tbody > tr > td textarea {
+  min-width: 0 !important;
+  max-width: 100%;
+  width: 100%;
+  field-sizing: fixed;
 }
 /* 非虚拟滚动（auto布局）时，弹性列要延伸到表格最右边缘 */
 .unified-table .ant-table-content > table td.unified-table-elastic-cell,
@@ -210,12 +234,50 @@ const TABLE_CSS = `
   white-space: normal !important;
   word-break: break-word !important;
   word-wrap: break-word !important;
+  overflow: visible !important;
   min-width: var(--wrap-min-width, 360px) !important;
+  max-width: var(--wrap-min-width, 360px) !important;
+  width: var(--wrap-min-width, 360px) !important;
   text-align: left !important;
+  vertical-align: top !important;
 }
 .unified-table .ant-table-thead > tr > th.ds-wrap-col {
   white-space: nowrap !important;
   min-width: var(--wrap-min-width, 360px) !important;
+  max-width: var(--wrap-min-width, 360px) !important;
+  width: var(--wrap-min-width, 360px) !important;
+  text-align: left !important;
+}
+.unified-table .ant-table-tbody > tr > td.ds-fit-col {
+  white-space: nowrap !important;
+  overflow: visible !important;
+  vertical-align: middle !important;
+}
+.unified-table .ant-table-thead > tr > th.ds-fit-col {
+  white-space: nowrap !important;
+}
+.unified-table .ant-table-tbody > tr > td.ds-fit-align-left,
+.unified-table .ant-table-thead > tr > th.ds-fit-align-left {
+  text-align: left !important;
+}
+.unified-table .ant-table-tbody > tr > td.ds-fit-align-center,
+.unified-table .ant-table-thead > tr > th.ds-fit-align-center {
+  text-align: center !important;
+}
+.unified-table .ant-table-tbody > tr > td.ds-fit-align-right,
+.unified-table .ant-table-thead > tr > th.ds-fit-align-right {
+  text-align: right !important;
+}
+/* 档案表头级联：输入嵌在表头里，取消大写/字距，避免把格子输入变成表单框 */
+.unified-table .ant-table-thead > tr > th.ds-cascade-col {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  text-align: left !important;
+  padding: 0 4px !important;
+  overflow: visible !important;
+  vertical-align: middle !important;
+}
+.unified-table .ant-table-tbody > tr > td.ds-cascade-col {
   text-align: left !important;
 }
 `;
@@ -268,6 +330,58 @@ function EmptyState({ text, entry }: EmptyStateProps) {
   );
 }
 
+type MergedTableViewProps<T extends Record<string, any>> = {
+  operationCol: TableColumnType<T>;
+  seqCol: TableColumnType<T>;
+  interactiveColumns: UnifiedTableColumn<T>[];
+  elasticCol: TableColumnType<T>;
+  internalRows: T[];
+  getRowKey: (record: T, index?: number) => string;
+  virtualEnabled: boolean;
+  mergedScroll: { x?: number | string; y?: number | undefined };
+  loading: boolean;
+  tableClassName: string;
+  emptyContent: ReactNode;
+};
+
+const MergedTableView = memo(function MergedTableView<T extends Record<string, any>>({
+  operationCol,
+  seqCol,
+  interactiveColumns,
+  elasticCol,
+  internalRows,
+  getRowKey,
+  virtualEnabled,
+  mergedScroll,
+  loading,
+  tableClassName,
+  emptyContent,
+}: MergedTableViewProps<T>) {
+  const mergedColumns = useMemo(
+    () =>
+      [
+        operationCol as unknown as UnifiedTableColumn<T>,
+        seqCol as unknown as UnifiedTableColumn<T>,
+        ...interactiveColumns,
+        elasticCol as unknown as UnifiedTableColumn<T>,
+      ],
+    [operationCol, seqCol, interactiveColumns, elasticCol],
+  );
+
+  return (
+    <DataViewLayer
+      columns={mergedColumns}
+      rows={internalRows}
+      rowKey={getRowKey}
+      virtual={virtualEnabled}
+      scroll={mergedScroll}
+      loading={loading}
+      className={tableClassName}
+      emptyText={emptyContent}
+    />
+  );
+}) as <T extends Record<string, any>>(props: MergedTableViewProps<T>) => ReactNode;
+
 // ============================================================
 // UnifiedTable — 三层架构组合体
 // ============================================================
@@ -280,9 +394,11 @@ export function UnifiedTableInner<T extends Record<string, any>>(
     rows,
     rowKey,
     onCellCommit,
-    selectable = true,
+  selectable = false,
     onSelectionChange,
+    selectionResetKey,
     moreMenuRenderer,
+    headerMoreMenuRenderer,
     onDelete,
     virtual,
     scroll,
@@ -356,7 +472,7 @@ export function UnifiedTableInner<T extends Record<string, any>>(
       if (disableEmptyRows || !emptyRowFactory) return rows;
       const virtualEmptyCount = Math.max(1, currentPageSize);
       const emptyRows = Array.from({ length: virtualEmptyCount }, (_, i) => ({
-        ...emptyRowFactory(),
+        ...emptyRowFactory(rows.length + i),
         __isEmpty: true as const,
         __emptyIdx: i,
       }));
@@ -364,12 +480,12 @@ export function UnifiedTableInner<T extends Record<string, any>>(
     }
     if (emptyCount <= 0 || !emptyRowFactory) return pageDataRows;
     const emptyRows = Array.from({ length: emptyCount }, (_, i) => ({
-      ...emptyRowFactory(),
+      ...emptyRowFactory(pageStart + pageDataRows.length + i),
       __isEmpty: true as const,
       __emptyIdx: i,
     }));
     return [...pageDataRows, ...emptyRows] as T[];
-  }, [rows, pageDataRows, emptyCount, emptyRowFactory, virtualEnabled, disableEmptyRows, currentPageSize]);
+  }, [rows, pageDataRows, emptyCount, emptyRowFactory, virtualEnabled, disableEmptyRows, currentPageSize, pageStart]);
 
   // ---- focusBus 引用（通过 ref 从 InteractionLayer render prop 获取）----
   const focusBusRef = useRef<FocusBus | null>(null);
@@ -485,29 +601,47 @@ export function UnifiedTableInner<T extends Record<string, any>>(
     [internalRows.length, columns, virtualEnabled, changePage],
   );
 
-  // ---- 选择处理 ----
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const selectedKeysRef = useRef(selectedKeys);
-  selectedKeysRef.current = selectedKeys;
+  const isEmptyRecord = useCallback(
+    (record: T) => !!(record as { __isEmpty?: boolean }).__isEmpty,
+    [],
+  );
 
-  const handleSelect = useCallback(
-    (key: string, checked: boolean) => {
-      setSelectedKeys((prev) => {
-        const next = new Set(prev);
-        if (checked) next.add(key);
-        else next.delete(key);
-        const selectedRows = rows.filter((r, i) =>
-          next.has(getKey(r, i)),
-        );
-        onSelectionChange?.(Array.from(next), selectedRows);
-        return next;
-      });
-    },
-    [getKey, onSelectionChange, rows],
+  // ---- 选择处理（外部 store：勾选不触发整表 columns 重建）----
+  const selectionStore = useStableSelectionStore<T>(getKey, isEmptyRecord);
+  const selectionStoreRef = useRef(selectionStore);
+  selectionStoreRef.current = selectionStore;
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+
+  useEffect(() => {
+    selectionStore.setOnSelectionChange((keys, selected) => {
+      onSelectionChangeRef.current?.(keys, selected);
+    });
+  }, [selectionStore]);
+
+  useSelectionRowsSync(selectionStore, rows, getKey);
+
+  const selectionResetMountRef = useRef(false);
+  useEffect(() => {
+    if (selectionResetKey == null) return;
+    if (!selectionResetMountRef.current) {
+      selectionResetMountRef.current = true;
+      return;
+    }
+    selectionStore.clear();
+  }, [selectionResetKey, selectionStore]);
+
+  const pageSelectableRows = useMemo(
+    () =>
+      internalRows
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => !isEmptyRecord(r))
+        .map(({ r, i }) => ({ key: getKey(r, i), record: r })),
+    [internalRows, getKey, isEmptyRecord],
   );
 
   // ---- 操作列 + 序号列 + 弹性列（纯展示，不含编辑器）----
-  const opElements = [selectable, !!onDelete, !!moreMenuRenderer].filter(Boolean);
+  const opElements = [selectable, !!onDelete, !!(moreMenuRenderer || headerMoreMenuRenderer)].filter(Boolean);
   const opContentWidth = opElements.reduce((sum, exists, idx) => {
     if (!exists) return sum;
     const size = idx === 0 && selectable ? 18 : 16;
@@ -518,16 +652,51 @@ export function UnifiedTableInner<T extends Record<string, any>>(
   const operationCol = useMemo<TableColumnType<T>>(
     () => ({
       key: '__operation',
-      title: '',
+      title: (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            height: '100%',
+          }}
+        >
+          {selectable ? <TableHeaderCheckbox pageRows={pageSelectableRows} /> : null}
+          {headerMoreMenuRenderer ? (
+            <Dropdown
+              trigger={['click']}
+              placement="bottomLeft"
+              destroyOnHidden
+              menu={{ items: [] }}
+              popupRender={() =>
+                headerMoreMenuRenderer(selectionStoreRef.current.getSelectedRows())
+              }
+            >
+              <button
+                type="button"
+                className="unified-table-op-btn"
+                aria-label="批量操作"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreOutlined />
+              </button>
+            </Dropdown>
+          ) : null}
+        </div>
+      ),
       width: operationColWidth,
       fixed: 'left' as const,
       align: 'center' as const,
+      onHeaderCell: () => ({
+        style: { padding: 0 } as CSSProperties,
+      }),
       onCell: () => ({
         style: { padding: 0, cursor: 'default' } as CSSProperties,
       }),
       render: (_v: any, record: T, index: number) => {
         const key = getKey(record, index);
-        const isSelected = selectedKeysRef.current.has(key);
+        const empty = isEmptyRecord(record);
         return (
           <div
             style={{
@@ -535,16 +704,12 @@ export function UnifiedTableInner<T extends Record<string, any>>(
               alignItems: 'center',
               justifyContent: 'center',
               gap: 2,
-              height: ROW_HEIGHT,
+              height: '100%',
+              minHeight: ROW_HEIGHT,
             }}
           >
-            {selectable && (
-              <Checkbox
-                checked={isSelected}
-                onChange={(e) => handleSelect(key, e.target.checked)}
-              />
-            )}
-            {onDelete && (
+            {selectable && !empty ? <TableRowCheckbox rowKey={key} record={record} /> : null}
+            {onDelete && !empty && (
               <button
                 type="button"
                 className="unified-table-op-btn"
@@ -557,10 +722,11 @@ export function UnifiedTableInner<T extends Record<string, any>>(
                 <DeleteOutlined />
               </button>
             )}
-            {moreMenuRenderer && (
+            {moreMenuRenderer && !empty && (
               <Dropdown
                 trigger={['click']}
                 placement="bottomLeft"
+                destroyOnHidden
                 menu={{ items: [] }}
                 popupRender={() => moreMenuRenderer(record, index)}
               >
@@ -578,7 +744,16 @@ export function UnifiedTableInner<T extends Record<string, any>>(
         );
       },
     }),
-    [operationColWidth, selectable, getKey, handleSelect, onDelete, moreMenuRenderer],
+    [
+      operationColWidth,
+      selectable,
+      getKey,
+      onDelete,
+      moreMenuRenderer,
+      headerMoreMenuRenderer,
+      isEmptyRecord,
+      pageSelectableRows,
+    ],
   );
 
   const seqCol = useMemo<TableColumnType<T>>(
@@ -658,6 +833,7 @@ export function UnifiedTableInner<T extends Record<string, any>>(
   // ============================================================
 
   return (
+    <TableSelectionProvider store={selectionStore}>
     <div
       ref={containerRef}
       data-shared-badge="C32"
@@ -692,27 +868,20 @@ export function UnifiedTableInner<T extends Record<string, any>>(
           onNavigate={focusCell}
         >
           {({ interactiveColumns, focusBus }) => {
-            // 缓存 focusBus 引用（供翻页回调使用）
             focusBusRef.current = focusBus;
-
-            // 合并操作列 + 序号列 + 交互列 + 弹性列 → 完整列定义
-            const mergedColumns: UnifiedTableColumn<T>[] = [
-              operationCol as unknown as UnifiedTableColumn<T>,
-              seqCol as unknown as UnifiedTableColumn<T>,
-              ...interactiveColumns,
-              elasticCol as unknown as UnifiedTableColumn<T>,
-            ];
-
             return (
-              <DataViewLayer
-                columns={mergedColumns}
-                rows={internalRows}
-                rowKey={getRowKey}
-                virtual={virtualEnabled}
-                scroll={mergedScroll}
+              <MergedTableView
+                operationCol={operationCol}
+                seqCol={seqCol}
+                interactiveColumns={interactiveColumns}
+                elasticCol={elasticCol}
+                internalRows={internalRows}
+                getRowKey={getRowKey}
+                virtualEnabled={virtualEnabled}
+                mergedScroll={mergedScroll}
                 loading={loading}
-                className={tableClassName}
-                emptyText={emptyContent}
+                tableClassName={tableClassName}
+                emptyContent={emptyContent}
               />
             );
           }}
@@ -851,6 +1020,7 @@ export function UnifiedTableInner<T extends Record<string, any>>(
         </DsShellRow>
       )}
     </div>
+    </TableSelectionProvider>
   );
 }
 

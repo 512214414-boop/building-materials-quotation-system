@@ -16,12 +16,12 @@
 //   - 删除按钮 → 确认弹窗（显示引用计数）→ 调 deleteSpec
 //   - 新增按钮 → 在同产品下新建规格（onAdd）
 //
-// 规格唯一性约束：(product.name, specModel) 不重复
+// 规格唯一性约束：(productId, brandId, specModel) 不重复
 //   - 编辑保存时，若新值与其他规格重复，后端返回 409/唯一约束错误，前端提示
 
 import { useCallback, useMemo } from 'react';
-import { App as AntdApp } from 'antd';
 import DictListPanel, { type DictListPanelItem } from '../../../../shared/components/DictListPanel.js';
+import { useCanvasApp } from '../../../../shared/hooks/useCanvasApp.js';
 import {
   updateSpec,
   deleteSpec,
@@ -66,7 +66,7 @@ export function SpecListPanel({
   onSpecChanged,
   disabled,
 }: SpecListPanelProps) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
 
   // ---- 业务行 → 通用面板行映射 ----
   const items = useMemo<DictListPanelItem[]>(
@@ -213,13 +213,23 @@ export function SpecListPanel({
   }, [creatingSibling, currentSpecModel]);
 
   return (
+    <>
+      <div
+        style={{
+          padding: '4px 8px 0',
+          fontSize: 'var(--body-xs-font-size)',
+          color: 'var(--text-tertiary)',
+        }}
+      >
+        改规格名立即写入档案；单位/价格/图片点弹窗底部保存
+      </div>
     <DictListPanel
       items={items}
-      nameHeader="规格型号"
+      nameHeader="系列/规格"
       countHeader="品牌"
       searchable
-      searchPlaceholder="搜索规格型号"
-      addPlaceholder="新增规格"
+      searchPlaceholder="搜索系列/规格"
+      addPlaceholder="新增系列/规格"
       addPosition="bottom"
       addMode="button"
       onCreate={() => onAdd()}
@@ -229,8 +239,9 @@ export function SpecListPanel({
       emptyText="暂无规格"
       footer={footer}
       disabled={disabled}
-      editPlaceholder="输入规格型号"
+      editPlaceholder="输入系列/规格"
     />
+    </>
   );
 }
 

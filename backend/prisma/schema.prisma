@@ -165,23 +165,27 @@ model customers {
   id             BigInt          @id @default(autoincrement())
   // v2.7 客户编码：暂保留，下一轮全局去业务编号时删除
   customer_code  String          @unique @db.VarChar(30)
-  // v2.10 phone 改为可空 + 保留 @unique（NULL 多值，有值唯一）
+  // v2.10 phone 可空 + 保留 @unique（NULL 多值）。历史兼容；登录认 customer_contact.isDefault，界面不给人填。
   phone          String?         @unique @db.VarChar(20)
   name           String?         @db.VarChar(100)
   wechat         String?         @db.VarChar(100)
+  /// 历史兼容。公司名由开票抬头承载，界面不给人填。
   company        String?         @db.VarChar(200)
   note           String?         @db.Text
   status         customer_status @default(active)
-  // v2.9 建材行业客户档案增强字段
-  customer_type  customer_type   @default(personal)
+  /// v25：存客户类型表名称。原 enum personal/company 已迁成「个人业主」「公司」
+  customer_type  String          @default("个人业主") @db.VarChar(50)
+  /// 历史兼容。建材不按折扣自动算价，界面不给人填。
   discount_rate  Decimal         @default(100) @db.Decimal(5, 2)
+  /// v25：开票改走 customer_invoice；本列仅历史兼容，新写入保持 {}
   invoice_info   Json            @default("{}")
   created_at     DateTime        @default(now())
   updated_at     DateTime        @updatedAt
 
   customer_sessions  customer_sessions[]
   customer_addresses customer_addresses[]
-  // v11.0 解耦：移除 documents[] / audit_logs[] 反向关联，单据与审计日志不依赖客户档案存在
+  contacts           customer_contact[]
+  invoices           customer_invoice[]
 
   @@map("customers")
 }
@@ -189,7 +193,7 @@ model customers {
 model authorization_codes {
   id          BigInt    @id @default(autoincrement())
   code        String    @unique @db.VarChar(10)
-  phone       String?   @db.VarChar(20)
+  phone       String?   @db.VarChar(200)
   status      String    @default("active") @db.VarChar(20)
   expiresAt   DateTime
   createdBy   BigInt
@@ -211,7 +215,7 @@ model authorization_codes {
 
 model access_requests {
   id                      BigInt    @id @default(autoincrement())
-  phone                   String    @db.VarChar(20)
+  phone                   String    @db.VarChar(200)
   status                  String    @default("pending") @db.VarChar(20)
   reviewedBy              BigInt?
   /// v11.0 解耦：审核人名称快照（来自 users.real_name）
@@ -263,38 +267,81 @@ model customer_addresses {
   @@map("customer_addresses")
 }
 
+/// 客户类型字典（v25：原 enum personal/company）
+model customer_type {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @unique @db.VarChar(50)
+  sortOrder Int      @default(0)
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("customer_type")
+}
+
+/// 客户联系信息（与 supplier_contact 同构）
+model customer_contact {
+  id         BigInt   @id @default(autoincrement())
+  customerId BigInt
+  name       String   @default("") @db.VarChar(100)
+  method     String   @default("") @db.VarChar(50)
+  value      String   @default("") @db.VarChar(200)
+  isDefault  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([value])
+  @@map("customer_contact")
+}
+
+/// 客户开票信息（多行；一套资料一行）
+model customer_invoice {
+  id           BigInt   @id @default(autoincrement())
+  customerId   BigInt
+  invoiceTitle String   @default("") @db.VarChar(200)
+  taxNumber    String   @default("") @db.VarChar(50)
+  bankName     String   @default("") @db.VarChar(100)
+  bankAccount  String   @default("") @db.VarChar(50)
+  address      String   @default("") @db.VarChar(500)
+  phone        String   @default("") @db.VarChar(30)
+  isDefault    Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer customers @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_invoice")
+}
+
 // ============================================================
-// v14.0 产品数据层（产品 → 规格变体 → 品牌/单位；品牌全局档案 + spec_brand 中间关联）
-// 层级（用户「产品表下面有规格的变体表，品牌/单位挂在规格变体下面，层级不会改变」）：
+// v22.0 产品数据层（产品 → 品牌 → 规格；品牌全局档案 + product_brand 关联）
+// 层级（对齐 文档可视化/js/data.js）：
 //   category（分类表，扁平无父子）
 //        ↓ 1:N
-//   product（产品表 = 纯产品名，如「PPR热水管」，categoryId 指向真实分类记录，「未分类」为 ensure 记录）
+//   product（产品表 = 纯产品名）
 //        ↓ 1:N
-//   spec（规格变体表，如 dn25 / dn32，同一产品多个规格，每个规格品牌/单位独立）
-//        ↓ 1:N                          ↓ 1:N
-//   unit（单位表，挂规格，isBase/isDisplay）  spec_brand（规格×品牌关联）
-//                                              ↓ N:1
-//                                          brand（品牌全局档案，name 全局唯一）
-//   └──→ SKU = 规格变体 × 品牌 × 单位（spec_brand + unit）←─┘
+//   product_brand（产品×品牌关联，选品第二层品牌 N）
+//        ↓ 1:N
+//   spec（规格系列表，productId + brandId + specModel，已含品牌维度）
+//        ↓ 1:N
+//   unit（全局字典）+ spec_unit（规格引用哪些单位）
+//   └──→ SKU = 规格（含品牌）× 单位
 //                  ↓
-//   brand_unit_conversion（规格×品牌单位换算，换算系数按 spec_brand 独立）
-//   sale_price（售价，specBrandId+unitId+priceTypeId）
-//   purchase_price（进价，specBrandId+unitId+supplierId 外键）
-//   product_image（图片，依附 spec_brand）
-//   product_sku_search（SKU 检索宽表，每「规格×品牌」一行，含 specModel + 品牌优先排序）
-//   注：supplier 档案表归属单据体系（allocation_lines / cost_lines / purchase_price 引用），不在产品数据层内
+//   brand_unit_conversion / sale_price / purchase_price / product_image / product_sku_search
+//      均挂 spec.id（v22 由 specBrandId 更名；API 仍暴露 specBrandId = spec.id 兼容旧客户端）
 //
-// v14.0 核心变化（用户「品牌全局独立档案，通过 id 引用，改名全局生效；规格变体层级不变」）：
-//   1. 规格拆表：product 移除 specModel，新增 spec 表（productId + specModel，同产品下规格唯一）
-//   2. 品牌全局档案：brand 移除 productId，name 全局唯一（@@unique）
-//   3. 中间关联：新增 spec_brand（specId + brandId，同规格下品牌唯一），承载「规格×品牌」维度
-//      - 品牌改名 → 所有引用它的规格全局生效（spec_brand.brandId 引用全局档案）
-//      - 规格上改品牌 = 换引用；输入品牌档案中不存在 → 快捷新增
-//      - 删除某规格的品牌关联 → 仅删 spec_brand，不影响其他规格与全局品牌档案
-//   4. 单位挂规格：unit.specId（原 productId 改 specId）
-//   5. SKU 升级：sale_price/purchase_price/brand_unit_conversion/product_image/product_sku_search
-//      的 brandId 全部改为 specBrandId（规格×品牌维度）
-//   6. 业务表（document_lines/inventory/inbound_lines/backorders）SKU 维度同步升级为 spec×brand×unit
+// v22.0 核心变化（spec_brand 合并进 spec）：
+//   1. 新增 product_brand(productId, brandId)：产品售卖哪些品牌
+//   2. spec 新增 brandId/remark/sortOrder/status；UNIQUE(productId, brandId, specModel)
+//   3. 每条旧 spec_brand → 一条 spec，保留 spec_brand.id 作为 spec.id
+//   4. 删除 spec_brand；子表 specBrandId → specId
+//   5. spec_unit 挂在品牌下规格行（从容器 spec 复制到各 spec_brand.id）
 // ============================================================
 
 /// 1. 分类表（v8.0：扁平结构，无父子层级，字段统一 camelCase）
@@ -313,8 +360,9 @@ model category {
 
   /// v8.0：产品归属分类（扁平，无父子层级）
   products product[]
+  supplierBusinessCategories supplier_business_category[]
 
-  /// v15.4：name 全局唯一（A 类全局字典去重键的数据库保障：registry 按名去重的 P2002 并发兜底依赖此约束）
+  /// v15.4：name 全局唯一
   @@unique([name])
   @@map("category")
 }
@@ -344,8 +392,10 @@ model product {
 
   /// v8.0：分类归属（扁平，v15.3 统一引用类：分类空输入由应用层按 name ensure「未分类」记录）
   category category @relation(fields: [categoryId], references: [id])
-  /// v14.0：规格变体（产品 → 规格 → 品牌/单位）
-  specs    spec[]
+  /// v22.0：规格变体（产品 → 品牌 → 规格）
+  specs         spec[]
+  /// v22.0：产品×品牌关联
+  productBrands product_brand[]
 
   /// v14.0：同一分类下产品名不重复，防止重复建档
   @@unique([categoryId, name])
@@ -353,28 +403,60 @@ model product {
   @@map("product")
 }
 
-/// 3. 规格变体表（v14.0 新增，从 SPU 拆出）：产品 → 规格变体 → 品牌/单位
-/// v14.0 设计（用户「产品表下面有规格的变体表，品牌这些信息挂在规格变体下面」）：
-///   - 同一产品有多个规格（如 PPR热水管 的 dn25 / dn32），每个规格的品牌/单位独立
-///   - 品牌通过 spec_brand 关联全局品牌档案；单位挂规格下
-///   - 规格（specModel）为业务标识，同一产品下规格名不重复
+/// 3. 规格系列表（v22.0）：产品 → 品牌 → 规格；每条记录已含品牌维度
 model spec {
   id         BigInt   @id @default(autoincrement())
   /// 所属产品
   productId  BigInt
+  /// 所属品牌（全局品牌档案）
+  brandId    BigInt
   /// 规格型号（必填，如「dn25*3.5」「25」「4分」）
   specModel  String   @db.VarChar(200)
+  /// 该规格备注（执行标准/层数等）
+  remark     String   @default("") @db.VarChar(500)
+  /// 排序
+  sortOrder  Int      @default(0)
+  /// 状态 1启用 0停用
+  status     Int      @default(1)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   product    product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  specBrands spec_brand[]
-  units      unit[]
+  brand      brand        @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  /// v16.5：规格引用的单位通过 spec_unit 中间表（全局单位字典）关联
+  specUnits  spec_unit[]
+  salePrices     sale_price[]
+  purchasePrices purchase_price[]
+  images         product_image[]
+  conversions    brand_unit_conversion[]
+  saleSpecPoints     sale_spec_point[]
+  purchaseSpecPoints purchase_spec_point[]
 
-  /// 同一产品下规格型号不重复
-  @@unique([productId, specModel])
+  /// 同一产品品牌下规格型号不重复
+  @@unique([productId, brandId, specModel])
+  @@index([productId, brandId])
   @@index([productId])
+  @@index([brandId])
   @@map("spec")
+}
+
+/// 3.5 产品×品牌关联表（v22.0 新增）：产品售卖哪些品牌
+model product_brand {
+  id         BigInt   @id @default(autoincrement())
+  productId  BigInt
+  brandId    BigInt
+  sortOrder  Int      @default(0)
+  status     Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  product product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  brand   brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, brandId])
+  @@index([productId])
+  @@index([brandId])
+  @@map("product_brand")
 }
 
 /// 4. 品牌全局档案表（v14.0 重构）：独立档案，name 全局唯一
@@ -393,84 +475,79 @@ model brand {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  /// 规格-品牌关联（多对多中间表）
-  specBrands spec_brand[]
+  /// v22.0：产品×品牌关联
+  productBrands product_brand[]
+  /// v22.0：规格（已含品牌）
+  specs         spec[]
+  supplierBusinessBrands supplier_business_brand[]
 
   @@index([status])
   @@map("brand")
 }
 
-/// 4.5 规格-品牌关联表（v14.0 新增）：规格与全局品牌档案的多对多中间关联
-///   - 一个规格可有多个品牌；一个品牌可被多个规格引用
-///   - 承载「规格×品牌」维度的差异数据（remark 规格内品牌备注、sortOrder 规格内排序）
-///   - SKU 最小定价单元 = 规格变体 × 品牌 × 单位（价格/图片/换算/宽表/库存/单据均挂本表维度）
-///   - 删除某规格的品牌关联 → 仅删除本表记录，不影响其他规格与全局品牌档案
-model spec_brand {
-  id         BigInt   @id @default(autoincrement())
-  /// 所属规格变体
-  specId     BigInt
-  /// 全局品牌 ID
-  brandId    BigInt
-  /// 该规格下该品牌的备注（执行标准/层数等，规格内品牌独立）
-  remark     String   @default("") @db.VarChar(500)
-  /// 该规格下该品牌的排序
-  sortOrder  Int      @default(0)
-  /// 该规格下该品牌状态（1启用 0停用）
-  status     Int      @default(1)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  spec  spec   @relation(fields: [specId], references: [id], onDelete: Cascade)
-  brand brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
-
-  salePrices     sale_price[]
-  purchasePrices purchase_price[]
-  images         product_image[]
-  conversions    brand_unit_conversion[]
-
-  /// 同一规格下同一品牌不重复
-  @@unique([specId, brandId])
-  @@index([specId])
-  @@index([brandId])
-  @@map("spec_brand")
-}
-
-/// 4. 单位表（v14.0 修改）：从属于规格变体，含 isBase/isDisplay
-/// v14.0 设计（用户「规格变体下面有多个单位」）：单位挂 spec 下，同规格内单位唯一
-/// v9.0：移除 conversionRate（换算率按品牌独立，迁至 brand_unit_conversion 表）
-/// v8.0：isBase / isDisplay 提升到单位表（Boolean 标记，同一规格各有且仅有一个）
+/// 4. 单位表（v16.5 重构为全局字典）：命名为全局唯一，所有规格/产品共享同一套单位名
+/// v16.5 设计（用户「单位应该是全局字典，输入框下拉辅助从全局字典检索/新增，改名全局生效」）：
+///   - 单位不再从属规格变体，unitName 全局唯一（@@unique）
+///   - 规格引用哪些单位 + 基准/显示标记，由 spec_unit 中间表承载（路线 A：基准在产品侧唯一）
+///   - 单位改名 → 所有引用它的规格全局生效（通过 spec_unit.unitId 引用全局字典）
+///   - 删除某规格的单位引用 → 只删 spec_unit 记录，不影响其他规格与全局单位字典
+/// v9.0：换算率已按品牌独立，存于 brand_unit_conversion 表（unitId 关联本表）
 model unit {
   id        BigInt   @id @default(autoincrement())
-  /// v14.0：所属规格变体（原 productId 改 specId）
-  specId    BigInt
-  /// 单位名称（如「米」「根」「个」「捆」）
+  /// 单位名称（全局唯一，如「米」「根」「个」「捆」）
   unitName  String   @db.VarChar(50)
-  /// v8.0：是否基础单位（同一规格有且仅有一个 true，库存核算基准）
-  isBase    Boolean  @default(false)
-  /// v8.0：是否默认显示单位（同一规格有且仅有一个 true，列表默认展示；无则取基础单位）
-  isDisplay Boolean  @default(false)
+  /// 状态 1启用 0停用（全局启停用：停用后所有引用该单位的规格不再可用）
   status    Int      @default(1)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  spec           spec                    @relation(fields: [specId], references: [id], onDelete: Cascade)
-  salePrices     sale_price[]
-  purchasePrices purchase_price[]
   /// v11.0 解耦：移除 document_lines[] 反向关联，保留逻辑关联
   /// v9.0：品牌单位换算关联（换算系数按品牌独立）
-  conversions    brand_unit_conversion[]
+  conversions brand_unit_conversion[]
+  /// v16.5：规格-单位关联（多对多中间表反向）
+  specUnits spec_unit[]
+  /// 售价/进价关联（单位被引用，CASCADE 清理）
+  salePrices sale_price[]
+  purchasePrices purchase_price[]
 
-  /// v14.0：同一规格下单位名不重复
-  @@unique([specId, unitName])
-  @@index([specId])
+  /// v16.5：单位名称全局唯一
+  @@unique([unitName])
+  @@index([status])
   @@map("unit")
 }
 
-/// 9. 品牌单位换算表（v9.0 新增，v14.0 改挂 spec_brand）：换算系数按「规格×品牌」独立
-/// 基础单位对应的 conversionRate 强制为 1.0000
+/// 4.5 规格-单位关联表（v16.5 新增，路线 A）：规格与全局单位字典的多对多中间关联
+///   - 一个规格可引用多个全局单位；一个全局单位可被多个规格引用
+///   - 承载规格级差异数据：isBase（同一规格有且仅有一个基础单位，库存核算基准）
+///     / isDisplay（同一规格有且仅有一个默认显示单位）
+///   - 换算率不在此表，按品牌独立存于 brand_unit_conversion（specBrandId + unitId）
+model spec_unit {
+  id        BigInt   @id @default(autoincrement())
+  /// 所属规格变体
+  specId    BigInt
+  /// 全局单位 ID
+  unitId    BigInt
+  /// 是否基础单位（同一规格有且仅有一个 true，库存核算基准）
+  isBase    Boolean  @default(false)
+  /// 是否默认显示单位（同一规格有且仅有一个 true，列表默认展示；无则取基础单位）
+  isDisplay Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  spec spec @relation(fields: [specId], references: [id], onDelete: Cascade)
+  unit unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  /// 同一规格下同一全局单位不重复
+  @@unique([specId, unitId])
+  @@index([specId])
+  @@index([unitId])
+  @@map("spec_unit")
+}
+
+/// 9. 品牌单位换算表（v22.0 挂 spec）：换算系数按「品牌+规格」独立
 model brand_unit_conversion {
   id             BigInt   @id @default(autoincrement())
-  /// v14.0：规格-品牌关联ID（原 brandId 改 specBrandId）
-  specBrandId    BigInt
+  /// v22.0：规格 ID（原 specBrandId）
+  specId         BigInt
   /// 单位ID
   unitId         BigInt
   /// 换算系数：1个该单位 = 多少基础单位
@@ -478,11 +555,11 @@ model brand_unit_conversion {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  specBrand spec_brand @relation(fields: [specBrandId], references: [id], onDelete: Cascade)
-  unit      unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  spec spec @relation(fields: [specId], references: [id], onDelete: Cascade)
+  unit unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
-  @@unique([specBrandId, unitId])
-  @@index([specBrandId])
+  @@unique([specId, unitId])
+  @@index([specId])
   @@index([unitId])
   @@map("brand_unit_conversion")
 }
@@ -503,7 +580,8 @@ model price_type {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  salePrices sale_price[]
+  salePrices     sale_price[]
+  saleSpecPoints sale_spec_point[]
 
   @@unique([name])
   @@map("price_type")
@@ -528,90 +606,75 @@ model contact_method {
   @@map("contact_method")
 }
 
-/// v14.0：SKU = 规格变体 × 品牌 × 单位（spec_brand + unit）
-/// v9.2：priceType 字符串 → priceTypeId 外键关联 price_type 字典表
-///   - 售价矩阵行 = 全局所有价格类型（按字典展开）
-///   - 同一 (specBrandId, unitId, priceTypeId) 不重复
+/// v22.0：SKU = 规格（含品牌）× 单位
 model sale_price {
   id          BigInt  @id @default(autoincrement())
-  /// v14.0：规格-品牌关联ID（原 brandId 改 specBrandId）
-  specBrandId BigInt
+  /// v22.0：规格 ID（原 specBrandId）
+  specId      BigInt
   /// 单位ID
   unitId      BigInt
   /// v9.2：价格类型 ID 外键（替代原 priceType 字符串）
   priceTypeId BigInt
-  /// 售价
+  /// 售价面价。实际售价 = 面价 × 点位（规格例外 → 组默认 → 1），读时算，不存
   price       Decimal @db.Decimal(10, 2)
   /// 状态
   status      Int     @default(1)
   /// v9.1：是否默认展示售价（与 purchase_price.isDefault 对等）
-  /// 同一 (specBrandId, unitId) 下有且仅有一个 isDefault=true
   isDefault   Boolean @default(false)
 
-  specBrand spec_brand @relation(fields: [specBrandId], references: [id], onDelete: Cascade)
+  spec      spec       @relation(fields: [specId], references: [id], onDelete: Cascade)
   unit      unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
   priceType price_type @relation(fields: [priceTypeId], references: [id], onDelete: Cascade)
 
-  /// v14.0：同一SKU同一价格类型不重复
-  @@unique([specBrandId, unitId, priceTypeId])
-  @@index([specBrandId, unitId])
+  @@unique([specId, unitId, priceTypeId])
+  @@index([specId, unitId])
   @@index([priceTypeId])
   @@map("sale_price")
 }
 
-/// 6. 产品进价表（v9.0 修改）：基于 SKU + 供应商外键
-/// v14.0：SKU = 规格变体 × 品牌 × 单位（spec_brand + unit）
-/// v9.0：supplierName → supplierId（外键关联 supplier 表），新增 isDefault 默认展示进价
+/// 6. 产品进价表（v22.0 挂 spec）
 model purchase_price {
   id           BigInt  @id @default(autoincrement())
-  /// v14.0：规格-品牌关联ID（原 brandId 改 specBrandId）
-  specBrandId  BigInt
+  /// v22.0：规格 ID（原 specBrandId）
+  specId       BigInt
   /// 单位ID
   unitId       BigInt
   /// v9.0：供应商ID（v11.0 解耦：移除 @relation 物理外键，保留 BigInt 字段 + 索引）
   supplierId   BigInt
   /// v11.0 解耦：供应商名称快照（来自 supplier.name）
   supplierName String? @db.VarChar(200)
-  /// v12.0 定价语义：本字段存「面价」（用户录入值，点位变化不改变）；进价 = 面价 × 点位（点位来自 supplier_point_rule，无规则默认 1）
+  /// v12.0 定价语义：本字段存「面价」
   price        Decimal @db.Decimal(10, 2)
   /// 状态
   status       Int     @default(1)
   /// v9.0：是否默认展示进价
   isDefault    Boolean @default(false)
 
-  specBrand spec_brand @relation(fields: [specBrandId], references: [id], onDelete: Cascade)
-  unit      unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  // v11.0 解耦：移除 supplier → supplier 的 @relation 物理外键约束
-  // 保留 supplierId BigInt 字段与索引，供应商档案删除时进价记录仍可正常展示
+  spec spec @relation(fields: [specId], references: [id], onDelete: Cascade)
+  unit unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
-  /// v14.0：同一SKU同一供应商不重复
-  @@unique([specBrandId, unitId, supplierId])
-  @@index([specBrandId, unitId])
+  @@unique([specId, unitId, supplierId])
+  @@index([specId, unitId])
   @@index([supplierId])
   @@map("purchase_price")
 }
 
-/// 7. SKU 检索宽表（v14.0 修改）：每「规格×品牌」一行（spec_brand 维度）
-/// 冗余默认单位、最低售价、最低进价、主图、产品全名，两段式查询优化
-/// v8.0：移除 specId/specName/seriesName，新增 specModel；brandSeriesId 改 brandId
-/// v14.0：brandId → specBrandId（规格×品牌），行粒度从「品牌」升级为「规格×品牌」
+/// 7. SKU 检索宽表（v22.0）：每「品牌+规格」一行（spec.id 唯一）
 model product_sku_search {
   id                   BigInt   @id @default(autoincrement())
   /// 产品 ID
   productId            BigInt
   /// 产品名称
   productName          String   @db.VarChar(200)
-  /// 规格变体 ID（v14.0 新增）
-  specId               BigInt
+  /// 规格 ID（v22：已含品牌维度，原 specBrandId 合并）
+  specId               BigInt   @unique
   /// 规格型号（来自 spec.specModel）
   specModel            String   @db.VarChar(200)
-  /// v15.3 分类ID：总是应用层解析后的有效分类记录 id（宽表重建时取自 product.categoryId；无 DB 默认值）
+  /// v15.3 分类ID
   categoryId           BigInt
   /// 分类名称
   categoryName         String   @default("未分类") @db.VarChar(100)
-  /// v14.0：规格-品牌关联ID（原 brandId 改 specBrandId）
-  specBrandId          BigInt
-  /// 品牌ID（全局品牌档案，v14.0 冗余，统计/展示用）
+  /// 品牌ID（冗余，统计/展示用）
   brandId              BigInt
   /// 品牌名称（来自全局品牌档案 brand.name）
   brandName            String   @db.VarChar(100)
@@ -627,20 +690,22 @@ model product_sku_search {
   mainImageUrl         String?  @db.VarChar(500)
   /// v1.5.6.2：主图缩略图 URL（列表 24px 图标/客户端卡片用，避免加载 1280px 原图）
   mainImageThumbUrl    String?  @db.VarChar(500)
-  /// 备注信息
+  /// 规格备注（执行标准/企标/国标）。执行标准视图打这一列。不进名称 keywords
   remark               String   @default("") @db.VarChar(500)
+  /// 产品俗称冗余（product.remark）。名称视图 keywords 含这一列
+  productRemark        String   @default("") @db.VarChar(500)
   /// 综合状态：产品启用且规格启用且品牌启用
   status               Int      @default(1)
   /// 更新时间
   updateTime           DateTime @updatedAt
-  /// 全文检索字段（产品名+规格型号+品牌+备注+分类 拼接转小写）
+  /// 全文检索字段（产品名+俗称+规格型号+品牌+分类 拼接转小写；不含执行标准、不含渠道名）
   /// v10.1.9：配套 FULLTEXT INDEX WITH PARSER ngram，支持任意顺序无空格多关键词匹配
   ///   索引通过原生 SQL 创建（Prisma 不直接支持 ngram parser 声明）
   ///   详见 migration: 20260727_v10_1_9_fulltext_ngram
+  ///   执行标准另有 ft_sku_remark（remark 列），见 20260828120000_v23
   keywords             String   @db.VarChar(768)
 
-  /// v14.0：每「规格×品牌」一行
-  @@unique([specBrandId])
+  /// v22.0：每「品牌+规格」一行（specId 唯一）
   @@index([specId])
   @@index([keywords])
   @@index([categoryId])
@@ -649,24 +714,19 @@ model product_sku_search {
   //   数据量增长后翻页变慢，加复合索引覆盖（无筛选）与（分类筛选）两种列表路径
   @@index([status, updateTime])
   @@index([categoryId, status, updateTime])
+  // 档案列表按品牌筛：某品牌下全部规格/产品，走索引禁止全表扫
+  @@index([brandId, status, updateTime])
   // v11.8 规模升级（几十万 SKU）：建档去重/相似候选的前缀 LIKE 粗筛走索引，禁止全表扫描
   @@index([productName])
   @@index([specModel])
   @@map("product_sku_search")
 }
 
-/// 8. 产品图片表（v11.0 生产级重构，v14.0 改挂 spec_brand）：依附规格×品牌 + 多版本 WebP + 内容寻址
-/// v8.0：brandSeriesId 改 brandId
-/// v14.0：brandId → specBrandId（规格×品牌维度，图片随规格切换独立）
-/// v11.0 生产级：
-///   - 三版本存储：imageUrl(原图1280) + mediumUrl(中图600) + thumbnailUrl(缩略图200)
-///   - 内容寻址：hash 字段（SHA-256），同内容复用物理文件，0 增量存储
-///   - 元数据：width/height/size 字段化，支持响应式 srcset 与审计
-///   - 现代格式：统一 WebP（比 JPEG 小 30%，浏览器支持率 96%+）
+/// 8. 产品图片表（v22.0 挂 spec）
 model product_image {
   id           BigInt   @id @default(autoincrement())
-  /// v14.0：规格-品牌关联ID（原 brandId 改 specBrandId）
-  specBrandId  BigInt
+  /// v22.0：规格 ID（原 specBrandId）
+  specId       BigInt
   /// 主图URL（原图 maxSize 1280，详情页用）
   imageUrl     String   @db.VarChar(500)
   /// v11.0：中图URL（600x600 居中裁剪，编辑弹窗用）
@@ -687,40 +747,122 @@ model product_image {
   isMain       Int      @default(0)
   createdAt    DateTime @default(now())
 
-  specBrand spec_brand @relation(fields: [specBrandId], references: [id], onDelete: Cascade)
+  spec spec @relation(fields: [specId], references: [id], onDelete: Cascade)
 
-  @@index([specBrandId])
+  @@index([specId])
   /// v11.0：hash 索引（内容寻址去重查询）
   @@index([hash])
   @@map("product_image")
 }
 
-/// 供应商档案表（v9.0 重构）：独立建档，Int 状态，contacts Json 数组
-/// v9.0：purchase_price 改用 supplierId 外键关联此表（替代原 supplierName 字符串）
-/// supplier 同时被单据体系（allocation_lines / cost_lines）和产品层（purchase_price）引用
+/// 供应商档案表（v9.0 重构，v20 拆表）：名称字典 + 备注 + 状态
+/// 联系信息 / 地址 / 经营品类 拆至 supplier_contact / supplier_address / supplier_business_category
+/// purchase_price / allocation_lines / cost_lines 仍通过 supplierId 逻辑引用
 model supplier {
-  id            BigInt   @id @default(autoincrement())
-  /// 供应商名称（v13.2 唯一约束：业务补全「按名称唯一复用/合并」的数据库保证，杜绝重复建档）
-  name          String   @unique @db.VarChar(200)
-  /// 联系信息数组 [{"name":"联系人","method":"微信/电话/邮箱","value":"具体值"}]
-  contacts      Json?
-  /// 经营业务范围
-  businessScope String?  @db.VarChar(500)
-  /// 地址
-  address       String?  @db.VarChar(500)
+  id        BigInt   @id @default(autoincrement())
+  /// 供应商名称（v13.2 唯一约束：按名称唯一复用/合并）
+  name      String   @unique @db.VarChar(200)
   /// 备注
-  remark        String?  @db.Text
+  remark    String?  @db.Text
   /// 状态 1启用 0禁用
-  status        Int      @default(1)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // v11.0 解耦：移除所有业务交易表的反向关联
-  // 业务记录（purchase_price / allocation_lines / cost_lines）不依赖供应商档案存在
-  // 保留 source_id / supplierId BigInt? 字段与索引，档案删除时业务记录仍可正常展示
+  contacts           supplier_contact[]
+  addresses          supplier_address[]
+  businessCategories supplier_business_category[]
+  businessBrands     supplier_business_brand[]
 
   @@index([status])
   @@map("supplier")
+}
+
+/// 地址类型字典（公司地址 / 库房地址 / 门店地址 / 办公地址…）
+model address_type {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @unique @db.VarChar(50)
+  sortOrder Int      @default(0)
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  supplierAddresses supplier_address[]
+
+  @@map("address_type")
+}
+
+/// 供应商联系信息（一对多，结构与 warehouse_contact 同构）
+model supplier_contact {
+  id         BigInt   @id @default(autoincrement())
+  supplierId BigInt
+  name       String   @default("") @db.VarChar(100)
+  method     String   @default("") @db.VarChar(50)
+  value      String   @default("") @db.VarChar(200)
+  isDefault  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  supplier supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@index([supplierId])
+  @@map("supplier_contact")
+}
+
+/// 供应商地址（一对多；lng/lat 存 GCJ-02，供导航/分享定位）
+model supplier_address {
+  id            BigInt        @id @default(autoincrement())
+  supplierId    BigInt
+  addressTypeId BigInt?
+  addressText   String        @db.VarChar(500)
+  lng           Decimal?      @db.Decimal(10, 7)
+  lat           Decimal?      @db.Decimal(10, 7)
+  coordSource   coord_source?
+  isDefault     Boolean       @default(false)
+  sortOrder     Int           @default(0)
+  remark        String?       @db.VarChar(200)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  supplier    supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  addressType address_type? @relation(fields: [addressTypeId], references: [id], onDelete: SetNull)
+
+  @@index([supplierId])
+  @@index([addressTypeId])
+  @@map("supplier_address")
+}
+
+/// 供应商经营品类（关联 category 字典，支持按分类查供应商）
+model supplier_business_category {
+  id         BigInt   @id @default(autoincrement())
+  supplierId BigInt
+  categoryId Int
+  createdAt  DateTime @default(now())
+
+  supplier supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  category category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, categoryId])
+  @@index([supplierId])
+  @@index([categoryId])
+  @@map("supplier_business_category")
+}
+
+/// 供应商经营品牌（关联 brand 字典，支持按品牌查供应商）
+model supplier_business_brand {
+  id         BigInt   @id @default(autoincrement())
+  supplierId BigInt
+  brandId    BigInt
+  createdAt  DateTime @default(now())
+
+  supplier supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  brand    brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, brandId])
+  @@index([supplierId])
+  @@index([brandId])
+  @@map("supplier_business_brand")
 }
 
 /// 供应商点位规则表（v11.3 新增，v12.0 定价语义对齐）：记录「供应商 + 品牌名 + 分类名 → 点位」
@@ -750,6 +892,57 @@ model supplier_point_rule {
   @@map("supplier_point_rule")
 }
 
+/// 售价组默认点位：售价类型 + 品牌名 + 分类名。成组调只改本表，已有规格例外的不动
+model sale_point_rule {
+  id           BigInt   @id @default(autoincrement())
+  priceTypeId  BigInt
+  brandName    String   @db.VarChar(100)
+  categoryName String   @db.VarChar(100)
+  point        Decimal  @db.Decimal(10, 4)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([priceTypeId, brandName, categoryName])
+  @@index([priceTypeId])
+  @@index([brandName])
+  @@map("sale_point_rule")
+}
+
+/// 售价规格例外。点位不跟单位拆。有行则盖过组默认；删行即重新跟组
+model sale_spec_point {
+  id          BigInt   @id @default(autoincrement())
+  specId      BigInt
+  priceTypeId BigInt
+  point       Decimal  @db.Decimal(10, 4)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  spec      spec       @relation(fields: [specId], references: [id], onDelete: Cascade)
+  priceType price_type @relation(fields: [priceTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([specId, priceTypeId])
+  @@index([specId])
+  @@index([priceTypeId])
+  @@map("sale_spec_point")
+}
+
+/// 进价规格例外。点位不跟单位拆。有行则盖过组默认；删行即重新跟组
+model purchase_spec_point {
+  id          BigInt   @id @default(autoincrement())
+  specId      BigInt
+  supplierId  BigInt
+  point       Decimal  @db.Decimal(10, 4)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  spec spec @relation(fields: [specId], references: [id], onDelete: Cascade)
+
+  @@unique([specId, supplierId])
+  @@index([specId])
+  @@index([supplierId])
+  @@map("purchase_spec_point")
+}
+
 // ============================================================
 // v1.7.0 配货·库存·成本推演方案落地（用户定稿《配货与成本核算推演方案.md》）
 // 内部仓库与外部供应商底层架构永久拆分：
@@ -759,20 +952,16 @@ model supplier_point_rule {
 // 三原则对齐 v11.0 全域解耦：业务台账 → 基础档案 无物理外键 + 名称快照 + ID 聚合
 // ============================================================
 
-/// 内部仓库档案（v1.7.0 新增，与外部供应商永久拆分）
-/// A库房 / B门店仓 / 样品仓 均归类内部来源；isMain=主自有库房（超额入库默认入仓）
+/// 内部仓库档案（v1.7.0 新增，v20 拆表：区位 / 负责人联系信息独立表）
 model warehouse {
   id        BigInt   @id @default(autoincrement())
   /// 仓库名称
   name      String   @db.VarChar(200)
-  /// 仓库编码（可选，检索辅助）
-  code      String?  @unique @db.VarChar(50)
-  /// 多库区点位 [{"name":"A区","sortOrder":1}]（库区点位归类内部，不拆表）
-  zones     Json?
-  /// 地址
+  /// 主地址（库房字典级地址，可选 lng/lat）
   address   String?  @db.VarChar(500)
-  /// 负责人
-  manager   String?  @db.VarChar(50)
+  lng       Decimal? @db.Decimal(10, 7)
+  lat       Decimal? @db.Decimal(10, 7)
+  coordSource coord_source?
   /// 是否主自有库房（超额默认入仓；同店有且仅有一个 true）
   isMain    Boolean  @default(false)
   /// 排序（下拉内部列表顺序）
@@ -782,9 +971,46 @@ model warehouse {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  zones    warehouse_zone[]
+  contacts warehouse_contact[]
+
   @@index([status])
   @@index([isMain])
   @@map("warehouse")
+}
+
+/// 库房区位（一对多，库存位置可挂区位）
+model warehouse_zone {
+  id          BigInt   @id @default(autoincrement())
+  warehouseId BigInt
+  name        String   @db.VarChar(100)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  warehouse warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  inventories inventory[]
+
+  @@index([warehouseId])
+  @@map("warehouse_zone")
+}
+
+/// 库房负责人联系信息（与 supplier_contact 同构）
+model warehouse_contact {
+  id          BigInt   @id @default(autoincrement())
+  warehouseId BigInt
+  name        String   @default("") @db.VarChar(100)
+  method      String   @default("") @db.VarChar(50)
+  value       String   @default("") @db.VarChar(200)
+  isDefault   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  warehouse warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@index([warehouseId])
+  @@map("warehouse_contact")
 }
 
 /// 库存台账（仓库 × SKU，v1.7.0 新增，v14.0 SKU 升级为 规格×品牌×单位）
@@ -793,6 +1019,8 @@ model inventory {
   id               BigInt   @id @default(autoincrement())
   /// 仓库 ID（v11.0 解耦：无物理外键）
   warehouse_id     BigInt
+  /// 库区点位 ID（可选，v20 挂区位）
+  warehouse_zone_id BigInt?
   /// SKU 维度：规格变体 ID（v14.0 新增）
   spec_id          BigInt
   /// SKU 维度：品牌 ID（全局品牌档案，无物理外键）
@@ -808,9 +1036,12 @@ model inventory {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  warehouseZone warehouse_zone? @relation(fields: [warehouse_zone_id], references: [id], onDelete: SetNull)
+
   /// 同一仓库 + SKU 只有一条库存台账
   @@unique([warehouse_id, spec_id, brand_id, unit_id])
   @@index([warehouse_id])
+  @@index([warehouse_zone_id])
   @@index([spec_id, brand_id, unit_id])
   @@map("inventory")
 }
@@ -957,6 +1188,8 @@ model documents {
   subtotal_amount Decimal @default(0) @db.Decimal(14, 2)
   tax_amount      Decimal @default(0) @db.Decimal(14, 2)
   total_amount    Decimal @default(0) @db.Decimal(14, 2)
+  /// v25：整单数量合计，供单据头检索「产品数量」
+  total_qty       Decimal @default(0) @db.Decimal(12, 2)
   paid_amount     Decimal @default(0) @db.Decimal(14, 2)
   cost_total      Decimal @default(0) @db.Decimal(14, 2)
   gross_profit    Decimal @default(0) @db.Decimal(14, 2)
@@ -977,10 +1210,12 @@ model documents {
   // 客户档案物理删除时，单据展示仍可正常显示客户名/电话/公司
   /// 客户名称快照（来自 customers.name）
   customerName    String? @db.VarChar(100)
-  /// 客户电话快照（来自 customers.phone）
-  customerPhone   String? @db.VarChar(20)
+  /// 客户联系快照（当时挑的那条联系 value，电话或微信）
+  customerPhone   String? @db.VarChar(200)
   /// 客户公司快照（来自 customers.company）
   customerCompany String? @db.VarChar(200)
+  /// v25：当时挑的联系方式名（电话/微信…）
+  customerContactMethod String? @db.VarChar(50)
 
   // v11.0 全域解耦：员工档案快照字段（移除 creator/salesperson @relation，保留 created_by/salesperson_id + 索引）
   // 员工档案物理删除时，单据展示仍可正常显示创建者/业务员名
@@ -1253,6 +1488,53 @@ model inbound_lines {
   @@map("inbound_lines")
 }
 
+/// 独立采购入库单（不绑客户订单的囤货入库）
+model purchase_inbounds {
+  id             BigInt              @id @default(autoincrement())
+  purchase_no    String              @unique @db.VarChar(50)
+  supplier_id    BigInt
+  supplierName   String?             @db.VarChar(200)
+  warehouse_id   BigInt
+  warehouseName  String?             @db.VarChar(200)
+  status         inbound_task_status @default(pending)
+  total_qty      Decimal             @default(0) @db.Decimal(14, 3)
+  total_amount   Decimal             @default(0) @db.Decimal(14, 2)
+  remark         String?             @db.VarChar(500)
+  confirmed_at   DateTime?
+  confirmed_by   BigInt?
+  confirmedName  String?             @db.VarChar(50)
+  created_at     DateTime            @default(now())
+  updated_at     DateTime            @updatedAt
+  lines          purchase_inbound_lines[]
+
+  @@index([status, created_at])
+  @@index([supplier_id])
+  @@index([warehouse_id])
+  @@map("purchase_inbounds")
+}
+
+model purchase_inbound_lines {
+  id           BigInt   @id @default(autoincrement())
+  inbound_id   BigInt
+  spec_id      BigInt
+  brand_id     BigInt
+  unit_id      BigInt
+  productName  String?  @db.VarChar(200)
+  specModel    String?  @db.VarChar(200)
+  brandName    String?  @db.VarChar(100)
+  categoryName String?  @db.VarChar(100)
+  unitName     String?  @db.VarChar(50)
+  qty          Decimal  @db.Decimal(14, 3)
+  unit_cost    Decimal  @db.Decimal(14, 2)
+  amount       Decimal  @db.Decimal(14, 2)
+  seq          Int      @default(0)
+  inbound      purchase_inbounds @relation(fields: [inbound_id], references: [id], onDelete: Cascade)
+
+  @@index([inbound_id])
+  @@index([spec_id, brand_id, unit_id])
+  @@map("purchase_inbound_lines")
+}
+
 /// 欠库台账（v1.7.0 新增，v14.0 SKU 升级为 规格×品牌×单位，库存不足兜底：边接单边补货）
 /// 内部出库库存不足时，已有库存全额扣除，缺口挂欠库；补货入库后自动冲抵
 model backorders {
@@ -1367,6 +1649,8 @@ model refund_lines {
   refund_status  refund_status @default(pending)
   refund_at      DateTime?
   reason         String?       @db.Text
+  restock        Boolean       @default(false)
+  restock_warehouse_id BigInt?
   created_by     BigInt?
   /// v11.0 解耦：创建者名称快照（来自 users.real_name）
   creatorName    String?       @db.VarChar(50)
@@ -1562,6 +1846,11 @@ model reimbursement_bill_lines {
 // 枚举定义
 // ============================================================
 
+enum coord_source {
+  geocoded
+  manual
+}
+
 enum user_status {
   active
   disabled
@@ -1572,13 +1861,8 @@ enum customer_status {
   disabled
 }
 
-enum customer_type {
-  personal
-  company
-}
-
-// v1.7.1 移除：客户分级 customer_level（价格灵活，分级无业务决策价值，避免表结构复杂化）
-// 分类（customer_type）保留，仅作标识性字段、不参与业务决策
+// v25：客户类型改为 customer_type 字典表，不再用 enum
+// v1.7.1 移除：客户分级 customer_level
 
 enum supplier_status {
   active

@@ -68,11 +68,11 @@ export default function Login() {
   };
 
   // ----- 客户授权码准入 -----
-  const validPhone = () => /^1\d{10}$/.test(phone.trim());
+  const validLogin = () => /^[A-Za-z0-9_+\-.]{1,200}$/.test(phone.trim());
 
   const handleCustomerVerify = async () => {
-    if (!validPhone()) {
-      message.warning('请输入正确的11位手机号');
+    if (!validLogin()) {
+      message.warning('请输入登录账号（电话或微信）');
       return;
     }
     if (!authCode.trim()) {
@@ -90,8 +90,8 @@ export default function Login() {
 
   // ----- 客户申请准入 -----
   const handleCustomerRequest = async () => {
-    if (!validPhone()) {
-      message.warning('请输入正确的11位手机号');
+    if (!validLogin()) {
+      message.warning('请输入登录账号（电话或微信）');
       return;
     }
     try {
@@ -278,11 +278,10 @@ export default function Login() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacer-12)' }}>
                 <DsInput
                   size="lg"
-                  placeholder="请输入手机号"
+                  placeholder="登录账号（默认联系方式）"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  maxLength={11}
-                  inputMode="numeric"
+                  maxLength={64}
                   style={customerInputStyle}
                   onPressEnter={handleCustomerVerify}
                 />
@@ -312,11 +311,10 @@ export default function Login() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacer-12)' }}>
                 <DsInput
                   size="lg"
-                  placeholder="请输入手机号"
+                  placeholder="登录账号（默认联系方式）"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  maxLength={11}
-                  inputMode="numeric"
+                  maxLength={64}
                   style={customerInputStyle}
                 />
                 <DsInput
@@ -368,7 +366,7 @@ export default function Login() {
         }}
       >
         {role === 'customer'
-          ? '仅限合作门店客户访问，请使用登记手机号登录'
+          ? '仅限合作门店客户访问，请使用档案里勾选为登录主号的那条联系方式'
           : '员工请使用分配的账号密码登录'}
       </p>
 

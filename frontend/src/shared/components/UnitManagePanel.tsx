@@ -6,11 +6,10 @@
 // 表格工程范式「多记录字段」中单位枚举的统一承载组件。
 // 产品管理编辑弹窗单位区（UnitSection）与产品列表单位列下拉统一复用本组件，
 // 差异仅通过 props 注入（units/conversions 数据 + 回调）：
-//   - 单位名列：SuggestInput 可编辑（换名）
-//   - 换算率列：DsNumberInput（基准单位固定 1 不可改）
-//   - 默认列：星标（isDisplay，落库）
+//   - 单位名列：勾选默认（与选品同一套，空行也占位）+ 点值打开确认浮层
+//   - 换算率列：点值打开确认浮层（基准单位固定 1 不可改）
 //   - 操作列：删除
-//   - 末尾空行：输入单位名自动追加（新增）
+//   - 末尾空行：勾选位 + 点空位打开确认浮层新增
 //   - 行点击：切换当前单位（本地态，不落库）——「切换」与「默认」语义分离
 //
 // v1.5 抽象动机（用户「单位下拉要跟编辑弹窗一样承载换算率/默认/删除/新增、
@@ -22,15 +21,16 @@
 import { useState } from 'react';
 import {
   DeleteOutlined,
-  PlusOutlined,
-  SettingOutlined,
-  StarFilled,
-  StarOutlined,
 } from '@ant-design/icons';
+import { Checkbox } from 'antd';
 import DsButton from './DsButton.js';
-import DsInput from './DsInput.js';
-import SuggestInput from './SuggestInput.js';
+import EntityPanel from './EntityPanel.js';
 import QuickOptionsBar from './QuickOptionsBar.js';
+import {
+  PickerEmptyName,
+  PickerNameCell,
+  PickerNumCell,
+} from './product-picker/PickerInlineCells.js';
 import { buildRateChainText, sortUnitsByRate } from '../utils/unitRateText.js';
 
 // ============================================================
@@ -75,8 +75,10 @@ export interface UnitManagePanelProps {
   selectedUnitKey?: string;
   /** 行点击切换回调（本地态） */
   onSwitch: (unitKey: string) => void;
-  /** 单位改名回调（落库） */
+  /** 单位改名回调（落库；确认层「当前」= 这条规格换绑） */
   onRename: (unitKey: string, name: string) => void;
+  /** 单位改全局（可选；不传则确认层不出现「改全局」） */
+  onRenameGlobal?: (unitKey: string, name: string) => void;
   /** 换算率变更回调（落库；基准单位禁改） */
   onRateChange: (unitKey: string, rate: string) => void;
   /** 设默认（isDisplay，落库，互斥） */
@@ -105,6 +107,7 @@ export function UnitManagePanel({
   selectedUnitKey,
   onSwitch,
   onRename,
+  onRenameGlobal,
   onRateChange,
   onSetDisplay,
   onDelete,
@@ -113,18 +116,16 @@ export function UnitManagePanel({
   extensions,
   disabled,
 }: UnitManagePanelProps) {
-  // 末尾空行新增输入（单位名 + 换算率，完整空行通式）
-  const [addName, setAddName] = useState('');
+  // 末尾空行：点空位打开确认浮层新增；换算率可先点好再点名称
   const [addRate, setAddRate] = useState('');
 
   // v2.2：列模板动态生成——基座固定 单位名/换算/默认/操作；
   //   拓展列（基准/售价/进价）按 extensions 配置插入（业务可变层，组件体系总纲领）
   const gridTemplate = [
-    'minmax(64px, 1fr)', // 单位名
+    'minmax(64px, 1fr)', // 单位名（勾选默认 + 名称，和选品同一套）
     '44px',              // 换算
     ...(extensions?.priceColumns ? ['72px', '72px'] : []), // 售价/进价
     ...(extensions?.showBase ? ['28px'] : []),             // 基准
-    '26px',              // 默认
     '22px',              // 操作
   ].join(' ');
 
@@ -139,128 +140,87 @@ export function UnitManagePanel({
   const sortedUnits = sortUnitsByRate(units, getRate);
 
   const handleAddCommit = (nameInput?: string, rateInput?: string) => {
-    const name = (nameInput ?? addName).trim();
+    const name = (nameInput ?? '').trim();
     if (!name) return;
     if (units.some((u) => u.unitName === name)) {
-      setAddName('');
       setAddRate('');
       return;
     }
     onAdd(name, (rateInput ?? addRate).trim() || undefined);
-    setAddName('');
     setAddRate('');
-  };
-
-  const headerStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: gridTemplate,
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 4px',
-    fontSize: 'var(--body-xs-font-size)',
-    color: 'var(--text-tertiary)',
-    fontWeight: 500,
-    borderBottom: '1px solid var(--border-neutral-l2)',
-  };
-  const rowStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: gridTemplate,
-    alignItems: 'center',
-    gap: 4,
-    padding: '2px 4px',
-    fontSize: 'var(--body-xs-font-size)',
-    borderBottom: '1px solid var(--border-neutral-l1)',
   };
 
   return (
     // v1.9：单功能编辑面板紧凑（maxWidth 220 锁窄）；有拓展列（价格/基准）时不锁窄（编辑弹窗集合面板）
-    <div
-      data-shared-badge="C19"
-      style={{
-        overflowX: 'auto',
-        WebkitOverflowScrolling: 'touch',
-        maxWidth: extensions?.priceColumns || extensions?.showBase ? undefined : 220,
-      }}
-    >
-      {/* 表头：单位 | 换算 | [售价|进价] | [基准] | 默认 | 操作 */}
-      <div style={headerStyle}>
-        <span style={{ textAlign: 'left', paddingLeft: 8 }}>单位</span>
-        <span style={{ textAlign: 'center' }}>换算</span>
-        {extensions?.priceColumns && (
-          <>
-            <span style={{ textAlign: 'center' }}>售价</span>
-            <span style={{ textAlign: 'center' }}>进价</span>
-          </>
-        )}
-        {extensions?.showBase && <span style={{ textAlign: 'center' }}>基准</span>}
-        <span style={{ textAlign: 'center' }}>默认</span>
-        <span style={{ textAlign: 'center' }}>操作</span>
-      </div>
-
-      {/* 单位行（按换算率升序，基准恒首） */}
-      {sortedUnits.map((u) => {
+    // 网格基座走 EntityPanel（.ds-grid-header/.ds-grid-row），与抽出前 inline 参数一致
+    <EntityPanel
+      badge="C19"
+      template={gridTemplate}
+      style={{ maxWidth: extensions?.priceColumns || extensions?.showBase ? undefined : 220 }}
+      header={
+        <>
+          <span style={{ textAlign: 'left' }}>单位</span>
+          <span style={{ textAlign: 'center' }}>换算</span>
+          {extensions?.priceColumns && (
+            <>
+              <span style={{ textAlign: 'center' }}>售价</span>
+              <span style={{ textAlign: 'center' }}>进价</span>
+            </>
+          )}
+          {extensions?.showBase && <span style={{ textAlign: 'center' }}>基准</span>}
+          <span style={{ textAlign: 'center' }}>操作</span>
+        </>
+      }
+      rows={sortedUnits.map((u) => {
         const rate = conversions[u.key] ?? (u.isBase ? '1' : '');
         const isSelected = u.key === selectedUnitKey;
-        // 逐级换算文本（title 辅助）：一米 / 3米每根 / 25根每捆
         const rateChainText = buildRateChainText(
           sortedUnits,
           getRate,
           (x) => x.unitName,
           u,
         );
-        return (
-          <div
-            key={u.key}
-            style={{
-              ...rowStyle,
-              background: isSelected ? 'var(--bg-overlay-l1)' : 'transparent',
-              cursor: 'pointer',
-            }}
-            onClick={() => onSwitch(u.key)}
-            title={isSelected ? '当前单位' : '点击切换当前单位'}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              {/* 当前选中圆点（本地切换态标识） */}
+        const switchTitle = isSelected ? '当前单位' : '点击切换当前单位';
+        return {
+          key: u.key,
+          selected: isSelected,
+          onClick: () => onSwitch(u.key),
+          title: rateChainText ? `${switchTitle} · ${rateChainText}` : switchTitle,
+          cells: (
+            <>
+            <div className="ds-grid-name">
               <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  border: '1px solid var(--border-neutral-l2)',
-                  background: isSelected ? 'var(--text-brand)' : 'transparent',
-                  flexShrink: 0,
-                }}
-              />
-              <SuggestInput
-                field="unit"
-                value={u.unitName}
-                onChange={(val) => onRename(u.key, val)}
-                placeholder="单位"
-                size="sm"
-                disabled={disabled}
-                allowCreate={false}
-                productId={undefined}
-                style={{ flex: 1, minWidth: 0 }}
+                className="ds-grid-check"
+                title={u.isDisplay ? '当前默认单位' : '设为默认单位'}
                 onClick={(e) => e.stopPropagation()}
+              >
+                <Checkbox
+                  checked={u.isDisplay}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    if (e.target.checked) onSetDisplay(u.key);
+                  }}
+                />
+              </span>
+              <PickerNameCell
+                value={u.unitName}
+                kind="unit"
+                fromId={u.key}
+                placeholder="单位"
+                disabled={disabled}
+                onApply={(val) => onRename(u.key, val)}
+                onApplyGlobal={
+                  onRenameGlobal ? (val) => onRenameGlobal(u.key, val) : undefined
+                }
               />
             </div>
-            <DsInput
-              size="sm"
-              variant="price"
-              value={rate}
-              onChange={(e) => onRateChange(u.key, e.target.value)}
-              inputMode="decimal"
+            <PickerNumCell
+              value={rate === '' ? null : Number(rate)}
+              label={u.isBase ? '1' : rate}
+              kind="conversion"
               placeholder="1"
               disabled={u.isBase || disabled}
-              onClick={(e) => e.stopPropagation()}
-              style={{ textAlign: 'center', fontSize: 'var(--body-xs-font-size)' }}
-              title={
-                u.isBase
-                  ? '基准单位换算率固定 1'
-                  : rateChainText
-                    ? `换算率（相对基准单位）：${rateChainText}`
-                    : '换算率（相对基准单位）'
-              }
+              onApply={(n) => onRateChange(u.key, String(n))}
             />
             {/* v2.2：价格列插槽（编辑弹窗单位区；售价/进价快捷显示 + 点击弹价格明细面板） */}
             {extensions?.priceColumns && (
@@ -281,49 +241,21 @@ export function UnitManagePanel({
             )}
             {/* v2.2：基准切换列（编辑弹窗单位区；isBase 互斥） */}
             {extensions?.showBase && (
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <DsButton
-                  size="sm"
-                  variant={u.isBase ? 'primary' : 'ghost'}
-                  icon={<SettingOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    extensions.onSetBase?.(u.key);
-                  }}
+              <div
+                className="ds-grid-check"
+                style={{ justifySelf: 'center' }}
+                title={u.isBase ? '当前基准单位' : '设为基准单位'}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Checkbox
+                  checked={u.isBase}
                   disabled={disabled}
-                  style={{
-                    padding: '0 4px',
-                    height: 20,
-                    fontSize: 10,
-                    background: u.isBase ? 'var(--text-brand)' : 'transparent',
-                    borderColor: u.isBase ? 'var(--text-brand)' : 'var(--border-neutral-l2)',
-                    color: u.isBase ? 'var(--text-on-accent)' : 'var(--text-tertiary)',
+                  onChange={(e) => {
+                    if (e.target.checked) extensions.onSetBase?.(u.key);
                   }}
-                  title={u.isBase ? '当前基准单位' : '设为基准单位'}
                 />
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <DsButton
-                size="sm"
-                variant={u.isDisplay ? 'primary' : 'secondary'}
-                icon={u.isDisplay ? <StarFilled /> : <StarOutlined />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSetDisplay(u.key);
-                }}
-                disabled={disabled}
-                style={{
-                  padding: '0 4px',
-                  height: 20,
-                  fontSize: 10,
-                  background: u.isDisplay ? 'var(--text-brand)' : 'transparent',
-                  borderColor: u.isDisplay ? 'var(--text-brand)' : 'var(--border-neutral-l2)',
-                  color: u.isDisplay ? 'var(--text-on-accent)' : 'var(--text-tertiary)',
-                }}
-                title={u.isDisplay ? '当前默认单位' : '设为默认单位'}
-              />
-            </div>
             <div style={{ display: 'flex', justifyContent: 'center' }}>
               <DsButton
                 size="sm"
@@ -338,77 +270,50 @@ export function UnitManagePanel({
                 title={u.isBase && units.length > 1 ? '基准单位不可删除' : '删除单位'}
               />
             </div>
-          </div>
-        );
+            </>
+          ),
+        };
       })}
-
-      {/* 末尾常驻空行（完整空行通式）：单位名 + 换算率输入，输入有效自动追加 */}
-      <div style={rowStyle}>
-        <SuggestInput
-          field="unit"
-          value={addName}
-          onChange={setAddName}
-          placeholder="输入单位名"
-          size="sm"
-          disabled={disabled}
-          allowCreate={false}
-          productId={undefined}
-          onBlur={() => handleAddCommit()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              handleAddCommit();
-            }
-          }}
-        />
-        <DsInput
-          size="sm"
-          variant="price"
-          value={addRate}
-          onChange={(e) => setAddRate(e.target.value)}
-          inputMode="decimal"
-          placeholder="1"
-          disabled={disabled}
-          style={{ textAlign: 'center', fontSize: 'var(--body-xs-font-size)' }}
-          title="新增单位的换算率（相对基准单位；留空默认 1）"
-          onKeyDown={(e) => {
-            // v1.9：换算率输入框 Enter 同样触发新增（名称已填时）
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              if (addName.trim()) handleAddCommit();
-            }
-          }}
-        />
-        {/* v2.2：拓展列空行占位（价格/基准），保持与数据行列对齐 */}
-        {extensions?.priceColumns && (
-          <>
-            <span />
-            <span />
-          </>
-        )}
-        {extensions?.showBase && <span />}
-        <span />
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <DsButton
-            size="sm"
-            variant="ghost"
-            icon={<PlusOutlined />}
-            onClick={() => handleAddCommit()}
-            disabled={!addName.trim() || disabled}
-            title="新增单位"
+      addRow={
+        <>
+          <PickerEmptyName
+            placeholder="输入单位名"
+            kind="addUnit"
+            leadCheck
+            onApply={(name) => handleAddCommit(name)}
           />
-        </div>
-      </div>
-
-      {/* 预置快速选项（通用 quickOptions 抽象：不传不渲染） */}
-      <QuickOptionsBar
-        options={commonUnits.map((name) => ({ label: name, value: name }))}
-        usedValues={units.map((u) => u.unitName)}
-        disabled={disabled}
-        prefix="常用:"
-        onPick={(opt) => handleAddCommit(opt.value)}
-      />
-    </div>
+          <PickerNumCell
+            value={addRate === '' ? null : Number(addRate)}
+            label={addRate}
+            kind="conversion"
+            placeholder="1"
+            disabled={disabled}
+            onApply={(n) => setAddRate(String(n))}
+          />
+          {extensions?.priceColumns && (
+            <>
+              <span />
+              <span />
+            </>
+          )}
+          {extensions?.showBase && (
+            <span className="ds-grid-check" style={{ justifySelf: 'center' }}>
+              <Checkbox disabled />
+            </span>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'center' }} />
+        </>
+      }
+      footer={
+        <QuickOptionsBar
+          options={commonUnits.map((name) => ({ label: name, value: name }))}
+          usedValues={units.map((u) => u.unitName)}
+          disabled={disabled}
+          prefix="常用:"
+          onPick={(opt) => handleAddCommit(opt.value)}
+        />
+      }
+    />
   );
 }
 

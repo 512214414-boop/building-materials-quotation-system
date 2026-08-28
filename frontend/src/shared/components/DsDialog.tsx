@@ -5,16 +5,19 @@ import { Modal } from 'antd';
 import type { ModalProps } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 import type { ReactNode } from 'react';
+import { overlayModalContainer } from '../utils/canvasStage.js';
 
 export interface DsDialogProps extends ModalProps {
   title?: ReactNode;
 }
 
 export function DsDialog(props: DsDialogProps) {
-  const { title, closeIcon, styles, style, width, ...rest } = props;
+  const { title, closeIcon, styles, style, width, getContainer, centered, ...rest } = props;
   return (
     <Modal
       data-shared-badge="C07"
+      getContainer={getContainer ?? overlayModalContainer}
+      centered={centered ?? true}
       title={title}
       closeIcon={
         closeIcon ?? <CloseOutlined style={{ color: 'var(--text-secondary)' }} />
@@ -27,19 +30,26 @@ export function DsDialog(props: DsDialogProps) {
         header: {
           background: 'var(--bg-base-secondary)',
           borderBottom: '1px solid var(--border-neutral-l1)',
-          paddingTop: 'var(--safe-area-top)',
+          padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
+          paddingTop: 'calc(var(--overlay-pad-y) + var(--safe-area-top))',
+          minHeight: 'var(--shell-row-h)',
         },
-        title: { color: 'var(--text-default)' },
+        title: {
+          color: 'var(--text-default)',
+          fontSize: 'var(--heading-xs-font-size)',
+          lineHeight: 'var(--shell-row-h)',
+        },
         body: {
           background: 'var(--bg-base-secondary)',
-          paddingBottom: 'var(--safe-area-bottom)',
+          padding: 'var(--overlay-pad-x)',
+          paddingBottom: 'calc(var(--overlay-pad-x) + var(--safe-area-bottom))',
           overflow: 'auto',
-          // v11.3.1：手机端弹窗内容超出时可横向拖动查看
           WebkitOverflowScrolling: 'touch',
         },
         footer: {
           background: 'var(--bg-base-secondary)',
           borderTop: '1px solid var(--border-neutral-l1)',
+          padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
         },
         ...styles,
       }}

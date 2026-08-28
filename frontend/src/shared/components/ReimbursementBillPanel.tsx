@@ -148,7 +148,7 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
   if (viewingBill) {
     return (
       <FloatPanel open={open} anchorRef={anchorRef} onClose={onClose} maxHeight={520} offset={2} style={{ padding: 0 }}>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', justifyContent: 'between', gap: 8 }}>
+        <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', justifyContent: 'between', gap: 'var(--overlay-gap)' }}>
           <button type="button" onClick={() => setViewingBill(null)} style={{ background: 'none', border: 'none', color: 'var(--text-brand)', cursor: 'pointer', fontSize: 'var(--body-sm-font-size)' }}>
             ← 返回
           </button>
@@ -194,7 +194,7 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
             </tbody>
           </table>
         </div>
-        <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-neutral-l1)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', borderTop: '1px solid var(--border-neutral-l1)', display: 'flex', justifyContent: 'flex-end', gap: 'var(--overlay-gap)' }}>
           <span style={{ fontSize: 'var(--body-sm-font-size)', fontWeight: 600 }}>合计：{fmtMoney(viewingBill.totalAmount)}</span>
         </div>
       </FloatPanel>
@@ -204,7 +204,7 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
   if (showHistory) {
     return (
       <FloatPanel open={open} anchorRef={anchorRef} onClose={onClose} maxHeight={460} offset={2} style={{ padding: 0 }}>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', gap: 'var(--overlay-gap)' }}>
           <button type="button" onClick={() => setShowHistory(false)} style={{ background: 'none', border: 'none', color: 'var(--text-brand)', cursor: 'pointer', fontSize: 'var(--body-sm-font-size)' }}>
             ← 新开副单
           </button>
@@ -222,7 +222,7 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
                 key={b.id}
                 onClick={() => setViewingBill(b)}
                 style={{
-                  padding: '8px 12px',
+                  padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                   borderBottom: '1px solid var(--border-neutral-l1)',
                   cursor: 'pointer',
                   display: 'flex',
@@ -255,13 +255,13 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
 
   return (
     <FloatPanel open={open} anchorRef={anchorRef} onClose={onClose} data-shared-badge="C54" maxHeight={540} offset={2} style={{ padding: 0 }}>
-      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', borderBottom: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', gap: 'var(--overlay-gap)' }}>
         <span style={{ flex: 1, fontWeight: 600, fontSize: 'var(--body-sm-font-size)' }}>报销开单（代采）</span>
         <DsButton size="sm" variant="ghost" onClick={() => setShowHistory(true)}>
           历史记录 {history.length > 0 && `(${history.length})`}
         </DsButton>
       </div>
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-neutral-l1)' }}>
+      <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', borderBottom: '1px solid var(--border-neutral-l1)' }}>
         <DsInput
           size="sm"
           placeholder="备注（可选，如：XX公司报销用）"
@@ -296,7 +296,6 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
                       value={l.productRef}
                       onChange={(e) => updateLine(l.key, 'productRef', e.target.value)}
                       placeholder="品名"
-                      allowClear={false}
                     />
                     <DsInput
                       size="sm"
@@ -305,7 +304,6 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
                       onChange={(e) => updateLine(l.key, 'spec', e.target.value)}
                       style={{ fontSize: 11, color: 'var(--text-secondary)' }}
                       placeholder="规格（可选）"
-                      allowClear={false}
                     />
                   </td>
                   <td style={tdStyle}>
@@ -316,7 +314,6 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
                       value={l.unit}
                       onChange={(e) => updateLine(l.key, 'unit', e.target.value)}
                       style={{ width: 40 }}
-                      allowClear={false}
                     />
                   </td>
                   <td style={tdStyleR}>
@@ -352,7 +349,7 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
           </tbody>
         </table>
       </div>
-      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: 'var(--overlay-pad-y) var(--overlay-pad-x)', borderTop: '1px solid var(--border-neutral-l1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <DsButton size="sm" variant="ghost" onClick={resetDraft}>
           <PlusOutlined /> 重置为当前单据
         </DsButton>

@@ -14,7 +14,7 @@
 // 与 defaultRecord（默认规则工具）配合：normalize 未指定默认时取第一条（落库）。
 // 行为与产品管理基准原型一致（空行输入有效值晋升为数据行并自动追加新空行）。
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export interface UseMatrixRecordsOptions<T> {
   /** 外部记录（数据行集合，不含空行） */
@@ -66,6 +66,14 @@ export function useMatrixRecords<T>({
     const base = (value ?? []).filter(isDataRow);
     return [...(normalize ? normalize(base) : base), blank()];
   });
+
+  const valueSig = JSON.stringify(value ?? []);
+  useEffect(() => {
+    const base = (JSON.parse(valueSig) as T[]).filter(isDataRow);
+    setItems([...(normalize ? normalize(base) : base), blank()]);
+    // valueSig 变化时重建（面板打开 / 列表刷新）；编辑中 value 不变则不重置
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueSig]);
 
   const dataRows = items.slice(0, -1);
   const lastBlank = items[items.length - 1];

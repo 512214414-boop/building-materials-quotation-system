@@ -1,28 +1,36 @@
 import { theme } from 'antd';
 import type { ThemeConfig } from 'antd';
 
-// v11.2：浮动面板统一背景色常量
-//   所有浮动面板（Popover/Tooltip/Select Dropdown/Dropdown 菜单）必须使用实色不透明背景
-//   禁止使用 --bg-overlay-l1（4%透明度），该 token 仅用于 hover/激活叠加层
-const FLOATING_PANEL_BG = '#2A2D31';
+// 浮动面板必须用实色（禁止 overlay 透明度穿透）。
+// hex 与 tokens.css 对齐，禁止把 var(--*) 塞进 algorithm。
+const PAPER = '#f4f1ea';
+const PANEL = '#fffdf8';
+const THEAD = '#f0ece3';
+const INK = '#1c1c1c';
+const INK_2 = '#3d3d3d';
+const MUTED = '#6e6a62';
+const LINE = '#cfc8ba';
+const BRAND = '#1f4d3a';
+const ACCENT_SOFT = '#e7f0eb';
+const ROW_HOVER = '#f7f3ea';
 
 export const antdTheme: ThemeConfig = {
-  algorithm: theme.darkAlgorithm,
+  algorithm: theme.defaultAlgorithm,
   token: {
-    colorPrimary: '#32F08C',
-    colorBgBase: '#1A1B1D',
-    colorBgContainer: '#222427',
-    colorBgElevated: FLOATING_PANEL_BG,
-    colorTextBase: '#D1D3DB',
-    colorText: '#D1D3DB',
-    colorTextSecondary: '#9599A6',
-    colorTextTertiary: '#666B75',
-    colorBorder: 'rgba(224, 226, 242, 0.1)',
-    colorBorderSecondary: 'rgba(224, 226, 242, 0.16)',
+    colorPrimary: BRAND,
+    colorBgBase: PAPER,
+    colorBgContainer: PANEL,
+    colorBgElevated: PANEL,
+    colorTextBase: INK,
+    colorText: INK,
+    colorTextSecondary: INK_2,
+    colorTextTertiary: MUTED,
+    colorBorder: INK,
+    colorBorderSecondary: LINE,
     borderRadius: 6,
     borderRadiusLG: 8,
     borderRadiusSM: 4,
-    fontFamily: '"SF Pro Text", system-ui, -apple-system, sans-serif',
+    fontFamily: '"PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif',
     fontSize: 13,
     controlHeight: 32,
     controlHeightSM: 24,
@@ -39,7 +47,6 @@ export const antdTheme: ThemeConfig = {
     Input: {
       borderRadius: 6,
       controlHeight: 32,
-      // v10.32 size="small" 控件高度适配24px行高
       controlHeightSM: 24,
       paddingInlineSM: 2,
       fontSizeSM: 11,
@@ -47,48 +54,43 @@ export const antdTheme: ThemeConfig = {
     Select: {
       borderRadius: 6,
       controlHeight: 32,
-      // v11.2：下拉面板背景色统一为实色不透明（与 colorBgElevated 一致）
-      //   Antd 6 CSS-in-JS 优先级高于外部 CSS，必须通过 token 设置才可靠
-      colorBgElevated: FLOATING_PANEL_BG,
-      optionSelectedBg: 'rgba(50, 240, 140, 0.12)',
-      optionActiveBg: 'rgba(50, 240, 140, 0.08)',
+      colorBgElevated: PANEL,
+      optionSelectedBg: ACCENT_SOFT,
+      optionActiveBg: ROW_HOVER,
     },
     Popover: {
-      // v11.2：Popover 面板背景色统一为实色不透明
-      colorBgElevated: FLOATING_PANEL_BG,
+      colorBgElevated: PANEL,
     },
     Tooltip: {
-      // v11.2：Tooltip 面板背景色统一为实色不透明
-      colorBgElevated: FLOATING_PANEL_BG,
+      colorBgElevated: PANEL,
     },
     Dropdown: {
-      // v11.2：Dropdown 菜单背景色统一为实色不透明
-      colorBgElevated: FLOATING_PANEL_BG,
+      colorBgElevated: PANEL,
     },
     Table: {
-      headerBg: 'rgba(224, 226, 242, 0.04)',
-      headerColor: '#9599A6',
-      rowHoverBg: 'rgba(224, 226, 242, 0.04)',
-      borderColor: 'rgba(224, 226, 242, 0.1)',
-      // v10.32 表格行高24px，与通用行盒子 .ds-shell-row 一致
-      // 直接通过 antd 令牌系统配置，antd 自己生成正确样式，不需要 CSS 覆盖
-      cellPaddingBlockSM: 0,       // size="small" 纵向内边距：0（行高由 height 控制）
-      cellPaddingInlineSM: 4,      // size="small" 横向内边距：4px
-      cellFontSizeSM: 11,          // size="small" 字号：11px（与 --body-sm-font-size 一致）
+      headerBg: THEAD,
+      headerColor: INK_2,
+      rowHoverBg: ROW_HOVER,
+      borderColor: LINE,
+      cellPaddingBlockSM: 0,
+      cellPaddingInlineSM: 4,
+      cellFontSizeSM: 11,
     },
     Modal: {
-      contentBg: '#222427',
-      headerBg: '#222427',
-      titleColor: '#D1D3DB',
+      contentBg: PANEL,
+      headerBg: PANEL,
+      titleColor: INK,
+      titleFontSize: 13,
+      titleLineHeight: 1.4,
     },
     Tag: {
       borderRadiusSM: 2,
     },
     Tabs: {
-      itemColor: '#9599A6',
-      itemActiveColor: '#D1D3DB',
-      itemSelectedColor: '#D1D3DB',
-      inkBarColor: '#32F08C',
+      itemColor: MUTED,
+      itemActiveColor: INK,
+      itemSelectedColor: INK,
+      inkBarColor: BRAND,
     },
   },
 };

@@ -10,6 +10,7 @@ import { Drawer } from 'antd';
 import type { DrawerProps } from 'antd';
 import { ArrowLeftOutlined, CloseOutlined } from '@ant-design/icons';
 import type { ReactNode } from 'react';
+import { overlayModalContainer } from '../utils/canvasStage.js';
 
 export interface DsDrawerProps extends Omit<DrawerProps, 'title'> {
   /** 抽屉层级（1=第一层，2=第二层，3=第三层）；用于计算宽度和偏移 */
@@ -88,6 +89,7 @@ export function DsDrawer({
   return (
     <Drawer
       {...rest}
+      getContainer={rest.getContainer ?? overlayModalContainer}
       data-shared-badge="C08"
       open={rest.open}
       onClose={onClose}
@@ -110,9 +112,9 @@ export function DsDrawer({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '6px 8px',
-          paddingTop: 'calc(6px + var(--safe-area-top))',
+          gap: 'var(--overlay-gap)',
+          padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
+          paddingTop: 'calc(var(--overlay-pad-y) + var(--safe-area-top))',
           borderBottom: '1px solid var(--border-neutral-l1)',
           background: 'var(--bg-base-secondary)',
           flexShrink: 0,
@@ -160,7 +162,7 @@ export function DsDrawer({
       </div>
       {/* 主体内容 */}
       {/* v10.1：移动端 padding 8px，桌面端 12px */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>{children}</div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 'var(--overlay-pad-x)' }}>{children}</div>
     </Drawer>
   );
 }

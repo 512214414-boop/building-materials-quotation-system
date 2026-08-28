@@ -23,6 +23,7 @@ import {
   type SalePriceView,
 } from '../services/api/baseDataApi.js';
 import DsSelect from './DsSelect.js';
+import { overlayModalContainer } from '../utils/canvasStage.js';
 
 export interface PricePickerProps {
   /** 当前数字字符串 */
@@ -262,6 +263,8 @@ export default function PricePicker({
         onOk={handleArchiveConfirm}
         onCancel={() => setModalOpen(false)}
         width={380}
+        getContainer={overlayModalContainer}
+        centered
       >
         <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>

@@ -41,6 +41,7 @@ export interface RefundLineMutationResult {
   /** v2.1 退换时间（系统设置） */
   refundAt: string | null;
   reason: string | null;
+  restock?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -106,6 +107,7 @@ export interface RefundLineCreateInput {
   refundType: RefundType;
   refundQty: number;
   reason?: string;
+  restock?: boolean;
 }
 
 export interface RefundLineUpdateInput {
@@ -151,4 +153,30 @@ export function lockRefundView(docId: string): Promise<{ documentId: string; vie
 /** 解锁退换售后视图 */
 export function unlockRefundView(docId: string): Promise<{ documentId: string; view: string; locked: boolean }> {
   return request.post<unknown, { documentId: string; view: string; locked: boolean }>(`/api/staff/documents/${docId}/refund_lines/unlock`);
+}
+
+export interface SoldLineHit {
+  lineId: string;
+  documentId: string;
+  documentNo: string;
+  customerName: string | null;
+  productRef: string;
+  productName: string | null;
+  brandName: string | null;
+  spec: string | null;
+  unit: string;
+  qty: number;
+  unitPrice: number;
+  remaining: number;
+  recognized: boolean;
+}
+
+export function searchSoldLines(params: {
+  keyword?: string;
+  documentIds: string[];
+}): Promise<SoldLineHit[]> {
+  const documentIds = params.documentIds.filter(Boolean).join(',');
+  return request.get<unknown, SoldLineHit[]>('/api/staff/refund/sold-lines', {
+    params: { keyword: params.keyword ?? '', documentIds },
+  });
 }

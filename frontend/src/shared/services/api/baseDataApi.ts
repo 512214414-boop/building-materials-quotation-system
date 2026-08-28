@@ -109,7 +109,9 @@ export interface ProductView {
   specId?: string;
   /** v14.0：当前编辑规格型号（getProduct 详情返回时携带，取首个规格） */
   specModel?: string;
-  /** v14.0：当前规格的品牌关联列表（getProduct 详情返回时携带，spec_brand 维度） */
+  /** v22.0：产品售卖品牌列表（product_brand，弹窗品牌 tab） */
+  productBrands?: ProductBrandView[];
+  /** v22.0：同 specModel 下各品牌行（getProduct 详情；API 仍暴露 specBrandId = spec.id） */
   brands?: BrandView[];
   /** v14.0：当前规格的单位列表（getProduct 详情返回时携带） */
   units?: UnitView[];
@@ -126,50 +128,51 @@ export interface ProductView {
 }
 
 /**
- * v14.0 规格变体视图（spec 表，挂在产品下）。
- * 产品 → 规格变体 → 品牌/单位：同一产品多个规格，每个规格的品牌/单位独立。
+ * v22.0 规格变体视图（spec 表：产品 → 品牌 → 系列/规格）。
+ * 每条 spec 已含 brandId；同 specModel 跨品牌为多条 spec。
  */
 export interface SpecView {
   /** BigInt 序列化为 string */
   id: string;
   /** 所属产品 ID */
   productId: string;
-  /** 规格型号（如「dn25*3.5」「25」「4分」） */
+  /** 系列/规格（如「dn25*3.5」「25」「4分」） */
   specModel: string;
-  /** v14.0：该规格下的品牌关联列表（spec_brand 维度） */
-  brands?: BrandView[];
-  /** v14.0：该规格下的单位列表 */
-  units?: UnitView[];
-  /** 关联计数 */
+  /** 同 specModel 下品牌行数（getProduct specs 摘要） */
   count?: { brands: number; units: number };
 }
 
+/** v22.0 产品×品牌关联（product_brand 表） */
+export interface ProductBrandView {
+  id: string;
+  brandId: string;
+  sortOrder: number;
+  status: number;
+  brand?: { id: string; name: string; status: number };
+}
+
 /**
- * v14.0 品牌关联视图（spec_brand 中间表 + 全局品牌档案 brand）。
- * 品牌为全局独立档案（name 唯一），通过 spec_brand 中间表被规格引用。
- * - 品牌改名 → 所有引用它的规格全局生效（spec_brand.brandId 引用全局档案）
- * - 规格上改品牌 = 换引用；输入品牌档案中不存在 → 快捷新增
+ * v22.0 品牌行视图（spec 表一行 = 产品×品牌×系列/规格）。
+ * API 兼容：id / specBrandId 均为 spec.id；brandId 为全局品牌档案。
  */
 export interface BrandView {
-  /** v14.0：spec_brand 关联 ID（BigInt 序列化为 string，规格内品牌关联的唯一键） */
+  /** spec.id（API 别名 specBrandId，兼容旧调用方） */
   id: string;
-  /** v14.0：全局品牌档案 ID（BigInt 序列化为 string） */
+  /** 全局品牌档案 ID（BigInt 序列化为 string） */
   brandId: string;
-  /** v14.0：所属规格 ID */
+  /** 所属规格 ID（= id） */
   specId: string;
-  /** v14.0：品牌名称（来自全局品牌档案 brand.name） */
+  /** 品牌名称（来自全局品牌档案 brand.name） */
   name: string;
-  /** v14.0：该规格下该品牌的备注（执行标准/层数等，存 spec_brand.remark） */
+  /** 该规格备注（执行标准/层数等，存 spec.remark） */
   remark: string;
-  /** v14.0：该规格下该品牌的排序（存 spec_brand.sortOrder） */
   sortOrder: number;
-  /** v14.0：该规格下该品牌状态（存 spec_brand.status） */
   status: number;
   createdAt: string;
   updatedAt: string;
   /** 关联品牌档案（getBrand/list 返回时携带） */
   brand?: { id: string; name: string; status: number };
-  /** 图片列表（依附 spec_brand） */
+  /** 图片列表（依附 spec） */
   images?: ProductImageView[];
   /** v9.0：规格×品牌单位换算列表（brand_unit_conversion 中间表） */
   conversions?: BrandConversion[];
@@ -241,6 +244,12 @@ export interface SalePriceView {
   status: number;
   /** v9.1：是否默认展示售价（同 SKU 下互斥，与 purchase_price.isDefault 对等） */
   isDefault: boolean;
+  /** 点位：规格例外 → 组默认 → 1 */
+  point?: number | null;
+  /** 实际售价 = 面价 × 点位 */
+  effectivePrice?: number | null;
+  /** 点位来自规格例外 */
+  specPoint?: boolean;
   /** 关联规格×品牌（list/get 返回时携带） */
   specBrand?: {
     id: string;
@@ -315,6 +324,8 @@ export interface PurchasePriceView {
   point?: number | null;
   /** v12.0：进价 = 面价 × 点位（无点位规则时 = 面价） */
   effectivePrice?: number | null;
+  /** 点位来自规格例外 */
+  specPoint?: boolean;
   /** 关联规格×品牌（list/get 返回时携带） */
   specBrand?: {
     id: string;
@@ -380,18 +391,34 @@ export interface SupplierContact {
 export interface SupplierView {
   id: string;
   name: string;
-  /** v9.0：联系人 JSON 数组 */
   contacts: SupplierContact[] | null;
-  /** v9.0：经营范围 */
+  /** 多地址（v20 拆表） */
+  addresses?: SupplierAddressView[];
+  /** 经营品类（v20 拆表，关联 category） */
+  businessCategories?: { categoryId: number; categoryName: string }[];
+  /** 经营品牌（v21 拆表，关联 brand） */
+  businessBrands?: { brandId: string; brandName: string }[];
+  /** 兼容展示：品类名 + 品牌名拼接 */
   businessScope: string | null;
   address: string | null;
   remark: string | null;
-  /** v9.0：状态 1启用 0停用 */
   status: number;
   createdAt: string;
   updatedAt: string;
-  /** 关联计数（listSuppliers 返回时携带：{ purchasePrices } = 进价引用数，v14.3） */
   count?: { purchasePrices: number };
+}
+
+export interface SupplierAddressView {
+  id?: string;
+  addressTypeId?: string | null;
+  addressTypeName?: string | null;
+  addressText: string;
+  lng?: number | null;
+  lat?: number | null;
+  coordSource?: 'geocoded' | 'manual' | null;
+  isDefault?: boolean;
+  sortOrder?: number;
+  remark?: string | null;
 }
 
 /**
@@ -424,10 +451,29 @@ export interface UpdateContactMethodInput {
   status?: number;
 }
 
-/** v2.9 建材行业客户类型枚举 */
-export type CustomerType = 'personal' | 'company';
+export interface CustomerContactView {
+  id?: string;
+  name: string;
+  method: string;
+  value: string;
+  isDefault?: boolean;
+}
 
-/** v2.9 开票信息 JSON 结构（开票时自动带出，避免重复录入） */
+export interface CustomerInvoiceRow {
+  id?: string;
+  invoiceTitle?: string;
+  taxNumber?: string;
+  bankName?: string;
+  bankAccount?: string;
+  address?: string;
+  phone?: string;
+  isDefault?: boolean;
+}
+
+/** 客户类型字典名称 */
+export type CustomerType = string;
+
+/** v2.9 开票信息 JSON 结构（历史兼容；现网以 customer_invoice 多行为准） */
 export interface CustomerInvoiceInfo {
   taxNumber?: string;
   invoiceTitle?: string;
@@ -449,15 +495,17 @@ export interface CustomerView {
   company: string | null;
   note: string | null;
   status: string;
-  customerType: CustomerType;
+  customerType: string;
   /** Decimal(5,2)，serialize 后为 string。默认折扣率（0-100，100=不打折） */
   discountRate: string;
-  /** 开票信息 JSON（未填写时为 null，非空对象） */
+  /** 开票信息 JSON（历史兼容） */
   invoiceInfo: CustomerInvoiceInfo | null;
+  contacts?: CustomerContactView[];
+  invoices?: CustomerInvoiceRow[];
   createdAt: string;
   updatedAt: string;
-  /** 关联地址数（仅 listCustomers 返回时携带） */
-  count?: { customerAddresses: number } | number;
+  /** 关联子表数（仅 listCustomers 返回时携带） */
+  count?: { customerAddresses: number; contacts?: number; invoices?: number } | number;
 }
 
 /**
@@ -574,6 +622,8 @@ export interface CreateSalePriceInput {
 }
 export interface UpdateSalePriceInput {
   price?: number | string;
+  /** 这条售价换绑价格类型（不改全局类型名） */
+  priceTypeId?: string;
   /** v9.1：可切换默认售价标记（同 SKU 下互斥） */
   isDefault?: boolean;
   status?: number;
@@ -595,6 +645,8 @@ export interface CreatePurchasePriceInput {
 }
 export interface UpdatePurchasePriceInput {
   price?: number | string;
+  /** 这条进价换绑供应商（不改全局供应商名） */
+  supplierId?: string;
   isDefault?: boolean;
   status?: number;
 }
@@ -669,8 +721,6 @@ export interface ProductBrandInput {
   name: string;
   sortOrder?: number;
   status?: number;
-  /** v14.0：该规格下该品牌备注（存 spec_brand.remark） */
-  remark?: string;
   /** 图片列表（依附规格×品牌） */
   images?: ProductImageInput[];
   /** v9.0：规格×品牌单位换算列表（brand_unit_conversion 中间表） */
@@ -727,8 +777,10 @@ export interface SaveProductInput {
   specModel: string;
   /** 分类 ID（有效记录 id；「未分类」按 name 解析，无 0 魔数） */
   categoryId?: number;
-  /** v8.0：备注信息 */
+  /** 产品俗称（product.remark） */
   remark?: string;
+  /** 当前这条规格的备注（spec.remark，执行标准） */
+  specRemark?: string;
   status?: number;
   /** v8.0：单位列表（挂规格） */
   units: ProductUnitInput[];
@@ -797,14 +849,13 @@ export type QuickCreateProductResponse =
 
 // --- 供应商（v9.0：新结构） ---
 export interface CreateSupplierInput {
-  /**
-   * v13.2 名称可空（业务必填宽松，比数据库必填宽松）：
-   * 为空时后端补系统默认「面价渠道」并按名称唯一合并档案字段（见后端 businessDefaults.ts）
-   */
   name?: string;
   contacts?: SupplierContact[];
   businessScope?: string;
+  categoryIds?: number[];
+  brandIds?: string[];
   address?: string;
+  addresses?: SupplierAddressView[];
   remark?: string;
   status?: number;
 }
@@ -815,7 +866,10 @@ export interface UpdateSupplierInput {
   name?: string;
   contacts?: SupplierContact[];
   businessScope?: string;
+  categoryIds?: number[];
+  brandIds?: string[];
   address?: string;
+  addresses?: SupplierAddressView[];
   remark?: string;
   status?: number;
 }
@@ -827,9 +881,11 @@ export interface QuickAddCustomerInput {
   wechat?: string;
   company?: string;
   note?: string;
-  customerType?: CustomerType;
+  customerType?: string;
   discountRate?: number;
   invoiceInfo?: CustomerInvoiceInfo;
+  contacts?: CustomerContactView[];
+  invoices?: CustomerInvoiceRow[];
 }
 export interface UpdateCustomerInput {
   phone?: string;
@@ -838,9 +894,11 @@ export interface UpdateCustomerInput {
   company?: string;
   note?: string;
   status?: 'active' | 'disabled';
-  customerType?: CustomerType;
+  customerType?: string;
   discountRate?: number;
   invoiceInfo?: CustomerInvoiceInfo;
+  contacts?: CustomerContactView[];
+  invoices?: CustomerInvoiceRow[];
 }
 
 // --- 客户地址（v9.4 下钻式子表 CRUD） ---
@@ -872,13 +930,18 @@ export interface CustomerSearchItem {
   wechat: string | null;
   company: string | null;
   status: string;
-  customerType: CustomerType;
+  customerType: string;
   /** Decimal(5,2)，serialize 后为 string */
   discountRate: string;
   invoiceInfo: CustomerInvoiceInfo | null;
   createdAt: string;
   updatedAt: string;
-  count?: { customerAddresses: number } | number;
+  contacts?: CustomerContactView[];
+  invoices?: CustomerInvoiceRow[];
+  count?: { customerAddresses: number; contacts?: number; invoices?: number } | number;
+  hitAddress?: { detail: string; contact: string; phone: string; label: string | null } | null;
+  hitContact?: { id: string; name: string; method: string; value: string } | null;
+  hitInvoice?: { invoiceTitle: string; taxNumber: string } | null;
 }
 
 // ============================================================
@@ -912,8 +975,15 @@ export interface SkuSearchRow {
   brandId: string;
   /** v14.0：品牌名称（来自全局品牌档案 brand.name） */
   brandName: string;
-  /** 备注（来自 spec_brand.remark） */
+  /** 规格备注（来自 spec.remark，执行标准） */
   remark: string;
+  /** 产品俗称（来自 product.remark） */
+  productRemark?: string;
+  /** 供应商视图命中的渠道 */
+  hitSupplierId?: string | null;
+  hitSupplierName?: string | null;
+  /** proven=已进价；scoped=经营范围盖住但还没进价 */
+  hitChannelTier?: 'proven' | 'scoped' | null;
   /** 默认显示单位 ID（取 isDisplay=true，空则取 isBase=true） */
   defaultUnitId: string | null;
   defaultUnitName: string | null;
@@ -976,6 +1046,12 @@ export interface SkuOptionUnit {
     price: number;
     /** v9.1：是否默认售价类型（同 SKU 下互斥） */
     isDefault: boolean;
+    /** 组默认或规格例外点位；无则 1 */
+    point?: number;
+    /** 实际售价 = 面价 × 点位 */
+    effectivePrice?: number;
+    /** 点位来自规格例外 */
+    specPoint?: boolean;
   }>;
   /** v9.1：默认售价（取 isDefault=true；无则兜底取最低价） */
   defaultSalePrice: number | null;
@@ -998,6 +1074,8 @@ export interface SkuOptionUnit {
     point?: number | null;
     /** v12.0：进价 = 面价 × 点位（无点位规则时 = 面价） */
     effectivePrice?: number | null;
+    /** 点位来自规格例外 */
+    specPoint?: boolean;
   }>;
   /** v9.0：默认进价（取 isDefault=true；无则兜底取最低价；公开端剥离为 null） */
   defaultPurchasePrice: number | null;
@@ -1007,6 +1085,8 @@ export interface SkuOptionUnit {
   defaultPurchaseSupplierId: string | null;
   /** v9.0：默认进价对应的供应商名称（公开端剥离为 null） */
   defaultPurchaseSupplierName: string | null;
+  /** 这一条规格×品牌下该单位的换算（1 该单位 = N 基准） */
+  conversions?: BrandConversion[];
 }
 
 /** v9.0 品牌单位换算（brand_unit_conversion 中间表） */
@@ -1034,6 +1114,8 @@ export interface SuggestOption {
   value: string;
   /** 已有项的 ID（category 为 number，其他为 BigInt 序列化的 string） */
   id?: string | number;
+  /** 候选推荐标签（如 已进价 / 经营范围），有则覆盖右侧 type 标签 */
+  badge?: string;
 }
 
 /**
@@ -1123,24 +1205,32 @@ export function listProducts(query: {
 
 /** v14.0 产品详情（当前规格扁平化：specId/specModel/brands/units/salePrices/purchasePrices + specs 列表）
  *  @param specId 可选：定位当前编辑规格（不传取首个规格） */
-export function getProduct(id: string, specId?: string): Promise<ProductView> {
+export function getProduct(id: string, specId?: string, brandId?: string): Promise<ProductView> {
+  const params: Record<string, string> = {};
+  if (specId) params.specId = specId;
+  if (brandId) params.brandId = brandId;
   return request.get<unknown, ProductView>(`/api/staff/products/${id}`, {
-    params: specId ? { specId } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
 }
 
-/** v14.0 规格快切：同产品的其他规格列表（产品编辑弹窗规格切换tab用） */
+/** v22.0 系列/规格快切：同产品（可选限定品牌）的规格列表 */
 export interface SiblingSpec {
   id: string;
   specModel: string;
   status: number;
   brandCount: number;
+  /** 该 specModel 下的品牌（brandId 过滤时通常仅一条） */
+  brands?: { id: string; name: string }[];
   isCurrent: boolean;
 }
 
-export function getSiblingSpecs(id: string, specId?: string): Promise<SiblingSpec[]> {
+export function getSiblingSpecs(id: string, specId?: string, brandId?: string): Promise<SiblingSpec[]> {
+  const params: Record<string, string> = {};
+  if (specId) params.specId = specId;
+  if (brandId) params.brandId = brandId;
   return request.get<unknown, SiblingSpec[]>(`/api/staff/products/${id}/sibling-specs`, {
-    params: specId ? { specId } : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
 }
 
@@ -1163,9 +1253,45 @@ export function updateProduct(id: string, data: UpdateProductInput): Promise<Pro
  *
  * 返回值：包含 deletedDocLineRefs 字段（被引用的单据行数），用于前端审计/日志展示
  */
-export function deleteProduct(id: string): Promise<{ id: string; deletedDocLineRefs: number }> {
+export function deleteProduct(
+  id: string,
+  options?: { purgeOrphanFiles?: boolean },
+): Promise<{ id: string; deletedDocLineRefs: number }> {
+  const qs =
+    options?.purgeOrphanFiles === false ? '?purgeOrphanFiles=0' : '';
   return request.delete<unknown, { id: string; deletedDocLineRefs: number }>(
-    `/api/staff/products/${id}`,
+    `/api/staff/products/${id}${qs}`,
+  );
+}
+
+export interface ProductDeletePreviewImage {
+  imageUrl: string;
+  thumbnailUrl: string;
+  productLinkCount: number;
+  refCount: number;
+  remainingRefCount: number;
+  otherProducts: {
+    productId: string;
+    productName: string;
+    brandName: string;
+    specModel: string;
+  }[];
+}
+
+export interface ProductDeletePreview {
+  productId: string;
+  productName: string;
+  brandCount: number;
+  unitCount: number;
+  docLineCount: number;
+  imageCount: number;
+  images: ProductDeletePreviewImage[];
+}
+
+/** 删除前预览：品牌/单位/单据引用/图片共享影响 */
+export function getProductDeletePreview(id: string): Promise<ProductDeletePreview> {
+  return request.get<unknown, ProductDeletePreview>(
+    `/api/staff/products/${id}/delete-preview`,
   );
 }
 
@@ -1190,6 +1316,24 @@ export function deactivateProduct(id: string): Promise<{ id: string; status: num
 export function activateProduct(id: string): Promise<{ id: string; status: number }> {
   return request.post<unknown, { id: string; status: number }>(
     `/api/staff/products/${id}/activate`,
+  );
+}
+
+export function batchDeactivateProducts(
+  ids: string[],
+): Promise<{ count: number; status: number }> {
+  return request.post<unknown, { count: number; status: number }>(
+    '/api/staff/products/batch-deactivate',
+    { ids },
+  );
+}
+
+export function batchActivateProducts(
+  ids: string[],
+): Promise<{ count: number; status: number }> {
+  return request.post<unknown, { count: number; status: number }>(
+    '/api/staff/products/batch-activate',
+    { ids },
   );
 }
 
@@ -1220,6 +1364,174 @@ export function deleteSpec(id: string): Promise<{ id: string; deletedDocLineRefs
 export function getSpecDocRefs(id: string): Promise<{ specId: string; docLineCount: number }> {
   return request.get<unknown, { specId: string; docLineCount: number }>(
     `/api/staff/specs/${id}/doc-refs`,
+  );
+}
+
+/** 选品空行加规格 / 挂品牌后回填检索行用 */
+export interface PickerSkuCreated {
+  specId: string;
+  specModel: string;
+  specBrandId: string;
+  brandId: string;
+  brandName: string;
+  productId: string;
+  productName: string;
+  categoryId: string;
+  categoryName: string;
+  defaultUnitId: string | null;
+  defaultUnitName: string | null;
+}
+
+export function attachBrandToProduct(productId: string, brandName: string): Promise<PickerSkuCreated[]> {
+  return request.post<unknown, PickerSkuCreated[]>(`/api/staff/products/${productId}/brands`, { brandName });
+}
+
+export function ensureSpecOnProductBrand(
+  productId: string,
+  specModel: string,
+  brandName: string,
+): Promise<PickerSkuCreated> {
+  return request.post<unknown, PickerSkuCreated>(`/api/staff/products/${productId}/specs`, {
+    specModel,
+    brandName,
+  });
+}
+
+export function rebindSpecBrand(specBrandId: string, brandName: string): Promise<PickerSkuCreated> {
+  return request.patch<unknown, PickerSkuCreated>(`/api/staff/spec-brands/${specBrandId}`, { brandName });
+}
+
+/** 产品管理备注列：改这一条规格×品牌的 remark */
+export function updateSpecBrandRemark(specBrandId: string, remark: string): Promise<PickerSkuCreated> {
+  return request.patch<unknown, PickerSkuCreated>(`/api/staff/spec-brands/${specBrandId}`, { remark });
+}
+
+export function rebindSpecUnit(
+  specId: string,
+  unitId: string,
+  unitName: string,
+): Promise<{ id: string; unitName: string; specId: string | null; isBase: boolean; isDisplay: boolean }> {
+  return request.patch<
+    unknown,
+    { id: string; unitName: string; specId: string | null; isBase: boolean; isDisplay: boolean }
+  >(`/api/staff/specs/${specId}/units/${unitId}`, { unitName });
+}
+
+export function upsertSpecBrandConversion(
+  specBrandId: string,
+  unitId: string,
+  conversionRate: number,
+): Promise<{ specBrandId: string; unitId: string; conversionRate: number }> {
+  return request.patch<unknown, { specBrandId: string; unitId: string; conversionRate: number }>(
+    `/api/staff/spec-brands/${specBrandId}/units/${unitId}/conversion`,
+    { conversionRate },
+  );
+}
+
+/** 选品改全局：品牌/单位/分类/售价类型/供应商。目标名已存在则并到那个 ID，不报「已存在」。 */
+export type DictChangeKind = 'brand' | 'unit' | 'category' | 'priceType' | 'supplier';
+
+export interface DictChangeExample {
+  title: string;
+  sub?: string;
+}
+
+export interface DictChangeResult {
+  kind: DictChangeKind;
+  mode: 'rename' | 'merge';
+  fromId: string;
+  fromName: string;
+  toId: string;
+  toName: string;
+  total: number;
+  examples: DictChangeExample[];
+  blocking?: string[];
+  summary: string;
+  deletedSource: boolean;
+}
+
+export function previewDictChange(data: {
+  kind: DictChangeKind;
+  fromId: string;
+  toName: string;
+}): Promise<DictChangeResult> {
+  return request.post<unknown, DictChangeResult>('/api/staff/dict-change/preview', data);
+}
+
+export function applyDictChange(data: {
+  kind: DictChangeKind;
+  fromId: string;
+  toName: string;
+}): Promise<DictChangeResult> {
+  return request.post<unknown, DictChangeResult>('/api/staff/dict-change', data);
+}
+
+export function upsertSaleSpecPoint(data: {
+  specBrandId: string;
+  priceTypeId: string;
+  point: number;
+}): Promise<{ specBrandId: string; priceTypeId: string; point: number }> {
+  return request.put<unknown, { specBrandId: string; priceTypeId: string; point: number }>(
+    '/api/staff/sale-spec-points',
+    data,
+  );
+}
+
+export function upsertPurchaseSpecPoint(data: {
+  specBrandId: string;
+  supplierId: string;
+  point: number;
+}): Promise<{ specBrandId: string; supplierId: string; point: number }> {
+  return request.put<unknown, { specBrandId: string; supplierId: string; point: number }>(
+    '/api/staff/purchase-spec-points',
+    data,
+  );
+}
+
+export interface PointChangePreviewInput {
+  side: 'sale' | 'purchase';
+  brandName: string;
+  categoryName: string;
+  newPoint: number;
+  priceTypeId?: string;
+  supplierId?: string;
+}
+
+export interface PointChangePreview {
+  side: 'sale' | 'purchase';
+  oldPoint: number;
+  newPoint: number;
+  total: number;
+  skippedExceptions: number;
+  examples: { title: string; sub?: string }[];
+  summary: string;
+}
+
+export function previewPointChange(data: PointChangePreviewInput): Promise<PointChangePreview> {
+  return request.post<unknown, PointChangePreview>('/api/staff/point-changes/preview', data);
+}
+
+export function upsertSaleGroupPoint(data: {
+  priceTypeId: string;
+  brandName: string;
+  categoryName: string;
+  point: number;
+}): Promise<{ priceTypeId: string; brandName: string; categoryName: string; point: number }> {
+  return request.put<unknown, { priceTypeId: string; brandName: string; categoryName: string; point: number }>(
+    '/api/staff/sale-group-points',
+    data,
+  );
+}
+
+export function upsertPurchaseGroupPoint(data: {
+  supplierId: string;
+  brandName: string;
+  categoryName: string;
+  point: number;
+}): Promise<{ supplierId: string; brandName: string; categoryName: string; point: number }> {
+  return request.put<unknown, { supplierId: string; brandName: string; categoryName: string; point: number }>(
+    '/api/staff/purchase-group-points',
+    data,
   );
 }
 
@@ -1327,35 +1639,50 @@ export function updateUnit(id: string, data: UpdateUnitInput): Promise<UnitView>
  */
 export function deleteUnit(
   id: string,
+  specId?: string,
 ): Promise<{ id: string; softDeleted: boolean }> {
   return request.delete<unknown, { id: string; softDeleted: boolean }>(
     `/api/staff/units/${id}`,
+    { params: specId ? { specId } : undefined },
+  );
+}
+
+/** 全局单位字典快速新建（边用边建·A 类槽）：只传 unitName，幂等，不挂 spec。 */
+export function quickAddUnit(unitName: string): Promise<
+  UnitView & { reused: boolean }
+> {
+  return request.post<unknown, UnitView & { reused: boolean }>(
+    '/api/staff/units/quick-add',
+    { unitName },
   );
 }
 
 /**
- * v9.0 设置单位为基础单位（互斥：同 SPU 仅一个基础单位）。
+ * v9.0 设置单位为基础单位（互斥：同规格仅一个基础单位）。
  * 后端：POST /api/staff/units/:id/base
  */
 export function setUnitBase(
   id: string,
+  specId?: string,
 ): Promise<{ unitId: string; isBase: boolean }> {
   return request.post<unknown, { unitId: string; isBase: boolean }>(
     `/api/staff/units/${id}/base`,
+    specId ? { specId } : undefined,
   );
 }
 
 /**
- * v8.0 设置单位默认显示单位标记（互斥：同 SPU 仅一个默认显示单位）。
+ * v8.0 设置单位默认显示单位标记（互斥：同规格仅一个默认显示单位）。
  * 后端：POST /api/staff/units/:id/display
  */
 export function setUnitDisplay(
   id: string,
   isDisplay: boolean,
+  specId?: string,
 ): Promise<{ unitId: string; isDisplay: boolean }> {
   return request.post<unknown, { unitId: string; isDisplay: boolean }>(
     `/api/staff/units/${id}/display`,
-    { isDisplay },
+    specId ? { isDisplay, specId } : { isDisplay },
   );
 }
 
@@ -1661,6 +1988,9 @@ export function uploadProductImage(file: File): Promise<UploadProductImageResult
  *
  * @param query.keyword 搜索关键词（按空格分词 AND 匹配 keywords）
  * @param query.categoryId 分类筛选
+ * @param query.brandId 品牌筛选（宽表 brandId，索引）
+ * @param query.productId 产品筛选（宽表 productId，索引）
+ * @param query.specModel 规格型号精确筛选（宽表 specModel，索引）
  * @param query.status 状态筛选
  * @param query.page 页码（默认 1）
  * @param query.size 每页数量（默认 20，后端夹紧到 [1, 50]）
@@ -1668,13 +1998,81 @@ export function uploadProductImage(file: File): Promise<UploadProductImageResult
 export function searchProducts(query: {
   keyword?: string;
   categoryId?: number;
+  brandId?: string;
+  brandName?: string;
+  productId?: string;
+  productName?: string;
+  specModel?: string;
+  specExact?: boolean | 0 | 1;
   status?: number;
   page?: number;
   size?: number;
+  /** 选用入口层，默认 name */
+  entryView?: string;
 }): Promise<SearchProductResult> {
   return request.get<unknown, SearchProductResult>('/api/staff/products/search', {
     params: query,
   });
+}
+
+/**
+ * 档案列表表头级联候选（当前结果里的产品名 / 品牌 / 规格，不是全局字典）。
+ * 后端：GET /api/staff/products/search/facets
+ */
+export function listSkuSearchFacets(query: {
+  field: 'product' | 'brand' | 'spec';
+  keyword?: string;
+  q?: string;
+  categoryId?: number;
+  brandId?: string;
+  brandName?: string;
+  productId?: string;
+  productName?: string;
+  specModel?: string;
+  specExact?: boolean;
+  status?: number;
+}): Promise<SuggestOption[]> {
+  return request
+    .get<unknown, { options: SuggestOption[] }>('/api/staff/products/search/facets', {
+      params: query,
+    })
+    .then((res) => res.options ?? []);
+}
+
+export function listSupplierFacets(query: {
+  field: 'name' | 'category' | 'brand' | 'scope';
+  keyword?: string;
+  q?: string;
+  status?: number | 'all';
+  name?: string;
+  nameExact?: boolean;
+  nameId?: string;
+  categoryId?: number;
+  categoryName?: string;
+  brandId?: string;
+  brandName?: string;
+  scopeName?: string;
+}): Promise<SuggestOption[]> {
+  return request
+    .get<unknown, { options: SuggestOption[] }>('/api/staff/suppliers/facets', { params: query })
+    .then((res) => res.options ?? []);
+}
+
+export function listCustomerFacets(query: {
+  field: 'name' | 'phone';
+  keyword?: string;
+  q?: string;
+  status?: string;
+  name?: string;
+  nameExact?: boolean;
+  nameId?: string;
+  phone?: string;
+  phoneExact?: boolean;
+  phoneId?: string;
+}): Promise<SuggestOption[]> {
+  return request
+    .get<unknown, { options: SuggestOption[] }>('/api/staff/customers/facets', { params: query })
+    .then((res) => res.options ?? []);
 }
 
 /**
@@ -1852,12 +2250,66 @@ export function convertQty(
 /** 供应商列表（后端 paginate() 返回 { list, pagination }） */
 export function listSuppliers(query: {
   keyword?: string;
-  status?: number;
+  status?: number | 'all';
+  name?: string;
+  nameExact?: boolean;
+  nameId?: string;
+  categoryId?: number;
+  categoryName?: string;
+  brandId?: string;
+  brandName?: string;
+  /** 表头「经营范围」手输非标：分类名或品牌名命中即可 */
+  scopeName?: string;
   page?: number;
   pageSize?: number;
 }): Promise<PaginationResult<SupplierView>> {
   return request.get<unknown, PaginationResult<SupplierView>>('/api/staff/suppliers', {
     params: query,
+  });
+}
+
+export type SupplierCandidateTier = 'proven' | 'scoped' | 'other';
+
+export interface SupplierCandidateView {
+  id: string;
+  name: string;
+  tier: SupplierCandidateTier;
+}
+
+export interface SupplierCandidatesResult {
+  proven: SupplierCandidateView[];
+  scoped: SupplierCandidateView[];
+  others: SupplierCandidateView[];
+}
+
+/** 进价/选品：按 SKU 推荐供应渠道（已进价 → 经营范围 → 其余） */
+export function listSupplierCandidates(query: {
+  categoryId?: number;
+  brandId?: string;
+  unitId?: string;
+  keyword?: string;
+}): Promise<SupplierCandidatesResult> {
+  return request.get<unknown, SupplierCandidatesResult>('/api/staff/suppliers/candidates', {
+    params: query,
+  });
+}
+
+export type SupplierPickerEntryView = 'loose' | 'name' | 'contact' | 'address';
+
+export interface SupplierSearchHit {
+  id: string;
+  name: string;
+  phone: string | null;
+  hitLine: string | null;
+}
+
+export function searchSuppliers(
+  keyword: string,
+  limit = 10,
+  entryView: SupplierPickerEntryView = 'loose',
+): Promise<SupplierSearchHit[]> {
+  return request.get<unknown, SupplierSearchHit[]>('/api/staff/suppliers/search', {
+    params: { keyword, limit, entryView },
   });
 }
 
@@ -1885,6 +2337,16 @@ export function setSupplierStatus(
   return request.post<unknown, SupplierView>(`/api/staff/suppliers/${id}/status`, {
     status,
   });
+}
+
+export function batchSetSupplierStatus(
+  ids: string[],
+  status: number,
+): Promise<{ count: number; status: number }> {
+  return request.post<unknown, { count: number; status: number }>(
+    '/api/staff/suppliers/batch-status',
+    { ids, status },
+  );
 }
 
 /**
@@ -1945,6 +2407,69 @@ export function deleteContactMethod(id: string): Promise<{ id: string }> {
   return request.delete<unknown, { id: string }>(`/api/staff/contact-methods/${id}`);
 }
 
+export interface CustomerTypeView {
+  id: string;
+  name: string;
+  sortOrder: number;
+  status: number;
+}
+
+export function listCustomerTypes(): Promise<CustomerTypeView[]> {
+  return request.get<unknown, CustomerTypeView[]>('/api/staff/customer-types');
+}
+
+export function createCustomerType(data: { name: string }): Promise<CustomerTypeView> {
+  return request.post<unknown, CustomerTypeView>('/api/staff/customer-types', data);
+}
+
+export function updateCustomerType(
+  id: string,
+  data: { name?: string; status?: number },
+): Promise<CustomerTypeView> {
+  return request.patch<unknown, CustomerTypeView>(`/api/staff/customer-types/${id}`, data);
+}
+
+export function deleteCustomerType(id: string): Promise<{ id: string }> {
+  return request.delete<unknown, { id: string }>(`/api/staff/customer-types/${id}`);
+}
+
+export interface AddressTypeView {
+  id: string;
+  name: string;
+  sortOrder: number;
+  status: number;
+}
+
+export function listAddressTypes(): Promise<AddressTypeView[]> {
+  return request.get<unknown, AddressTypeView[]>('/api/staff/address-types');
+}
+
+export function quickAddAddressType(name: string): Promise<AddressTypeView & { reused: boolean }> {
+  return request.post<unknown, AddressTypeView & { reused: boolean }>(
+    '/api/staff/address-types/quick-add',
+    { name },
+  );
+}
+
+export function updateAddressType(
+  id: string,
+  data: { name?: string; sortOrder?: number; status?: number },
+): Promise<AddressTypeView> {
+  return request.patch<unknown, AddressTypeView>(`/api/staff/address-types/${id}`, data);
+}
+
+export function deleteAddressType(id: string): Promise<{ id: string }> {
+  return request.delete<unknown, { id: string }>(`/api/staff/address-types/${id}`);
+}
+
+export function addressTypeRefCount(
+  id: string,
+): Promise<{ suppliers: number }> {
+  return request.get<unknown, { suppliers: number }>(
+    `/api/staff/address-types/${id}/ref-counts`,
+  );
+}
+
 // ============================================================
 // §18 客户管理（员工端，/api/staff/customers）—— 保留
 // ============================================================
@@ -1953,6 +2478,12 @@ export function deleteContactMethod(id: string): Promise<{ id: string }> {
 export function listCustomers(query: {
   keyword?: string;
   status?: string;
+  name?: string;
+  nameExact?: boolean;
+  nameId?: string;
+  phone?: string;
+  phoneExact?: boolean;
+  phoneId?: string;
   page?: number;
   pageSize?: number;
 }): Promise<PaginationResult<CustomerView>> {
@@ -1962,9 +2493,13 @@ export function listCustomers(query: {
 }
 
 /** 客户匹配检索（前 N 条，用于新建单据时的快速匹配） */
-export function searchCustomers(keyword: string, limit = 10): Promise<CustomerSearchItem[]> {
+export function searchCustomers(
+  keyword: string,
+  limit = 10,
+  entryView: 'loose' | 'name' | 'contact' | 'address' | 'invoice' = 'loose',
+): Promise<CustomerSearchItem[]> {
   return request.get<unknown, CustomerSearchItem[]>('/api/staff/customers/search', {
-    params: { keyword, limit },
+    params: { keyword, limit, entryView },
   });
 }
 

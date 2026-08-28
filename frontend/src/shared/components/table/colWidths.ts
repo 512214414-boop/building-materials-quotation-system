@@ -5,7 +5,7 @@
 //
 // 核心原则：
 //   1. 内容决定宽度 —— 列宽 = 该列典型内容实际宽度，不多给一个像素
-//   2. 换行优于截断 —— name 列固定宽度 + 自动换行，不用 ellipsis 截断
+//   2. 数据列默认单行、按当前页最长内容撑开（不低于 minWidth）；wrap 列才换行
 //   3. 尾部弹性填充 —— 弹性列贪婪占据剩余空间，表格总宽度 = 容器宽度
 //
 // 8 种列类型：
@@ -20,7 +20,7 @@
 //
 // 使用方式：
 //   import { COL_WIDTHS } from '@/shared/components/table/colWidths';
-//   { key: 'productName', minWidth: COL_WIDTHS.NAME_L, wrap: true, ... }
+//   { key: 'productName', minWidth: COL_WIDTHS.NAME_QUOTE, fitContent: true, ... }
 //   { key: 'salePrice',  minWidth: COL_WIDTHS.AMOUNT, ... }
 //
 // 禁止业务页面硬编码像素宽度，必须使用本文件预设常量。
@@ -39,17 +39,29 @@ export const COL_WIDTHS = {
   // ---- 金额/数字（等宽字体，nowrap）----
   AMOUNT: 68,  // ¥XXXXXX（含¥符号+6位数字+下拉箭头）
 
-  // ---- 主名称列（固定宽度 + wrap:true 换行）----
-  // 宽度推导：内容区典型字数 × 字符宽度 + 单元格水平 padding（~16px）
-  // 字体大小：表格 body-sm = 11px，中文 ≈11px/字，ASCII/数字 ≈7px/字，空格 ≈3px
-  // 建材产品全名 = 品牌(2-4字) + 空格 + 产品名(4-8字) + 空格 + 规格(3-12字混合)
-  // v11.3：用户要求至少22字符单行显示，NAME_L 调至 360px
-  //   22中文字 × 11px + 16px padding = 258px，但混合字符（品牌+数字规格）
-  //   实际宽度更大，360px 保证 22+ 字符（含混合 ASCII）单行显示
+  // ---- 主名称列 ----
+  // 宽度推导：内容区典型字数 × 字符宽度 + 单元格水平 padding
+  // 字体大小：表格 body-sm = 11px
+  // 开单产品全名走 fitContent：下限 NAME_QUOTE，按当前页最长名称加 NAME_FIT_CHROME
   NAME_S: 160,  // 短名称 ≈12字内容区（客户名、品牌名单列）
   NAME_M: 200,  // 中名称 ≈16字内容区（产品短名、简单组合名）
+  /** 开单行产品全名：列宽下限；实际宽度由 fitContent 按最长一行撑开 */
+  NAME_QUOTE: 220,
+  /** 开单拆开后的产品名（不再扛全名） */
+  NAME_PRODUCT: 96,
+  /** 开单拆开后的品牌 */
+  NAME_BRAND: 64,
+  /** 开单拆开后的规格 */
+  NAME_SPEC: 80,
   NAME_L: 360,  // 长名称 ≈30字内容区（建材产品全名=品牌+名称+规格，主列表用，确保22+字符单行）
   NAME_XL: 400, // 超长名称 ≈34字内容区（描述性名称、完整地址等）
+  /** 开单产品名随内容撑开：单元格左右 padding + 文字左垫 + ×槽 + 待确认槽 + 下拉 + 量宽余量 */
+  NAME_FIT_CHROME: 80,
+  /** 无下拉的短列随内容撑开：单元格左右 padding + 量宽余量 */
+  CELL_FIT_CHROME: 24,
+
+  /** 选品/档案确认浮层：看全文够用；说明换行，不按整句把面板撑开 */
+  CONFIRM: 380,
 
   // ---- 时间/日期（等宽字体，nowrap）----
   TIME: 68,   // MM/DD HH:mm
@@ -60,14 +72,104 @@ export const COL_WIDTHS = {
   // ---- 序号 ----
   SEQ: 32,
 
+  // ---- 操作列 ----
+  OP_BTN: 72,   // 单按钮操作列（结算/确认）
+  OP_ICON: 40,  // 图标按钮操作列
+
   // ---- 备注/短文本 ----
   REMARK_S: 52,  // 短备注（无内容时显示"—"）
 } as const;
 
-// 列类型标记（用于 UnifiedTableColumn 配置时语义化标记 wrap 行为）
+const FIT_FONT_FALLBACK =
+  '11px "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif';
+
+let fitMeasureEl: HTMLSpanElement | null = null;
+
+function measureLine(text: string): number {
+  if (!text) return 0;
+  if (typeof document === 'undefined') return text.length * 11;
+  if (!fitMeasureEl) {
+    fitMeasureEl = document.createElement('span');
+    fitMeasureEl.setAttribute('aria-hidden', 'true');
+    fitMeasureEl.style.cssText = [
+      'position:absolute',
+      'left:-9999px',
+      'top:0',
+      'visibility:hidden',
+      'pointer-events:none',
+      'white-space:nowrap',
+      'font-size:var(--body-sm-font-size, 11px)',
+      'font-family:var(--font-family-default)',
+      'font-weight:400',
+    ].join(';');
+    document.body.appendChild(fitMeasureEl);
+  }
+  fitMeasureEl.textContent = text;
+  const w = fitMeasureEl.getBoundingClientRect().width;
+  return w > 0 ? w : fallbackCanvasWidth(text);
+}
+
+function fallbackCanvasWidth(text: string): number {
+  const canvas = document.createElement('canvas').getContext('2d');
+  if (!canvas) return text.length * 11;
+  canvas.font = FIT_FONT_FALLBACK;
+  return canvas.measureText(text).width;
+}
+
+/** 选用格不再挂下拉槽，和短列同一套边距 */
+export function fitChromeFor(col: { pickerTrigger?: string }): number {
+  void col;
+  return COL_WIDTHS.CELL_FIT_CHROME;
+}
+
+/** 单行列宽：当前页最长一行 + 控件槽，不低于 min。与表体同字体量宽。 */
+export function fitColWidth(
+  texts: Iterable<string | null | undefined>,
+  min: number,
+  chrome: number = COL_WIDTHS.NAME_FIT_CHROME,
+): number {
+  let max = min;
+  for (const raw of texts) {
+    const t = raw == null ? '' : String(raw);
+    if (!t) continue;
+    const w = Math.ceil(measureLine(t) + chrome);
+    if (w > max) max = w;
+  }
+  return max;
+}
+
+let fitDraft: Record<string, string> = {};
+const fitDraftSubs = new Set<() => void>();
+
+export function setFitDraft(colKey: string, text: string | null) {
+  if (!text) {
+    if (!(colKey in fitDraft)) return;
+    const next = { ...fitDraft };
+    delete next[colKey];
+    fitDraft = next;
+  } else if (fitDraft[colKey] === text) {
+    return;
+  } else {
+    fitDraft = { ...fitDraft, [colKey]: text };
+  }
+  fitDraftSubs.forEach((s) => s());
+}
+
+export function subscribeFitDraft(cb: () => void) {
+  fitDraftSubs.add(cb);
+  return () => {
+    fitDraftSubs.delete(cb);
+  };
+}
+
+export function getFitDraft() {
+  return fitDraft;
+}
+
+// 列类型标记
 export const COL_WRAP = {
-  /** 名称列：固定宽度 + 自动换行（仅 name 类型列使用） */
+  /** 档案列表等仍换行的名称列 */
   NAME: true,
-  /** 紧凑列：nowrap，宽度由内容包裹（icon/tag/amount/time/seq/op） */
+  /** 紧凑列：nowrap */
   COMPACT: false,
 } as const;

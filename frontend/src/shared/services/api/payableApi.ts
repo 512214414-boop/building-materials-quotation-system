@@ -66,6 +66,29 @@ export function settlePayable(id: string): Promise<PayableRow> {
   return request.post<unknown, PayableRow>(`/api/staff/supplier-payables/${id}/settle`);
 }
 
+export interface PayableAgingResult {
+  buckets: {
+    '0-30': { count: number; amount: number };
+    '31-60': { count: number; amount: number };
+    '61-90': { count: number; amount: number };
+    '90+': { count: number; amount: number };
+  };
+  list: Array<{
+    id: string;
+    payableNo: string;
+    supplierName: string | null;
+    amount: number;
+    bucket: string;
+    bizType: string;
+    bizTypeLabel: string;
+    createdAt: string;
+  }>;
+}
+
+export function getPayableAging(): Promise<PayableAgingResult> {
+  return request.get<unknown, PayableAgingResult>('/api/staff/supplier-payables/aging');
+}
+
 /** 导出对账单 CSV（仅 pending；绕过 JSON 拦截器直接下载 Blob） */
 export async function downloadPayablesExport(): Promise<void> {
   const { staffTokenStorage } = await import('../request.js');

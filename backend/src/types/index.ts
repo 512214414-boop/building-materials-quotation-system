@@ -73,6 +73,7 @@ export type ViewCode =
   | 'supplier_manage'
   // v1.7.0：库存/仓库/欠库/待入库（配货·成本推演方案新增权限叶子）
   | 'inventory'
+  | 'ops_report'
   | 'auth_code_manage'
   | 'access_request_manage'
   | 'user_manage'
@@ -268,6 +269,7 @@ const masterNone = {
   customer_manage: 'none',
   supplier_manage: 'none',
   inventory: 'none',
+  ops_report: 'none',
 } as const;
 
 const systemNone = {
@@ -287,6 +289,7 @@ export const VIEW_PERMISSION_MATRIX: ViewPermissionMatrix = {
     ...masterNone,
     customer_manage: 'ro',
     supplier_manage: 'ro',
+    ops_report: 'ro',
     ...systemNone,
   },
   allocator: {
@@ -296,6 +299,7 @@ export const VIEW_PERMISSION_MATRIX: ViewPermissionMatrix = {
     ...masterNone,
     customer_manage: 'ro',
     supplier_manage: 'ro',
+    ops_report: 'ro',
     ...systemNone,
   },
   cashier: {
@@ -305,6 +309,7 @@ export const VIEW_PERMISSION_MATRIX: ViewPermissionMatrix = {
     ...masterNone,
     customer_manage: 'ro',
     supplier_manage: 'ro',
+    ops_report: 'ro',
     ...systemNone,
   },
   delivery: {
@@ -330,6 +335,7 @@ export const VIEW_PERMISSION_MATRIX: ViewPermissionMatrix = {
     customer_manage: 'rw',
     supplier_manage: 'rw',
     inventory: 'rw',
+    ops_report: 'rw',
     auth_code_manage: 'rw',
     access_request_manage: 'rw',
     user_manage: 'ro',
@@ -350,6 +356,7 @@ export const VIEW_PERMISSION_MATRIX: ViewPermissionMatrix = {
     customer_manage: 'rw',
     supplier_manage: 'rw',
     inventory: 'ro',
+    ops_report: 'ro',
     auth_code_manage: 'rw',
     access_request_manage: 'rw',
     user_manage: 'rw',
@@ -372,6 +379,7 @@ export const ALL_VIEW_CODES: ViewCode[] = [
   'customer_manage',
   'supplier_manage',
   'inventory',
+  'ops_report',
   'auth_code_manage',
   'access_request_manage',
   'user_manage',

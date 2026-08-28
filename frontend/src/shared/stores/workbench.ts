@@ -10,7 +10,7 @@ interface WorkbenchTab {
   customerName: string;
   /** v10.33 单据日期（标签显示首选组成部分） */
   date: string;
-  /** v10.33 整单备注（标签显示首选组成部分） */
+  /** v10.33 单据标题（标签显示首选组成部分；与 note 互填） */
   note: string;
 }
 

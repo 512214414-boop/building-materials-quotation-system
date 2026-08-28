@@ -9,7 +9,7 @@ import { auditMiddleware } from './middleware/auditLogger.js';
 import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler.js';
 import publicRouter from './routes/public.js';
 import customerRouter from './routes/customer.js';
-import staffRouter from './routes/staff.js';
+import staffRouter from './routes/staff/index.js';
 
 export function createApp() {
   const app = express();

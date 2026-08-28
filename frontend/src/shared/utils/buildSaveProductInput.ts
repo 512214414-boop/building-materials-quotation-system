@@ -128,6 +128,7 @@ export function buildSaveProductInput(
     specModel: product.specModel ?? '',
     categoryId: product.categoryId,
     remark: product.remark || undefined,
+    specRemark: (product.brands ?? []).find((b) => b.id === product.specId)?.remark || undefined,
     status: product.status,
     units: unitsInput,
     brands: brandsInput,

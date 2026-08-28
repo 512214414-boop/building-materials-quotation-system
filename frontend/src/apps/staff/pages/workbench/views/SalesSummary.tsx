@@ -17,6 +17,10 @@ import { App as AntdApp, Spin } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
+import { HeaderCascadeFilter } from '../../../../../shared/components/archive/HeaderCascadeFilter.js';
+import { ArchiveFilterChip } from '../../../../../shared/components/archive/ArchiveListFilters.js';
+import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
+import { useDocumentLineCascadeFilter } from '../../../../../shared/hooks/useDocumentLineCascadeFilter.js';
 import {
   listPurchaseQuoteLines,
   type PurchaseQuoteLineView,
@@ -124,8 +128,15 @@ interface SummaryRow {
   key: string;
   seq: number;
   productRef: string;
+  productId: string | null;
+  brandId: string | null;
+  productName?: string | null;
+  brandName?: string | null;
   /** v5.0：规格快照（原 v4.0 specModel 改名） */
   spec: string | null;
+  hideProductName?: boolean;
+  hideBrandName?: boolean;
+  hideSpecModel?: boolean;
   unit: string;
   qty: number;
   actualQty: number;
@@ -148,6 +159,7 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
   // 数据
   const [summary, setSummary] = useState<DocumentSummary | null>(null);
   const [docLines, setDocLines] = useState<StaffDocumentLine[]>([]);
+  const lineFilter = useDocumentLineCascadeFilter(documentId);
   const [quoteLines, setQuoteLines] = useState<QuoteLineView[]>([]);
   const [costLines, setCostLines] = useState<CostDocumentLineView[]>([]);
   const [refundLines, setRefundLines] = useState<RefundLineView[]>([]);
@@ -229,6 +241,10 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
         key: dl.id,
         seq: dl.seq,
         productRef: dl.productRef,
+        productId: dl.productId,
+        brandId: dl.brandId,
+        productName: dl.productName,
+        brandName: dl.brandName,
         spec: dl.spec,
         unit: dl.unit,
         qty: Number(dl.qty),
@@ -243,6 +259,11 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
       };
     });
   }, [docLines, quoteLines, costLines, refundLines]);
+
+  const visibleRows = useMemo(
+    () => lineFilter.filterRows(rows),
+    [lineFilter.filterRows, rows],
+  );
 
   // ----------------------------------------------------------
   // 派生：退换汇总
@@ -279,24 +300,74 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
       // 1. 商品名称
       {
         key: 'productRef',
-        title: '商品名称',
+        title: (
+          <HeaderCascadeFilter
+            field="product"
+            placeholder="产品名"
+            selectedName={lineFilter.filterProductName}
+            fetcher={lineFilter.fetchProductFacet}
+            onSelect={lineFilter.selectProduct}
+            onClear={lineFilter.clearProductFilter}
+          />
+        ),
         dataIndex: 'productRef',
-        minWidth: 180,
-        align: 'center',
+        minWidth: COL_WIDTHS.NAME_QUOTE,
+        className: 'ds-cascade-col',
+        align: 'left',
         renderMode: 'static',
-        ellipsis: true,
-        render: (v: string) => <span style={{ color: 'var(--text-default)' }}>{v}</span>,
+        render: (_v: string, r: SummaryRow) => {
+          if (r.hideProductName) return <span />;
+          const name = r.productName || r.productRef;
+          return <span style={{ color: 'var(--text-default)' }}>{name || '—'}</span>;
+        },
       },
-      // 3. 规格型号（v5.0：spec 快照）
+      {
+        key: 'brandName',
+        title: (
+          <HeaderCascadeFilter
+            field="brand"
+            placeholder="品牌"
+            selectedName={lineFilter.filterBrandName}
+            fetcher={lineFilter.fetchBrandFacet}
+            onSelect={lineFilter.selectBrand}
+            onClear={lineFilter.clearBrandFilter}
+          />
+        ),
+        dataIndex: 'brandName',
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        align: 'left',
+        renderMode: 'static',
+        render: (_v, r: SummaryRow) => {
+          if (r.hideBrandName) return <span />;
+          return r.brandName ? (
+            <span style={{ color: 'var(--text-default)' }}>{r.brandName}</span>
+          ) : (
+            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+          );
+        },
+      },
       {
         key: 'spec',
-        title: '规格',
+        title: (
+          <HeaderCascadeFilter
+            field="specModel"
+            placeholder="规格"
+            selectedName={lineFilter.filterSpecModel}
+            fetcher={lineFilter.fetchSpecFacet}
+            onSelect={lineFilter.selectSpec}
+            onClear={lineFilter.clearSpecFilter}
+          />
+        ),
         dataIndex: 'spec',
-        minWidth: 120,
+        minWidth: COL_WIDTHS.NAME_S,
+        className: 'ds-cascade-col',
+        align: 'left',
         renderMode: 'static',
-        ellipsis: true,
-        render: (v: string | null) =>
-          v ? v : <span style={{ color: 'var(--text-tertiary)' }}>—</span>,
+        render: (_v: string | null, r: SummaryRow) => {
+          if (r.hideSpecModel) return <span />;
+          return r.spec ? r.spec : <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+        },
       },
       // 4. 单位
       {
@@ -440,7 +511,7 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
         ),
       },
     ],
-    [],
+    [lineFilter],
   );
 
   // ----------------------------------------------------------
@@ -485,6 +556,14 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
         statusHint: 'V9 只读归集 · 店长确认与定档请切换至「定档归档」视图',
       }}
       bizStrip={{
+        left:
+          lineFilter.chips.length > 0 ? (
+            <span className="ds-filter-row">
+              {lineFilter.chips.map((c) => (
+                <ArchiveFilterChip key={c.key} label={c.label} value={c.value} onClear={c.onClear} />
+              ))}
+            </span>
+          ) : undefined,
         right: (
           <>
             <BizField label="实际销售额" tone="brand" mono strong>
@@ -540,7 +619,7 @@ export default function SalesSummary({ documentId }: { documentId: string }) {
         ) : (
           <UnifiedTable<SummaryRow>
             columns={columns}
-            rows={rows}
+            rows={visibleRows}
             rowKey={(r) => r.key}
             loading={loading && rows.length === 0}
           />

@@ -2,7 +2,7 @@
 // 申请列表（分页）+ 手机号/状态筛选 + 通过/拒绝（含拒绝原因）审核操作
 
 import { useEffect, useState, useCallback } from 'react';
-import { App as AntdApp, Form, Menu } from 'antd';
+import { Form, Menu } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
@@ -10,6 +10,7 @@ import DsSelect from '../../../shared/components/DsSelect.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
 import {
   listAccessRequests,
   reviewAccessRequest,
@@ -43,7 +44,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function AccessRequests() {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
 
   // 列表状态
   const [loading, setLoading] = useState(false);
@@ -155,7 +156,7 @@ export default function AccessRequests() {
   // ============================================================
   const columns: UnifiedTableColumn<AccessRequestView>[] = [
     {
-      title: '手机号',
+      title: '登录账号',
       dataIndex: 'phone',
       key: 'phone',
       minWidth: 160,
@@ -285,13 +286,13 @@ export default function AccessRequests() {
       actionBar={{
         count: total,
         countUnit: '条',
-        statusHint: '审核客户访问申请；通过后系统自动生成授权码，请告知客户用「手机号 + 授权码」准入',
+        statusHint: '审核客户访问申请；通过后系统自动生成授权码，请告知客户用「登录账号 + 授权码」准入',
       }}
       bizStrip={{
         left: (
           <>
             <DsInput
-              placeholder="搜索手机号"
+              placeholder="搜索登录账号"
               value={phoneFilter}
               onChange={(e) => setPhoneFilter(e.target.value)}
               onPressEnter={() => {
@@ -405,7 +406,7 @@ export default function AccessRequests() {
         okText="确认拒绝"
         okButtonProps={{ danger: true }}
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={440}
       >
         <Form form={rejectForm} layout="vertical" requiredMark>

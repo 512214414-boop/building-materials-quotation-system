@@ -5,27 +5,45 @@
 //           原子更新（v11.0.11）：内容未变化时不提交
 //
 // 职责边界：
-//   - 点击进入编辑态（focus + select）
+//   - 格子里永远是同一套 input（与产品名列 DsInputDropdown 同一稳定性）
+//   - 点格只聚焦/全选，不换控件、不加 padding、不改列宽
 //   - 失焦/Enter/Tab/Arrow 时提交或导航
 //   - 零业务逻辑（onCommit 上抛交付层）
 //   - 零后端调用
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { CellEditorProps } from './CellEditor.types.js';
-import { CELL_TEXT_STYLE, CELL_INPUT_FOCUS_STYLE, parseNumberValue } from './CellEditor.types.js';
+import { CELL_INPUT_STYLE, CELL_INPUT_FOCUS_STYLE, parseNumberValue } from './CellEditor.types.js';
+import DsClearX from '../../DsClearX.js';
+import { setFitDraft } from '../colWidths.js';
+import { armNativeInput } from '../../../utils/armNativeInput.js';
+
+function tracksFitWidth(column: { wrap?: boolean; fitContent?: boolean }): boolean {
+  return !column.wrap && column.fitContent !== false;
+}
 
 const TextCellEditor = memo<CellEditorProps>(
   ({ value, record, rowIndex, colIdx, column, isDisabled, onCommit, onNavigate }) => {
     const [editing, setEditing] = useState(false);
+    const [hovered, setHovered] = useState(false);
+    const [draft, setDraft] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
     const displayValue = value != null && value !== '' ? String(value) : '';
 
-    // 原子更新：原始值的标准化形式
     const originalNormalized = column.renderMode === 'number'
       ? parseNumberValue(displayValue)
       : displayValue;
 
-    // 进入编辑态时自动聚焦 + 全选
+    useEffect(() => {
+      if (!editing) setDraft(displayValue);
+    }, [displayValue, editing]);
+
+    useEffect(() => {
+      if (!editing && inputRef.current && inputRef.current.value !== displayValue) {
+        inputRef.current.value = displayValue;
+      }
+    }, [displayValue, editing]);
+
     useEffect(() => {
       if (editing && inputRef.current) {
         inputRef.current.focus();
@@ -33,35 +51,34 @@ const TextCellEditor = memo<CellEditorProps>(
       }
     }, [editing]);
 
-    const handleClick = useCallback(() => {
-      if (!isDisabled) setEditing(true);
-    }, [isDisabled]);
+    const readEditingValue = useCallback(
+      (raw: string) => (column.renderMode === 'number' ? parseNumberValue(raw) : raw),
+      [column.renderMode],
+    );
 
     const handleBlur = useCallback(
       (e: React.FocusEvent<HTMLInputElement>) => {
-        const raw = e.target.value;
-        const v = column.renderMode === 'number' ? parseNumberValue(raw) : raw;
-        if (v === originalNormalized) {
-          setEditing(false);
-          return;
+        const v = readEditingValue(e.target.value);
+        if (v !== originalNormalized) {
+          onCommit(rowIndex, colIdx, v);
         }
-        onCommit(rowIndex, colIdx, v);
+        if (tracksFitWidth(column)) setFitDraft(column.key, null);
         setEditing(false);
       },
-      [rowIndex, colIdx, column.renderMode, onCommit, originalNormalized],
+      [rowIndex, colIdx, column, onCommit, originalNormalized, readEditingValue],
     );
 
     const commitAndNavigate = useCallback(
       (e: React.KeyboardEvent<HTMLInputElement>, targetRow: number, targetCol: number) => {
-        const raw = (e.target as HTMLInputElement).value;
-        const v = column.renderMode === 'number' ? parseNumberValue(raw) : raw;
+        const v = readEditingValue((e.target as HTMLInputElement).value);
         if (v !== originalNormalized) {
           onCommit(rowIndex, colIdx, v);
         }
+        if (tracksFitWidth(column)) setFitDraft(column.key, null);
         setEditing(false);
         onNavigate(targetRow, targetCol);
       },
-      [rowIndex, colIdx, column.renderMode, onCommit, onNavigate, originalNormalized],
+      [rowIndex, colIdx, column, onCommit, onNavigate, originalNormalized, readEditingValue],
     );
 
     const handleKeyDown = useCallback(
@@ -71,6 +88,9 @@ const TextCellEditor = memo<CellEditorProps>(
           commitAndNavigate(e, rowIndex + 1, colIdx);
         } else if (e.key === 'Escape') {
           e.preventDefault();
+          if (inputRef.current) inputRef.current.value = displayValue;
+          setDraft(displayValue);
+          if (tracksFitWidth(column)) setFitDraft(column.key, null);
           setEditing(false);
         } else if (e.key === 'Tab') {
           e.preventDefault();
@@ -83,38 +103,83 @@ const TextCellEditor = memo<CellEditorProps>(
           commitAndNavigate(e, rowIndex - 1, colIdx);
         }
       },
-      [rowIndex, colIdx, commitAndNavigate],
+      [rowIndex, colIdx, column, commitAndNavigate, displayValue],
     );
 
-    if (editing) {
-      return (
-        <div data-cell-row={rowIndex} data-cell-col={colIdx}>
-          <input
-            ref={inputRef}
-            defaultValue={displayValue}
-            inputMode={column.renderMode === 'number' ? 'decimal' : 'text'}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            disabled={isDisabled}
-            style={CELL_INPUT_FOCUS_STYLE}
-          />
-        </div>
-      );
-    }
+    const shown = editing ? draft : displayValue;
+    const clearVisible = !isDisabled && shown !== '' && (editing || hovered);
+    const textStyle = column.cellTextStyle?.(value, record);
+    const align = column.align ?? 'center';
 
     return (
       <div
         data-cell-row={rowIndex}
         data-cell-col={colIdx}
-        style={CELL_TEXT_STYLE}
-        onClick={handleClick}
+        style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          height: '100%',
+          minWidth: 0,
+        }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {column.render ? (
-          column.render(value, record, rowIndex)
-        ) : displayValue ? (
-          displayValue
-        ) : (
-          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+        <input
+          ref={inputRef}
+          size={1}
+          defaultValue={displayValue}
+          placeholder={column.placeholder ?? '—'}
+          inputMode={column.renderMode === 'number' ? 'decimal' : 'text'}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={isDisabled}
+          onPointerDown={() => {
+            if (!isDisabled) armNativeInput(inputRef.current);
+          }}
+          onFocus={() => {
+            if (!isDisabled) setEditing(true);
+          }}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (tracksFitWidth(column)) setFitDraft(column.key, e.target.value);
+          }}
+          style={{
+            ...(editing ? CELL_INPUT_FOCUS_STYLE : CELL_INPUT_STYLE),
+            textAlign: align,
+            ...textStyle,
+            touchAction: 'manipulation',
+            WebkitUserSelect: 'text',
+            userSelect: 'text',
+          }}
+        />
+        {column.displaySuffix ? (
+          <span
+            style={{
+              flexShrink: 0,
+              paddingRight: 4,
+              color: textStyle?.color ?? 'inherit',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {column.displaySuffix}
+          </span>
+        ) : null}
+        {clearVisible && (
+          <DsClearX
+            onClear={() => {
+              setDraft('');
+              setEditing(true);
+              if (tracksFitWidth(column)) setFitDraft(column.key, '');
+              if (inputRef.current) {
+                inputRef.current.value = '';
+                inputRef.current.focus();
+              }
+            }}
+          />
         )}
       </div>
     );
@@ -126,6 +191,7 @@ const TextCellEditor = memo<CellEditorProps>(
       prev.rowIndex === next.rowIndex &&
       prev.colIdx === next.colIdx &&
       prev.value === next.value &&
+      prev.record === next.record &&
       prev.isDisabled === next.isDisabled &&
       prev.column === next.column
     );

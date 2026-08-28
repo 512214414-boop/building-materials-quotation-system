@@ -28,7 +28,6 @@ export interface AllocationSourceOption {
 export interface WarehouseSourceOption {
   id: string;
   name: string;
-  code: string | null;
   isMain: boolean;
   sourceType: 'warehouse';
 }
@@ -109,6 +108,11 @@ export interface AllocationDocumentLineView {
   productId: string | null;
   /** 商品全名快照 */
   productRef: string;
+  productName?: string | null;
+  brandName?: string | null;
+  hideProductName?: boolean;
+  hideBrandName?: boolean;
+  hideSpecModel?: boolean;
   /** v8.0：规格型号快照（来自 SPU.specModel） */
   spec: string | null;
   unit: string;

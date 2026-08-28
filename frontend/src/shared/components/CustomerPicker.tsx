@@ -1,25 +1,32 @@
 // v2.6 客户选择器：匹配检索 + 常驻「快速新建」按钮
-// v2.11 修复：搜索结果下拉改用 FloatPanel（portal 到 body），避免被 overflow 容器裁剪
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { App as AntdApp, Spin } from 'antd';
+// v2.11 修复：搜索结果下拉改用 FloatPanel（portal 到舞台叠加层），避免被 overflow 容器裁剪
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { App as AntdApp } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import DsInput from './DsInput.js';
 import DsButton from './DsButton.js';
 import FloatPanel from './FloatPanel.js';
 import DsSelect from './DsSelect.js';
+import SuggestList from './SuggestList.js';
+import PickerTreeViewBar from './PickerTreeViewBar.js';
+import { PickerHostTrigger, PickerOverlayInput } from './PickerSlotChrome.js';
+import { CUSTOMER_PICKER_TREE_VIEWS, DEFAULT_CUSTOMER_PICKER_VIEW } from '../config/pickerTree.js';
+import { formatCustomerInfo } from '../utils/customerInfo.js';
 import {
   searchCustomers,
   quickAddCustomer,
+  listCustomers,
   type CustomerSearchItem,
   type CustomerView,
-  type CustomerType,
+  type CustomerContactView,
 } from '../services/api/baseDataApi.js';
+import { guessContactMethod } from '../utils/contactLoginValue.js';
 
 const QUICK_ADD_VALUE = '__quick_add__';
 
-const CUSTOMER_TYPE_OPTIONS: { label: string; value: CustomerType }[] = [
-  { label: '个人业主', value: 'personal' },
-  { label: '公司（装修公司/项目经理/分销商）', value: 'company' },
+const CUSTOMER_TYPE_OPTIONS: { label: string; value: string }[] = [
+  { label: '个人业主', value: '个人业主' },
+  { label: '公司', value: '公司' },
 ];
 
 export interface CustomerPickerValue {
@@ -28,6 +35,7 @@ export interface CustomerPickerValue {
   name: string | null;
   company?: string | null;
   wechat?: string | null;
+  contactMethod?: string | null;
 }
 
 export interface CustomerPickerProps {
@@ -36,13 +44,42 @@ export interface CustomerPickerProps {
   placeholder?: string;
   size?: 'sm' | 'md';
   disabled?: boolean;
-  style?: React.CSSProperties;
+  style?: CSSProperties;
   autoFocus?: boolean;
   onFocus?: () => void;
   /** v2.0 焦点总线契约：open 由 UnifiedTable activeCell 注入，默认 true（非表格场景保持原行为） */
   open?: boolean;
   /** v2.0 焦点总线契约：取消回调（Esc / 外部点击 / 焦点失活） */
   onClose?: () => void;
+  hostedInGate?: boolean;
+  parentPanelId?: string;
+  hostedKeyword?: string;
+  onHostedKeywordChange?: (v: string) => void;
+  anchorRef?: RefObject<HTMLElement | null>;
+}
+
+function contactsOf(c: CustomerSearchItem): CustomerContactView[] {
+  if (c.contacts?.length) return c.contacts.filter((x) => x.value?.trim());
+  const rows: CustomerContactView[] = [];
+  if (c.phone) rows.push({ name: c.name ?? '', method: '电话', value: c.phone, isDefault: true });
+  if (c.wechat) rows.push({ name: c.name ?? '', method: '微信', value: c.wechat });
+  return rows;
+}
+
+function toPickerValue(c: CustomerSearchItem, contact?: CustomerContactView | null): CustomerPickerValue {
+  const chosen =
+    contact ??
+    (c.hitContact
+      ? { name: c.hitContact.name, method: c.hitContact.method, value: c.hitContact.value }
+      : contactsOf(c).find((x) => x.isDefault) ?? contactsOf(c)[0] ?? null);
+  return {
+    id: c.id,
+    phone: chosen?.value ?? c.phone ?? '',
+    name: c.name,
+    company: c.company,
+    wechat: c.wechat,
+    contactMethod: chosen?.method ?? null,
+  };
 }
 
 function parsePhoneAndName(input: string): { phone: string; name: string } {
@@ -60,7 +97,7 @@ function parsePhoneAndName(input: string): { phone: string; name: string } {
 export default function CustomerPicker({
   value,
   onChange,
-  placeholder = '输入手机号/姓名搜索',
+  placeholder = '客户信息：姓名 / 电话 / 尾号',
   size = 'md',
   disabled,
   style,
@@ -68,10 +105,17 @@ export default function CustomerPicker({
   onFocus,
   open = true,
   onClose,
+  hostedInGate = false,
+  parentPanelId,
+  hostedKeyword,
+  onHostedKeywordChange,
+  anchorRef: extAnchor,
 }: CustomerPickerProps) {
+  void autoFocus;
   const { message } = AntdApp.useApp();
   // v2.0 焦点总线契约：open prop 控制焦点激活；panelOpen 是 UI state（搜索结果面板展开）
   const [panelOpen, setPanelOpen] = useState(false);
+  const [listExpanded, setListExpanded] = useState(true);
   const [keyword, setKeyword] = useState('');
   const [options, setOptions] = useState<CustomerSearchItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -80,8 +124,9 @@ export default function CustomerPicker({
   const [quickAddLoading, setQuickAddLoading] = useState(false);
   const [quickAddPhone, setQuickAddPhone] = useState('');
   const [quickAddName, setQuickAddName] = useState('');
-  const [quickAddCompany, setQuickAddCompany] = useState('');
-  const [quickAddType, setQuickAddType] = useState<CustomerType>('personal');
+  const [quickAddType, setQuickAddType] = useState('个人业主');
+  const [pendingCustomer, setPendingCustomer] = useState<CustomerSearchItem | null>(null);
+  const [entryView, setEntryView] = useState(DEFAULT_CUSTOMER_PICKER_VIEW);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -103,16 +148,11 @@ export default function CustomerPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  const doSearch = useCallback(async (kw: string) => {
-    if (!kw.trim()) {
-      setOptions([]);
-      setSearching(false);
-      return;
-    }
+  const loadBrowse = useCallback(async () => {
     setSearching(true);
     try {
-      const list = await searchCustomers(kw.trim(), 15);
-      setOptions(list);
+      const r = await listCustomers({ pageSize: 20, status: 'active' });
+      setOptions(r.list);
     } catch {
       setOptions([]);
     } finally {
@@ -120,16 +160,58 @@ export default function CustomerPicker({
     }
   }, []);
 
+  const doSearch = useCallback(async (kw: string, view = entryView) => {
+    if (!kw.trim()) {
+      await loadBrowse();
+      return;
+    }
+    setSearching(true);
+    try {
+      const list = await searchCustomers(kw.trim(), 15, view as 'loose' | 'name' | 'contact' | 'address' | 'invoice');
+      setOptions(list);
+    } catch {
+      setOptions([]);
+    } finally {
+      setSearching(false);
+    }
+  }, [entryView, loadBrowse]);
+
   const onKeywordChange = (kw: string) => {
+    if (hostedInGate && onHostedKeywordChange) onHostedKeywordChange(kw);
+    setKeyword(kw);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    setPanelOpen(true);
+    setListExpanded(true);
+    if (!kw.trim()) {
+      void loadBrowse();
+      return;
+    }
+    searchTimer.current = setTimeout(() => void doSearch(kw), 250);
+  };
+
+  useEffect(() => {
+    if (!hostedInGate) return;
+    setPanelOpen(true);
+    const kw = hostedKeyword ?? '';
     setKeyword(kw);
     if (searchTimer.current) clearTimeout(searchTimer.current);
     if (!kw.trim()) {
-      setOptions([]);
-      setPanelOpen(false);
+      void loadBrowse();
       return;
     }
-    setPanelOpen(true);
     searchTimer.current = setTimeout(() => void doSearch(kw), 250);
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostedInGate, hostedKeyword]);
+
+  const openConfirm = () => {
+    if (disabled) return;
+    setPanelOpen(true);
+    setListExpanded(true);
+    onFocus?.();
+    if (!keyword.trim()) void loadBrowse();
   };
 
   const handleSelect = (val: string) => {
@@ -143,16 +225,38 @@ export default function CustomerPicker({
     }
     const found = options.find((o) => o.id === val);
     if (!found) return;
-    const picked: CustomerPickerValue = {
-      id: found.id,
-      phone: found.phone ?? '',
-      name: found.name,
-      company: found.company,
-      wechat: found.wechat,
-    };
+    const rows = contactsOf(found);
+    if (found.hitContact) {
+      const picked = toPickerValue(found, {
+        name: found.hitContact.name,
+        method: found.hitContact.method,
+        value: found.hitContact.value,
+      });
+      setSelectedCustomer(picked);
+      setKeyword('');
+      setPanelOpen(false);
+      setPendingCustomer(null);
+      onChange?.(picked);
+      return;
+    }
+    if (rows.length > 1) {
+      setPendingCustomer(found);
+      return;
+    }
+    const picked = toPickerValue(found, rows[0] ?? null);
     setSelectedCustomer(picked);
     setKeyword('');
     setPanelOpen(false);
+    setPendingCustomer(null);
+    onChange?.(picked);
+  };
+
+  const handlePickContact = (c: CustomerSearchItem, contact: CustomerContactView) => {
+    const picked = toPickerValue(c, contact);
+    setSelectedCustomer(picked);
+    setKeyword('');
+    setPanelOpen(false);
+    setPendingCustomer(null);
     onChange?.(picked);
   };
 
@@ -160,23 +264,34 @@ export default function CustomerPicker({
     const phoneVal = quickAddPhone.trim();
     const nameVal = quickAddName.trim();
     if (!phoneVal && !nameVal) {
-      message.warning('手机号与姓名至少填一个');
+      message.warning('姓名与联系方式至少填一个');
       return;
     }
     setQuickAddLoading(true);
     try {
       const created: CustomerView = await quickAddCustomer({
-        ...(phoneVal ? { phone: phoneVal } : {}),
         ...(nameVal ? { name: nameVal } : {}),
-        company: quickAddCompany.trim() || undefined,
-        ...(quickAddType !== 'personal' ? { customerType: quickAddType } : {}),
+        ...(phoneVal
+          ? {
+              contacts: [
+                {
+                  name: nameVal,
+                  method: guessContactMethod(phoneVal),
+                  value: phoneVal,
+                  isDefault: true,
+                },
+              ],
+            }
+          : {}),
+        ...(quickAddType !== '个人业主' ? { customerType: quickAddType } : {}),
       });
+      const def =
+        (created.contacts ?? []).find((x) => x.isDefault) ?? (created.contacts ?? [])[0];
       const picked: CustomerPickerValue = {
         id: created.id,
-        phone: created.phone ?? '',
+        phone: def?.value ?? created.phone ?? '',
         name: created.name,
-        company: created.company,
-        wechat: created.wechat,
+        contactMethod: def?.method ?? null,
       };
       setSelectedCustomer(picked);
       setKeyword('');
@@ -184,9 +299,8 @@ export default function CustomerPicker({
       setQuickAddOpen(false);
       setQuickAddPhone('');
       setQuickAddName('');
-      setQuickAddCompany('');
-      setQuickAddType('personal');
-      message.success(`已快速建档：${created.name ?? created.phone ?? created.id}`);
+      setQuickAddType('个人业主');
+      message.success(`已快速建档：${created.name ?? def?.value ?? created.id}`);
     } catch (e) {
       message.error((e as Error).message || '快速新建客户失败');
     } finally {
@@ -196,49 +310,61 @@ export default function CustomerPicker({
 
   const inputHeight = size === 'sm' ? 20 : 24;
 
+  const hostLabel = selectedCustomer
+    ? formatCustomerInfo(selectedCustomer.name, selectedCustomer.phone, selectedCustomer.contactMethod)
+    : '';
+
   return (
     <>
+      {!hostedInGate && (
       <div ref={wrapRef} data-shared-badge="C23" style={{ position: 'relative', width: style?.width ?? '100%' }}>
-        <DsInput
-          autoFocus={autoFocus}
+        <PickerHostTrigger
+          label={hostLabel}
           placeholder={placeholder}
-          value={selectedCustomer ? `${selectedCustomer.name ?? ''} ${selectedCustomer.phone}`.trim() : keyword}
           disabled={disabled}
-          onChange={(e) => {
-            if (selectedCustomer) {
-              setSelectedCustomer(null);
-              onChange?.(null);
-            }
-            onKeywordChange(e.target.value);
-          }}
-          onFocus={() => {
-            onFocus?.();
-            if (keyword.trim() && options.length) setPanelOpen(true);
-          }}
-          style={{ ...style, width: '100%', height: inputHeight, position: 'relative' }}
+          onOpen={openConfirm}
+          style={{ ...style, width: '100%', height: inputHeight }}
         />
       </div>
+      )}
 
-      {/* 搜索结果浮动面板（portal 到 body，避免被裁剪） */}
       <FloatPanel
-        open={open && panelOpen}
-        anchorRef={wrapRef as React.RefObject<HTMLElement>}
+        open={hostedInGate ? true : open && panelOpen}
+        anchorRef={(hostedInGate && extAnchor ? extAnchor : wrapRef) as RefObject<HTMLElement>}
+        parentId={hostedInGate ? parentPanelId ?? null : null}
         onClose={() => {
           setPanelOpen(false);
           onClose?.();
         }}
-        width={320}
-        maxHeight={320}
+        width={400}
+        maxHeight={360}
         offset={2}
         style={{ padding: 0 }}
       >
-        <div
-          style={{
-            maxHeight: 280,
-            overflowY: 'auto',
-            WebkitOverflowScrolling: 'touch',
-          }}
-        >
+        <div>
+          {!hostedInGate ? (
+          <PickerOverlayInput
+            value={keyword}
+            placeholder={placeholder}
+            listExpanded={listExpanded}
+            onToggleList={() => setListExpanded((v) => !v)}
+            onChange={onKeywordChange}
+            onCancel={() => {
+              setPanelOpen(false);
+              onClose?.();
+            }}
+          />
+          ) : null}
+          <PickerTreeViewBar
+            views={CUSTOMER_PICKER_TREE_VIEWS}
+            value={entryView}
+            onChange={(id) => {
+              setEntryView(id);
+              void doSearch(keyword, id);
+            }}
+          />
+          {listExpanded ? (
+            <>
           <button
             type="button"
             onClick={() => handleSelect(QUICK_ADD_VALUE)}
@@ -264,26 +390,18 @@ export default function CustomerPicker({
             <PlusOutlined style={{ fontSize: 12 }} />
             快速新建客户{keyword.trim() ? `（"${keyword.trim().slice(0, 16)}"）` : ''}
           </button>
-
-          {searching ? (
-            <div style={{ padding: '12px 8px', textAlign: 'center' }}>
-              <Spin size="small" />
-            </div>
-          ) : options.length === 0 ? (
-            <div
-              style={{
-                padding: '12px 8px',
-                color: 'var(--text-tertiary)',
-                fontSize: 'var(--body-xs-font-size)',
-                textAlign: 'center',
-              }}
-            >
-              {keyword.trim() ? '未匹配到客户，可点上方快速新建' : '输入关键词检索'}
-            </div>
-          ) : (
-            options.map((c) => (
+          <SuggestList
+            options={options}
+            loading={searching}
+            keyword={keyword}
+            allowCreate={false}
+            onSelect={(c) => handleSelect(c.id)}
+            emptyText="未匹配到客户，可点上方快速新建"
+            idleText="点开即可浏览，打字检索"
+            maxHeight={240}
+            rowKey={(c) => c.id}
+            rowRender={(c) => (
               <button
-                key={c.id}
                 type="button"
                 onClick={() => handleSelect(c.id)}
                 style={{
@@ -305,22 +423,55 @@ export default function CustomerPicker({
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-overlay-l1)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
                   <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {c.name ?? '（未命名）'}
                   </span>
                   <span style={{ color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
-                    {c.phone}
+                    {c.hitContact
+                      ? formatCustomerInfo(null, c.hitContact.value, c.hitContact.method)
+                      : formatCustomerInfo(null, contactsOf(c)[0]?.value ?? c.phone, contactsOf(c)[0]?.method)}
                   </span>
                 </span>
-                {c.company ? (
-                  <span style={{ color: 'var(--text-tertiary)', fontSize: 11, flexShrink: 0 }}>
-                    {c.company}
+                {c.hitAddress ? (
+                  <span style={{ color: 'var(--text-tertiary)', fontSize: 11, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
+                    {c.hitAddress.detail}
                   </span>
+                ) : c.hitInvoice ? (
+                  <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{c.hitInvoice.invoiceTitle}</span>
                 ) : null}
               </button>
-            ))
-          )}
+            )}
+          />
+          {pendingCustomer ? (
+            <div style={{ padding: '6px 8px', borderTop: '1px solid var(--border-neutral-l1)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4 }}>
+                选择一条联系，跟姓名一起填进客户信息
+              </div>
+              {contactsOf(pendingCustomer).map((ct, i) => (
+                <button
+                  key={`${ct.method}-${ct.value}-${i}`}
+                  type="button"
+                  onClick={() => handlePickContact(pendingCustomer, ct)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '4px 0',
+                    cursor: 'pointer',
+                    fontSize: 'var(--body-xs-font-size)',
+                    color: 'var(--text-default)',
+                  }}
+                >
+                  {formatCustomerInfo(pendingCustomer.name, ct.value, ct.method)}
+                </button>
+              ))}
+            </div>
+          ) : null}
+            </>
+          ) : null}
         </div>
       </FloatPanel>
 
@@ -328,26 +479,36 @@ export default function CustomerPicker({
       <FloatPanel
         open={quickAddOpen}
         onClose={() => setQuickAddOpen(false)}
-        anchorRef={wrapRef as React.RefObject<HTMLElement>}
+        anchorRef={(hostedInGate && extAnchor ? extAnchor : wrapRef) as RefObject<HTMLElement>}
         title="快速新建客户"
         width={460}
         maxHeight={520}
+        footer={
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <DsButton variant="secondary" onClick={() => setQuickAddOpen(false)}>
+              取消
+            </DsButton>
+            <DsButton variant="primary" loading={quickAddLoading} onClick={() => void handleQuickAdd()}>
+              确认建档
+            </DsButton>
+          </div>
+        }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--overlay-gap)', padding: 'var(--overlay-pad-y) var(--overlay-pad-x)' }}>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
-              手机号
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--body-sm-font-size)', color: 'var(--text-secondary)' }}>
+              联系方式（登录主号）
             </label>
             <DsInput
               autoFocus
               value={quickAddPhone}
               onChange={(e) => setQuickAddPhone(e.target.value)}
-              placeholder="客户手机号"
+              placeholder="电话或微信"
               style={{ width: '100%' }}
             />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--body-sm-font-size)', color: 'var(--text-secondary)' }}>
               姓名
             </label>
             <DsInput
@@ -358,40 +519,19 @@ export default function CustomerPicker({
             />
           </div>
           <div>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
-              公司 <span style={{ color: 'var(--text-tertiary)' }}>（可选）</span>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 'var(--body-sm-font-size)', color: 'var(--text-secondary)' }}>
+              客户类型 <span style={{ color: 'var(--text-tertiary)' }}>（可选）</span>
             </label>
-            <DsInput
-              value={quickAddCompany}
-              onChange={(e) => setQuickAddCompany(e.target.value)}
-              placeholder="公司名称"
+            <DsSelect
+              value={quickAddType}
+              onChange={(v) => setQuickAddType(String(v))}
+              options={CUSTOMER_TYPE_OPTIONS}
               style={{ width: '100%' }}
             />
           </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: 'var(--text-secondary)' }}>
-                客户类型 <span style={{ color: 'var(--text-tertiary)' }}>（可选）</span>
-              </label>
-              <DsSelect
-                value={quickAddType}
-                onChange={(v) => setQuickAddType(v as CustomerType)}
-                options={CUSTOMER_TYPE_OPTIONS}
-                style={{ width: '100%' }}
-              />
-            </div>
-          </div>
           <p style={{ margin: 0, fontSize: 12, color: 'var(--text-tertiary)' }}>
-            其他字段可在客户档案页后续完善。
+            联系方式勾成默认后就是登录账号。开票信息在客户管理里空行追加。
           </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-            <DsButton variant="secondary" onClick={() => setQuickAddOpen(false)}>
-              取消
-            </DsButton>
-            <DsButton variant="primary" loading={quickAddLoading} onClick={() => void handleQuickAdd()}>
-              确认建档
-            </DsButton>
-          </div>
         </div>
       </FloatPanel>
     </>

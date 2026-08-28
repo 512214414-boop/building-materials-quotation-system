@@ -14,10 +14,10 @@
 //     ① 字段值有复用价值（历史数据可复用，如单位"米"/规格"dn25"）
 //     ② 字段是关联字段需要选择 ID（如分类/供应商/价格类型）
 //   不启用 ⟺ 以下任一：
-//     ① "筛选"场景（仅过滤列表展示）→ 用 Select(showSearch, filterOption 本地过滤)
-//     ② 即时性输入，无复用价值（如订单临时备注）→ 用普通 Input
-//     ③ 唯一性强的标识（如订单号/客户手机号）→ 用普通 Input
-//     ④ 数字/日期等非文本类型 → 用 InputNumber / DatePicker
+//     ① 即时性输入，无复用价值（如订单临时备注）→ 用普通 Input
+//     ② 唯一性强的标识（如订单号/客户手机号）→ 用普通 Input
+//     ③ 数字/日期等非文本类型 → 用 InputNumber / DatePicker
+//   档案列表表头列筛不要用本组件，走 HeaderCascadeFilter（当前结果 facets）。
 //
 // ============================================================
 // §C 新输入框快速启用指南（3 步设计参数）
@@ -140,6 +140,21 @@ export interface SuggestInputProps {
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   /** 点击回调（行内编辑阻止行切换冒泡等） */
   onClick?: React.MouseEventHandler<HTMLElement>;
+  /**
+   * 自定义检索（档案列表表头级联等）。传入则不走 suggest(field)。
+   * 空关键词也会查（品牌/规格在上级已锁定时列出当前结果里的下级）。
+   */
+  fetcher?: (keyword: string) => Promise<SuggestOption[]>;
+  /** 下拉打开时即使关键词为空也检索（配合 fetcher） */
+  searchWhenEmpty?: boolean;
+  /**
+   * 视觉变体
+   * - plain：纸面底 + 边框（表单/浮层内，默认）
+   * - embedded：透明无边框，嵌入表头/单元格，与 DsInput embedded、格内常驻输入同一套度量
+   */
+  variant?: 'plain' | 'embedded';
+  /** 追加到根节点的 class */
+  className?: string;
   /** 自定义样式（应用到根容器） */
   style?: React.CSSProperties;
   /** 是否显示清除按钮，默认 true */
@@ -148,6 +163,8 @@ export interface SuggestInputProps {
   public?: boolean;
   /** v1.5.4：自动聚焦（行内编辑场景，Popover 打开即聚焦输入框） */
   autoFocus?: boolean;
+  /** 自定义下拉挂载点。选品确认浮层里要挂在当前层，点下拉才不会把确认层关掉 */
+  getPopupContainer?: (triggerNode: HTMLElement) => HTMLElement;
 }
 
 // ============================================================
@@ -228,14 +245,19 @@ export function SuggestInput({
   onBlur,
   onKeyDown,
   onClick,
+  fetcher,
+  searchWhenEmpty = false,
+  variant = 'plain',
+  className,
   style,
   allowClear = true,
   public: isPublic = false,
   autoFocus,
+  getPopupContainer,
   'data-shared-badge': badgeOverride,
 }: SuggestInputProps) {
   const [searchKw, setSearchKw] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(() => Boolean(autoFocus && searchWhenEmpty));
   const [createLoading, setCreateLoading] = useState(false);
   const debouncedKw = useDebounce(searchKw, 250);
 
@@ -251,6 +273,9 @@ export function SuggestInput({
     keyword: debouncedKw,
     productId,
     isPublic,
+    fetcher,
+    allowEmptyKeyword: searchWhenEmpty,
+    enabled: open,
     allowCreate: false,
   });
 
@@ -307,10 +332,17 @@ export function SuggestInput({
   const fontSize = FONT_SIZE_MAP[size];
   // v15.4 共享组件编号：包装组件（DictRefCell 等）可覆盖，默认 C12
   const badge = badgeOverride ?? 'C12';
+  const rootClass = [
+    'ds-suggest-input',
+    variant === 'embedded' ? 'ds-suggest-input-embedded' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <AutoComplete
-      className="ds-suggest-input"
+      className={rootClass}
       data-shared-badge={badge}
       size={ANTD_SIZE_MAP[size]}
       value={value}
@@ -323,13 +355,14 @@ export function SuggestInput({
         //   （规格型号、产品名称、备注等）的值都不会更新，
         //   导致保存时校验失败（用户报告的"无法保存"问题）。
         onChange(v);
-        if (v.trim()) setOpen(true);
+        if (v.trim() || searchWhenEmpty) setOpen(true);
       }}
       open={open}
       onOpenChange={(visible) => {
         setOpen(visible);
-        if (!visible) {
-          // 关闭时不清空 searchKw，保留搜索状态用于下次打开
+        if (visible) {
+          // 表头级联：打开时按空词拉「当前结果里的下级」，展示值仍是已选项
+          setSearchKw(searchWhenEmpty ? '' : value);
         }
       }}
       placeholder={placeholder}
@@ -345,7 +378,7 @@ export function SuggestInput({
       classNames={{ popup: { root: 'ds-suggest-dropdown' } }}
       // v11.2：统一浮动面板挂载策略 → 使用全局 smartPopupContainer
       //   自动检测 Modal/Drawer 上下文，不再用 z-index 数值竞争
-      getPopupContainer={smartPopupContainer}
+      getPopupContainer={getPopupContainer ?? smartPopupContainer}
       filterOption={false}
       // v9.5：传占位 option，让 antd 认为有内容可显示（options=[] 会导致 onOpenChange 立即关闭下拉）
       //   实际列表渲染由 popupRender 中的 SuggestList 负责，占位 option 不渲染
@@ -367,6 +400,7 @@ export function SuggestInput({
         />
       )}
       allowClear={allowClear}
+      suffixIcon={null}
       onBlur={handleBlurInternal}
       onKeyDown={handleKeyDownInternal}
       onClick={onClick}

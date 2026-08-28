@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { App as AntdApp, Empty, Spin } from 'antd';
+import { Empty, Spin } from 'antd';
 import { DeleteOutlined, ScanOutlined, FileTextOutlined, TableOutlined } from '@ant-design/icons';
 import { Menu, type MenuProps } from 'antd';
 import { DsButton } from '../../../shared/components/DsButton.js';
@@ -45,6 +45,7 @@ import {
 import type { DocumentStatus, StageStatus } from '../../../shared/types/index.js';
 import { DOCUMENT_STATUS_LABELS } from '../../../shared/types/index.js';
 import { resolveImageUrl } from '../../../shared/utils/resolveImageUrl.js';
+import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
 
 // ============================================================
 // UnifiedTable 行类型（lines + 客户端展示字段统一结构）
@@ -190,7 +191,7 @@ const monoStyle: React.CSSProperties = {
 // 主组件
 // ============================================================
 export default function PurchaseList() {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const {
     documentId,
     documentStatus,

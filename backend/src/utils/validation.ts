@@ -99,12 +99,12 @@ export const supplierStatusSchema = z.enum(['active', 'inactive']);
 
 export const gateVerifySchema = z.object({
   authCode: z.string().min(1, '授权码不能为空'),
-  phone: z.string().regex(/^1\d{10}$/, '手机号格式错误'),
+  phone: z.string().min(1).max(200).regex(/^[A-Za-z0-9_+\-.]+$/, '登录账号只能是电话或微信字符'),
   customerName: z.string().min(1).max(100).optional(),
 });
 
 export const accessRequestSchema = z.object({
-  phone: z.string().regex(/^1\d{10}$/, '手机号格式错误'),
+  phone: z.string().min(1).max(200).regex(/^[A-Za-z0-9_+\-.]+$/, '登录账号只能是电话或微信字符'),
   customerName: z.string().min(1).max(100),
   note: z.string().max(500).optional(),
 });
@@ -119,6 +119,8 @@ export const documentCreateSchema = z.object({
   customerId: z.coerce.number().int().positive().optional(),
   title: z.string().max(200).optional(),
   note: z.string().max(2000).optional(),
+  customerContactMethod: z.string().max(50).optional(),
+  customerPhone: z.string().max(200).optional(),
   // 初始物料行（可选，也可后续单独添加）
   lines: z
     .array(
@@ -151,13 +153,31 @@ export const customerQuickAddSchema = z.object({
   wechat: z.string().max(100).optional(),
   company: z.string().max(200).optional(),
   note: z.string().optional(),
-  // v2.9 建材行业客户档案字段（可选）
-  customerType: z.enum(['personal', 'company']).optional(),
+  // v25 客户类型字典名称
+  customerType: z.string().max(50).optional(),
   discountRate: z.coerce.number().min(0).max(100).optional(),
   invoiceInfo: z.record(z.string(), z.unknown()).optional(),
+  contacts: z.array(z.object({
+    name: z.string().max(100).optional(),
+    method: z.string().max(50).optional(),
+    value: z.string().max(200).regex(/^[A-Za-z0-9_+\-.]*$/, '联系方式只能是电话或微信字符').optional(),
+    isDefault: z.boolean().optional(),
+  })).optional(),
+  invoices: z.array(z.object({
+    invoiceTitle: z.string().max(200).optional(),
+    taxNumber: z.string().max(50).optional(),
+    bankName: z.string().max(100).optional(),
+    bankAccount: z.string().max(50).optional(),
+    address: z.string().max(500).optional(),
+    phone: z.string().max(30).optional(),
+    isDefault: z.boolean().optional(),
+  })).optional(),
 }).refine(
-  (data) => (data.phone && data.phone.trim()) || (data.name && data.name.trim()),
-  { message: '手机号与姓名至少填一个（避免空档案）' },
+  (data) =>
+    (data.phone && data.phone.trim()) ||
+    (data.name && data.name.trim()) ||
+    (Array.isArray(data.contacts) && data.contacts.some((c) => (c.value && c.value.trim()) || (c.name && c.name.trim()))),
+  { message: '姓名与联系方式至少填一个（避免空档案）' },
 );
 
 /**
@@ -173,9 +193,24 @@ export const customerUpdateSchema = z.object({
   company: z.string().max(200).optional(),
   note: z.string().optional(),
   status: z.enum(['active', 'disabled']).optional(),
-  customerType: z.enum(['personal', 'company']).optional(),
+  customerType: z.string().max(50).optional(),
   discountRate: z.coerce.number().min(0).max(100).optional(),
   invoiceInfo: z.record(z.string(), z.unknown()).optional(),
+  contacts: z.array(z.object({
+    name: z.string().max(100).optional(),
+    method: z.string().max(50).optional(),
+    value: z.string().max(200).regex(/^[A-Za-z0-9_+\-.]*$/, '联系方式只能是电话或微信字符').optional(),
+    isDefault: z.boolean().optional(),
+  })).optional(),
+  invoices: z.array(z.object({
+    invoiceTitle: z.string().max(200).optional(),
+    taxNumber: z.string().max(50).optional(),
+    bankName: z.string().max(100).optional(),
+    bankAccount: z.string().max(50).optional(),
+    address: z.string().max(500).optional(),
+    phone: z.string().max(30).optional(),
+    isDefault: z.boolean().optional(),
+  })).optional(),
 });
 
 export const documentUpdateSchema = z.object({
@@ -194,6 +229,9 @@ export const documentUpdateSchema = z.object({
 export const documentBusinessUpdateSchema = z.object({
   // v2.6：允许后续补/改客户（传 0 或 null 清空客户）
   customerId: z.union([z.coerce.number().int().positive(), z.null()]).optional(),
+  customerContactMethod: z.string().max(50).optional().nullable(),
+  customerPhone: z.string().max(200).optional().nullable(),
+  customerName: z.string().max(100).optional().nullable(),
   salespersonId: z.coerce.number().int().positive().optional(),
   deliveryAddress: z.string().max(500).optional(),
   contactPhone: z.string().max(50).optional(),
@@ -232,7 +270,10 @@ export const documentLineCreateSchema = z.object({
   productId: z.coerce.bigint().positive().nullable().optional(),
   // v8.0：unitId（FK → unit.id，可空）
   unitId: z.coerce.number().int().positive().optional(),
-  productRef: z.string().min(1).max(500),
+  // 允许空串：「下方插入」落一条待填空行；页底空行仍由前端拦住不提交
+  productRef: z.string().max(500),
+  productName: z.string().max(200).nullable().optional(),
+  brandName: z.string().max(100).nullable().optional(),
   // v8.0：规格型号快照（前端选品时透传，下单时锁定，来自 SPU.specModel）
   spec: z.string().max(500).optional(),
   unit: z.string().min(1).max(50),
@@ -247,6 +288,8 @@ export const documentLineCreateSchema = z.object({
   rawDescription: z.string().max(500).optional(),
   rawUnit: z.string().max(50).optional(),
   isStandardized: z.boolean().optional(),
+  /** 插入位置（1-based seq）；省略则追加末尾 */
+  insertSeq: z.coerce.number().int().positive().optional(),
 });
 
 export const documentLineUpdateSchema = z.object({
@@ -261,6 +304,8 @@ export const documentLineUpdateSchema = z.object({
   // v8.0：unitId（FK → unit.id，可空；null=清空）
   unitId: z.coerce.number().int().positive().nullable().optional(),
   productRef: z.string().min(1).max(500).optional(),
+  productName: z.string().max(200).nullable().optional(),
+  brandName: z.string().max(100).nullable().optional(),
   // v8.0：规格型号快照可更新（来自 SPU.specModel）
   spec: z.string().max(500).nullable().optional(),
   unit: z.string().min(1).max(50).optional(),
@@ -361,6 +406,7 @@ export const deliveryCreateSchema = z.object({
   receiverPhone: z.string().max(20).optional(),
   note: z.string().max(500).optional(),
   attachmentUrls: z.array(z.string()).optional(),
+  freight: z.coerce.number().min(0).optional(),
 });
 
 export const deliveryUpdateSchema = z.object({
@@ -370,6 +416,7 @@ export const deliveryUpdateSchema = z.object({
   status: deliveryStatusSchema.optional(),
   note: z.string().max(500).optional(),
   attachmentUrls: z.array(z.string()).optional(),
+  freight: z.coerce.number().min(0).optional(),
 });
 
 // ============================================================
@@ -404,6 +451,7 @@ export const refundLineCreateSchema = z.object({
   refundType: refundTypeSchema,
   refundQty: z.coerce.number().positive(),
   reason: z.string().max(500).optional(),
+  restock: z.boolean().optional(),
 });
 
 export const refundLineUpdateSchema = z.object({

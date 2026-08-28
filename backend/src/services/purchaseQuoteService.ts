@@ -93,10 +93,13 @@ export async function getDocumentTotal(documentId: bigint) {
   });
 
   let subtotal = 0;
+  let totalQty = 0;
   for (const l of lines) {
     subtotal += calcLineAmount(Number(l.qty), Number(l.unitPrice), Number(l.lineDiscount));
+    totalQty += Number(l.qty);
   }
   subtotal = round2(subtotal);
+  totalQty = round2(totalQty);
 
   const orderDiscount = Number(doc.order_discount_amount);
   const roundOff = Number(doc.round_off_amount);
@@ -124,6 +127,7 @@ export async function getDocumentTotal(documentId: bigint) {
     roundOff,
     taxAmount,
     total,
+    totalQty,
     payable: total,
   };
 }
@@ -137,6 +141,7 @@ export async function syncDocumentTotals(documentId: bigint) {
       subtotal_amount: total.subtotal,
       tax_amount: total.taxAmount,
       total_amount: total.total,
+      total_qty: total.totalQty,
     },
   });
   return total;
@@ -168,10 +173,13 @@ async function recalcDocumentTotals(
   });
 
   let subtotal = 0;
+  let totalQty = 0;
   for (const l of lines) {
     subtotal += calcLineAmount(Number(l.qty), Number(l.unitPrice), Number(l.lineDiscount));
+    totalQty += Number(l.qty);
   }
   subtotal = round2(subtotal);
+  totalQty = round2(totalQty);
 
   const orderDiscount = Number(doc.order_discount_amount);
   const roundOff = Number(doc.round_off_amount);
@@ -197,6 +205,7 @@ async function recalcDocumentTotals(
       subtotal_amount: subtotal,
       tax_amount: taxAmount,
       total_amount: total,
+      total_qty: totalQty,
     },
   });
 
@@ -206,6 +215,7 @@ async function recalcDocumentTotals(
     roundOff,
     taxAmount,
     total,
+    totalQty,
     payable: total,
   };
 }

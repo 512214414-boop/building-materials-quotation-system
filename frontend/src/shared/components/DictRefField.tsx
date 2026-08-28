@@ -17,14 +17,15 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { App as AntdApp, Popover } from 'antd';
+import { Popover } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
 import type { CSSProperties } from 'react';
 import DictRefCell from './DictRefCell.js';
 import DictListPanel, { type DictListPanelItem } from './DictListPanel.js';
 import DsButton from './DsButton.js';
-import { smartPopupContainer, PANEL_POPPER_Z_INDEX } from '../utils/smartPopupContainer.js';
+import { smartPopupContainer } from '../utils/smartPopupContainer.js';
 import type { SuggestField } from '../services/api/baseDataApi.js';
+import { useCanvasApp } from '../hooks/useCanvasApp.js';
 
 // ============================================================
 // §1 档案记录 / 管理面板配置
@@ -71,6 +72,12 @@ export interface DictRecordConfig<T extends { id: string | number; name: string 
   forbidDeleteWhenRef?: boolean;
   /** 列表排序（如分类按 sortOrder；不传保持接口顺序） */
   sort?: (a: T, b: T) => number;
+  /**
+   * 录入/挂载场景是否允许边用边建（直接建即选 + reused 提示，无二次确认）。
+   * 默认 true（有 create 即允许）。系统预置只读字典（如 address_type）设 false，
+   * 槽位自动不出快建行，只能走管理面板。列表列筛恒为 allowCreate=false。
+   */
+  quickCreate?: boolean;
 }
 
 // ============================================================
@@ -92,7 +99,7 @@ export function DictRecordManagePanel<T extends { id: string | number; name: str
   onSelect,
   disabled,
 }: DictRecordManagePanelProps<T>) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
   const entityName = dict.entityName ?? '档案';
@@ -313,8 +320,7 @@ export function DictRefField<T extends { id: string | number; name: string } = D
         placement="bottomLeft"
         destroyOnHidden={false}
         getPopupContainer={smartPopupContainer}
-        // v14.3：档案管理面板统一低于弹窗基准层（同展开面板层级规则）
-        zIndex={PANEL_POPPER_Z_INDEX}
+        autoAdjustOverflow={false}
         content={
           <DictRecordManagePanel
             dict={dict}
@@ -327,16 +333,10 @@ export function DictRefField<T extends { id: string | number; name: string } = D
         <DsButton
           size="sm"
           variant="ghost"
+          className="ds-addon-btn"
           icon={<DownOutlined />}
           disabled={disabled}
           title="管理档案（新增/修改档案名称）"
-          style={{
-            flexShrink: 0,
-            height: 20,
-            minWidth: 18,
-            padding: '0 2px',
-            fontSize: 10,
-          }}
         />
       </Popover>
     </div>

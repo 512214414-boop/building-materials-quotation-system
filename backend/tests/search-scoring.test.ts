@@ -12,6 +12,12 @@ import {
   tokenizeKeyword,
   segmentizeKeyword,
   scoreSkuByCustomWeights,
+  containedEitherWay,
+  entryFieldMatches,
+  entryAnyFieldMatches,
+  searchNeedlesOrRaw,
+  keywordContainsFullName,
+  skuMatchesProductQuery,
   type ScoreRow,
 } from '../src/services/search-scoring.js';
 
@@ -36,9 +42,9 @@ function score(kw: string, row: Partial<ScoreRow>): number {
 }
 
 // 常用测试产品（对应真实宽表行）
-const DN25_GIVE_35 = { productName: 'ppr DN25给水管', specModel: 'en3.5', brandName: '日丰双层', remark: '执行标准S3.2 双层' };
+const DN25_GIVE_35 = { productName: 'ppr DN25给水管', specModel: 'en3.5', brandName: '日丰双层', remark: '' };
 const DN25_GIVE_42 = { productName: 'ppr DN25给水管', specModel: 'en4.2', brandName: '日丰双层', remark: '' };
-const DN25_GIVE_28 = { productName: 'ppr DN25给水管', specModel: 'en2.8', brandName: '伟星', remark: '执行标准S4SDR9' };
+const DN25_GIVE_28 = { productName: 'ppr DN25给水管', specModel: 'en2.8', brandName: '伟星', remark: '' };
 const DN25_WANT = { productName: 'ppr DN25×90度弯头', specModel: '通用', brandName: '日丰', remark: '' };
 const DN25_NEISI = { productName: 'ppr DN25内丝弯头', specModel: '1/2丝（4分）', brandName: '伟星', remark: '' };
 const DN25_UXING = { productName: 'ppr DN25U型内丝弯头', specModel: '1/2丝（4分）', brandName: '日丰', remark: '' };
@@ -205,10 +211,18 @@ test('段级：乱序 "内丝25" → 内丝弯头高于普通弯头（U型含内
 // scoreSkuByCustomWeights —— 2-gram token 级跨字段（v1.5.5 保留）
 // ============================================================
 
-test('token 级：跨字段 "伟星6分"（品牌+规格）→ 命中两项高于仅品牌', () => {
+test('token 级：跨字段 "伟星6分"（品牌+俗称）→ 命中两项高于仅品牌', () => {
   const both = score('伟星6分', { ...DN25_GIVE_28, remark: '含6分' });
   const brandOnly = score('伟星6分', DN25_GIVE_28); // 无6分
   assert.ok(both > brandOnly, `两项命中(${both}) 应高于仅品牌(${brandOnly})`);
+});
+
+test('名称视图：俗称「6分管」命中，执行标准原文不在俗称字段则 0 分', () => {
+  const alias = score('6分管', { ...DN25_GIVE_35, remark: '6分管' });
+  const noAlias = score('6分管', DN25_GIVE_35);
+  assert.ok(alias > 0, `俗称应命中(${alias})`);
+  assert.equal(noAlias, 0);
+  assert.equal(score('国标', DN25_GIVE_35), 0);
 });
 
 // ============================================================
@@ -218,4 +232,101 @@ test('token 级：跨字段 "伟星6分"（品牌+规格）→ 命中两项高�
 test('无关输入 → 0 分（不会进入结果）', () => {
   assert.equal(score('电线电缆', DN25_GIVE_35), 0);
   assert.equal(score('xzyz', DN25_WANT), 0);
+});
+
+// ============================================================
+// 包含与被包含（切档不改字）
+// ============================================================
+
+test('containedEitherWay：词比字段长也中', () => {
+  assert.equal(containedEitherWay('伟星', '伟星ppr25国标'), true);
+  assert.equal(containedEitherWay('伟星', '伟星'), true);
+  assert.equal(containedEitherWay('日丰双层', '日丰'), true);
+  assert.equal(containedEitherWay('金牛', '伟星ppr25国标'), false);
+});
+
+test('entryFieldMatches：混串切品牌/规格/执行标准都能中', () => {
+  const q = '伟星ppr25国标';
+  assert.equal(entryFieldMatches('伟星', q), true);
+  assert.equal(entryFieldMatches('dn25*3.5', q), true);
+  assert.equal(entryFieldMatches('国标 GB/T 18742.2', q), true);
+  assert.equal(entryFieldMatches('金牛', q), false);
+  assert.equal(entryFieldMatches('企标 Q/JN 01', q), false);
+});
+
+test('entryFieldMatches：产品名里写了规格字，切规格仍中', () => {
+  assert.equal(entryFieldMatches('dn25', 'PPR给水管dn25伟星'), true);
+  assert.equal(entryFieldMatches('dn25*3.5', 'ppr25水管'), true);
+});
+
+test('entryFieldMatches：客户电话尾号 / 混着姓名也能中', () => {
+  assert.equal(entryFieldMatches('13812345678', '5678'), true);
+  assert.equal(entryFieldMatches('13812345678', '张三5678'), true);
+  assert.equal(entryAnyFieldMatches(['张三', '13812345678'], '5678'), true);
+  assert.equal(entryAnyFieldMatches(['张三', '13812345678'], '工地'), false);
+});
+
+test('searchNeedlesOrRaw：单字姓名能召回，单位数尾号不召回', () => {
+  assert.deepEqual(searchNeedlesOrRaw('王'), ['王']);
+  assert.deepEqual(searchNeedlesOrRaw('8'), []);
+  assert.ok(searchNeedlesOrRaw('5678').includes('5678'));
+});
+
+test('完整级：输入包含品牌字段 → 品牌仍得分（切档不删字）', () => {
+  const mixed = score('伟星ppr25国标', {
+    productName: 'ppr25水管',
+    specModel: 'dn25*3.5',
+    brandName: '伟星',
+    remark: '国标 GB/T 18742.2',
+  });
+  const other = score('伟星ppr25国标', {
+    productName: 'PVC排水管',
+    specModel: '50',
+    brandName: '金牛',
+    remark: '企标',
+  });
+  assert.ok(mixed > 0, `混串应命中(${mixed})`);
+  assert.ok(mixed > other, `伟星国标(${mixed}) 应高于金牛(${other})`);
+});
+
+test('混串：短数字规格「25」不得压过品牌伟星', () => {
+  const wx = score('伟星ppr25国标', {
+    productName: 'ppr DN25给水管',
+    specModel: 'en3.5',
+    brandName: '伟星绿',
+    remark: '',
+  });
+  const numSpec = score('伟星ppr25国标', {
+    productName: '测试组合乙15253',
+    specModel: '25',
+    brandName: '普通品牌',
+    remark: '',
+  });
+  const named25 = score('伟星ppr25国标', {
+    productName: '25',
+    specModel: '通用',
+    brandName: '普通品牌',
+    remark: '',
+  });
+  assert.ok(wx > numSpec, `伟星绿(${wx}) 应高于规格=25 的测试行(${numSpec})`);
+  assert.ok(wx > named25, `伟星绿(${wx}) 应高于品名=25 的行(${named25})`);
+});
+
+test('渠道档：完整渠道名不当作品牌去展开全部渠道', () => {
+  const channels = ['金牛管业', '伟星管道', '华南管业'];
+  assert.equal(keywordContainsFullName('金牛管业', channels), true);
+  assert.equal(keywordContainsFullName('金牛', channels), false);
+  assert.equal(keywordContainsFullName('伟星', channels), false);
+  const jinniuSku = {
+    productName: 'ppr25水管',
+    specModel: 'dn25*3.5',
+    brandName: '金牛',
+    categoryName: '给水管',
+  };
+  assert.equal(skuMatchesProductQuery(jinniuSku, '金牛', channels), true);
+  assert.equal(skuMatchesProductQuery(jinniuSku, '金牛管业', channels), false);
+  assert.equal(skuMatchesProductQuery(jinniuSku, 'ppr25', channels), true);
+  const weixingSku = { ...jinniuSku, brandName: '伟星' };
+  assert.equal(skuMatchesProductQuery(weixingSku, '伟星', channels), true);
+  assert.equal(skuMatchesProductQuery(weixingSku, '伟星管道', channels), false);
 });

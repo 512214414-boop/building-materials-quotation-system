@@ -3,14 +3,15 @@
 // 背景（用户「报价表格内下拉按钮不稳定 → 用 C01 控件做下拉；
 //        下拉与输入框做成一个整体组件，凡需输入+下拉处都复用；
 //        输入区用多行文本框：未超宽无感切换、超宽自动展开多行编辑；
-//        清除按钮聚焦才显示、不常驻占位」）：
-//   - 结构：`[输入区 flex:1] [清除·聚焦时绝对定位] [下拉按钮 C01 常驻]`
-//   - 显示态：单行 + 超长省略号 + hover title 看全（不换行，不破坏布局、大数据量性能好）
-//   - 编辑态：textarea 多行文本框，样式与显示态一致（左对齐/同字号/同内边距/同单行高）
-//     · 内容未超宽 → 单行高（与显示态行高一致，点击无感切换，文字不跳动）
-//     · 内容超宽 → 自动按内容高度展开（≤ maxEditHeight），超出内部滚动
+//        清除按钮与客户输入框同一套纯文本 ×，有值且悬停/聚焦才显示、不占流式宽度」）：
+//   - 结构：`[输入区 flex:1] [清除·叠在输入区右缘] [trailing 槽] [下拉按钮 C01 常驻]`
+//   - wrap=false（单位等短字段）：显示/编辑都单行，高度锁死，点击不撑行
+//   - wrap=true（档案名称等）：显示/编辑都换行完整可见，高度只跟内容走，点击不额外加高
+//     （禁止显示省略、编辑再展开——那会在点格时把整行弹高）
+//   - 开单产品名走 fitContent：单行、列宽随内容，ellipsis=false，禁止用省略号截断
 //   - 下拉按钮：DsButton（C01 控件）variant=ghost + DownOutlined，常驻稳定，点击回调上抛
-//   - 清除按钮：仅编辑（聚焦）时显示，绝对定位不占位
+//   - 清除按钮：有值且悬停/聚焦时显示纯文本 ×，叠在输入区右缘，不与 trailing/下拉抢位
+//   - trailing：非标「待确认」等提示，走文档流排在 × 和下拉之间，禁止绝对定位叠在叉上
 //   - Enter 提交 / Esc 取消 / 失焦提交 / Shift+Enter 换行
 //
 // 使用：表格单元格、表单字段等任何「文本输入 + 下拉触发」场景。
@@ -19,8 +20,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { CloseCircleFilled, DownOutlined } from '@ant-design/icons';
+import { DownOutlined } from '@ant-design/icons';
 import DsButton from './DsButton.js';
+import DsClearX from './DsClearX.js';
+import { armNativeInput } from '../utils/armNativeInput.js';
 
 export interface DsInputDropdownProps {
   /** 显示值（受控） */
@@ -35,20 +38,53 @@ export interface DsInputDropdownProps {
   onDropdownClick?: (currentInput?: string) => void;
   /** 编辑提交（失焦/Enter；传编辑后的值） */
   onCommit?: (value: string) => void;
-  /** 清除按钮点击（仅编辑态显示） */
+  /** 清除按钮点击（有值且悬停/聚焦时显示） */
   onClear?: () => void;
   /** 编辑中实时回调（可选，用于外部感知当前输入值） */
   onChange?: (value: string) => void;
   /** 是否显示下拉按钮（默认 true） */
   showDropdown?: boolean;
+  /**
+   * 下拉按钮图标（默认 DownOutlined）。
+   * 选用检索展开/收起钮用列表图标，与字典管理（齿轮）按图标语义区分。
+   */
+  dropdownIcon?: ReactNode;
+  /** 下拉按钮 title（默认「展开选择」） */
+  dropdownTitle?: string;
+  /** 下拉按钮展开态高亮（选用检索列表展开时图标高亮，新用户一眼看出按钮与面板关系） */
+  dropdownActive?: boolean;
+  /**
+   * 是否显示清除 ×（默认 true）。
+   * 档案列表单元格点开改档不需要清空整格，表头筛选需要。
+   */
+  showClear?: boolean;
+  /**
+   * 点输入区不进入格内编辑，只触发 onDropdownClick。
+   * 档案列表 / 选品同款：格子只展示，点开浮层再改。
+   */
+  lockInput?: boolean;
   /** 单行高度 px（与所在行高一致，保证无感切换；默认 24） */
   lineHeight?: number;
-  /** 编辑态 textarea 最大高度 px（超出内部滚动；默认 132） */
-  maxEditHeight?: number;
+  /** 换行完整显示（档案名称等）：显示/编辑同一套 textarea，禁止 span↔输入切换把行弹高 */
+  wrap?: boolean;
+  /** 单行超宽是否出省略号。开单 fitContent 列必须 false：列宽按完整文字撑开，禁止截断 */
+  ellipsis?: boolean;
+  /** 输入区与下拉之间的提示槽（非标待确认等）。走文档流，不绝对定位 */
+  trailing?: ReactNode;
   /** 编辑态受控（可选；默认内部管理：点击进入/失焦退出） */
   editing?: boolean;
   /** 编辑态变化回调（受控或感知） */
   onEditingChange?: (editing: boolean) => void;
+  /**
+   * 失焦是否提交。确认层输入挂在弹层里时为 false：点列表不该把词写回格子，
+   * Enter 仍走 onCommit。
+   */
+  commitOnBlur?: boolean;
+  /**
+   * 键盘事件透传：在内部 Enter/Escape 处理之前调用。
+   * 若回调内 preventDefault，内部不再处理（用于邻格快切劫持 Tab/方向键）。
+   */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   /** 自定义样式（根容器） */
   style?: CSSProperties;
 }
@@ -57,16 +93,24 @@ export function DsInputDropdown({
   value,
   placeholder = '—',
   disabled,
-  renderText,
   onDropdownClick,
   onCommit,
   onClear,
   onChange,
   showDropdown = true,
+  dropdownIcon,
+  dropdownTitle = '展开选择',
+  dropdownActive = false,
+  showClear = true,
+  lockInput = false,
   lineHeight = 24,
-  maxEditHeight = 132,
+  wrap = false,
+  ellipsis = true,
+  trailing,
   editing: editingProp,
   onEditingChange,
+  commitOnBlur = true,
+  onKeyDown,
   style,
 }: DsInputDropdownProps) {
   const [editingInternal, setEditingInternal] = useState(false);
@@ -75,86 +119,151 @@ export function DsInputDropdown({
     if (editingProp == null) setEditingInternal(next);
     onEditingChange?.(next);
   };
+  const [hovered, setHovered] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const displayValue = value != null && value !== '' ? String(value) : '';
+  const [draft, setDraft] = useState(displayValue);
 
-  // textarea 自动高度：内容未超宽 → 单行高；超宽 → 按内容展开（≤ maxEditHeight，超出滚动）
+  useEffect(() => {
+    if (!editing) setDraft(displayValue);
+  }, [displayValue, editing]);
+
+  // 短字段锁死单行高；换行列始终按内容定高（显示/编辑同一节点，点击不改度量）
   const autoResize = (ta: HTMLTextAreaElement) => {
+    if (!wrap) {
+      ta.style.height = `${lineHeight}px`;
+      ta.style.overflowY = 'hidden';
+      return;
+    }
     ta.style.height = 'auto';
-    const h = Math.min(ta.scrollHeight, maxEditHeight);
-    ta.style.height = `${Math.max(h, lineHeight)}px`;
-    ta.style.overflowY = ta.scrollHeight > maxEditHeight ? 'auto' : 'hidden';
+    ta.style.height = `${Math.max(ta.scrollHeight, lineHeight)}px`;
+    ta.style.overflowY = 'hidden';
   };
 
-  // 进入编辑态：聚焦 + 全选 + 按内容定初始高度（未超宽即单行，与显示态无感切换）
   useEffect(() => {
-    if (editing && taRef.current) {
+    if (taRef.current) autoResize(taRef.current);
+  }, [editing, wrap, lineHeight, displayValue, draft]);
+
+  useEffect(() => {
+    if (editing && !lockInput && taRef.current) {
       taRef.current.focus();
       taRef.current.select();
-      autoResize(taRef.current);
     }
-  }, [editing]);
-
-  const handleInput = () => {
-    if (!taRef.current) return;
-    autoResize(taRef.current);
-    onChange?.(taRef.current.value);
-  };
+  }, [editing, lockInput]);
 
   const commit = () => {
-    const v = taRef.current?.value ?? displayValue;
+    const v = taRef.current?.value ?? draft;
     setEditing(false);
     onCommit?.(v);
   };
 
-  const handleBlur = () => {
+  const handleBlur = (e: React.FocusEvent<HTMLTextAreaElement>) => {
     if (!editing) return;
+    const rt = e.relatedTarget;
+    if (rt instanceof Element && rt.closest('.ds-overlay-float, .ds-overlay-modal, .ds-zoom-controls')) {
+      return;
+    }
+    if (!commitOnBlur) return;
     commit();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    onKeyDown?.(e);
+    if (e.defaultPrevented) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       // 单行语义：Enter 提交；Shift+Enter 保留 textarea 默认换行（多行编辑）
       e.preventDefault();
       commit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
+      setDraft(displayValue);
       setEditing(false); // 取消编辑，不提交
     }
   };
 
-  // 清除仅编辑（聚焦）时显示，绝对定位不占位；下拉按钮常驻流式占位（稳定）
-  const clearVisible = editing && !disabled && displayValue !== '';
+  const currentText = editing ? draft : displayValue;
+  const hasValue = currentText !== '';
+  const clearVisible = showClear && !disabled && hasValue && (editing || hovered);
+  const clipEllipsis = !wrap && ellipsis;
+  // 未编辑时也不得 readOnly：手机点只读框不出键盘，随后异步 focus 也唤不起来。
+  // lockInput / disabled 才只读（点开确认层，不在格子里敲）。
+  const inputReadOnly = lockInput || !!disabled;
+  const inputCursor = disabled ? 'default' : lockInput ? 'pointer' : 'text';
+  const armTyping = () => {
+    if (disabled || lockInput) return;
+    armNativeInput(taRef.current);
+    setEditing(true);
+  };
+  const handleFocus = () => {
+    if (disabled) return;
+    if (lockInput) {
+      onDropdownClick?.(displayValue);
+      return;
+    }
+    setEditing(true);
+  };
+
+  const handleClear = () => {
+    setDraft('');
+    if (taRef.current) taRef.current.value = '';
+    onChange?.('');
+    if (onClear) onClear();
+    else onCommit?.('');
+  };
 
   return (
     <div
       data-shared-badge="C61"
-      style={{ display: 'flex', alignItems: 'center', width: '100%', height: '100%', ...style }}
+      style={{
+        display: 'flex',
+        alignItems: wrap ? 'flex-start' : 'center',
+        width: '100%',
+        height: '100%',
+        ...style,
+      }}
     >
-      {/* 输入区：显示态单行省略 + 编辑态 textarea（样式一致，无感切换） */}
+      {/* 输入区：常驻 textarea（与产品名列同一稳定性：点格不换节点） */}
       <div
-        style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative' }}
+        style={{ flex: 1, minWidth: 0, height: '100%', position: 'relative', overflow: 'hidden' }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onClick={() => {
-          if (!disabled) setEditing(true);
+          if (disabled) return;
+          if (lockInput) {
+            onDropdownClick?.(displayValue);
+            return;
+          }
+          armTyping();
         }}
       >
-        {editing ? (
+        {wrap ? (
           <textarea
             ref={taRef}
-            defaultValue={displayValue}
+            rows={1}
+            cols={1}
+            value={editing ? draft : displayValue}
             placeholder={placeholder}
             disabled={disabled}
-            onInput={handleInput}
+            readOnly={inputReadOnly}
+            onPointerDown={armTyping}
+            onFocus={handleFocus}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              autoResize(e.target);
+              onChange?.(e.target.value);
+            }}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             style={{
               display: 'block',
               width: '100%',
-              height: lineHeight,
-              lineHeight: `${lineHeight}px`,
-              // 右侧预留清除按钮空间（仅编辑态存在），左侧起点与显示态一致 → 无感切换
-              padding: '0 24px 0 4px',
-              border: 'none',
+              minWidth: 0,
+              maxWidth: '100%',
+              lineHeight: 1.4,
+              padding: '0 18px 0 4px',
+              borderWidth: 0,
+              borderStyle: 'none',
+              borderColor: 'transparent',
               outline: 'none',
               background: 'transparent',
               resize: 'none',
@@ -162,64 +271,92 @@ export function DsInputDropdown({
               boxSizing: 'border-box',
               fontSize: 'inherit',
               fontFamily: 'inherit',
-              color: 'inherit',
+              color: displayValue || editing ? 'inherit' : 'var(--text-tertiary)',
               textAlign: 'left',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              cursor: inputCursor,
+              minHeight: lineHeight,
+              touchAction: 'manipulation',
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
             }}
           />
         ) : (
-          <span
+          <textarea
+            ref={taRef}
+            rows={1}
+            cols={1}
             title={displayValue || undefined}
+            value={editing ? draft : displayValue}
+            placeholder={placeholder}
+            disabled={disabled}
+            readOnly={inputReadOnly}
+            onPointerDown={armTyping}
+            onFocus={handleFocus}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              onChange?.(e.target.value);
+            }}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
             style={{
               display: 'block',
               width: '100%',
-              padding: '0 4px',
-              whiteSpace: 'nowrap',
+              minWidth: 0,
+              maxWidth: '100%',
+              height: lineHeight,
+              lineHeight: `${lineHeight}px`,
+              padding: '0 18px 0 4px',
+              borderWidth: 0,
+              borderStyle: 'none',
+              borderColor: 'transparent',
+              outline: 'none',
+              background: 'transparent',
+              resize: 'none',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              textOverflow: clipEllipsis ? 'ellipsis' : 'clip',
+              boxSizing: 'border-box',
+              fontSize: 'inherit',
+              fontFamily: 'inherit',
+              color: displayValue || editing ? 'inherit' : 'var(--text-tertiary)',
               textAlign: 'left',
-              cursor: disabled ? 'default' : 'text',
-              color: displayValue ? 'inherit' : 'var(--text-tertiary)',
+              whiteSpace: 'nowrap',
+              cursor: inputCursor,
+              touchAction: 'manipulation',
+              WebkitUserSelect: 'text',
+              userSelect: 'text',
             }}
-          >
-            {renderText ? (
-              renderText(displayValue)
-            ) : displayValue ? (
-              displayValue
-            ) : (
-              <span style={{ color: 'var(--text-tertiary)' }}>{placeholder}</span>
-            )}
-          </span>
-        )}
-
-        {/* 清除（仅编辑态显示，绝对定位不占位） */}
-        {clearVisible && (
-          <CloseCircleFilled
-            style={{
-              position: 'absolute',
-              right: 4,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              cursor: 'pointer',
-              color: 'var(--text-quaternary)',
-              fontSize: 11,
-              padding: 2,
-            }}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onClear?.();
-            }}
-            title="清空全部"
           />
         )}
+
+        {/* 清除：与客户输入框同一套 ×，叠在输入区右缘，不进文字流 */}
+        {clearVisible && <DsClearX onClear={handleClear} />}
       </div>
+
+      {trailing ? (
+        <span
+          style={{
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            alignSelf: wrap ? 'flex-start' : 'center',
+            height: wrap ? lineHeight : '100%',
+            paddingInline: 4,
+            lineHeight: 0,
+          }}
+        >
+          {trailing}
+        </span>
+      ) : null}
 
       {/* 下拉按钮（C01 控件，常驻稳定；mousedown 阻止焦点转移 → 不触发失焦提交） */}
       {showDropdown && (
         <DsButton
           size="sm"
           variant="ghost"
-          icon={<DownOutlined style={{ fontSize: 10 }} />}
+          className={`ds-addon-btn${dropdownActive ? ' ds-addon-btn-active' : ''}`}
+          icon={dropdownIcon ?? <DownOutlined style={{ fontSize: 10 }} />}
           disabled={disabled}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => {
@@ -228,12 +365,15 @@ export function DsInputDropdown({
           }}
           style={{
             flexShrink: 0,
-            height: '100%',
+            alignSelf: wrap ? 'flex-start' : 'stretch',
+            height: wrap ? lineHeight : '100%',
             minWidth: 18,
             padding: '0 3px',
+            borderWidth: 1,
+            borderStyle: 'solid',
             borderColor: 'transparent',
           }}
-          title="展开选择"
+          title={dropdownTitle}
         />
       )}
     </div>

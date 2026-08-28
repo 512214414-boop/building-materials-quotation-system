@@ -23,7 +23,7 @@
 //     + InteractionLayer（交互层，含 CellEditor 注册表）
 //     + 默认 CellEditor 实现（text/number/picker/static/custom）
 
-import { createContext, useCallback, useMemo, useRef } from 'react';
+import { createContext, memo, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import type { UnifiedTableColumn, CellEditorRegistry, PickerCellContextValue } from './cell-editors/CellEditor.types.js';
 import { defaultCellEditorRegistry } from './cell-editors/CellEditorRegistry.js';
@@ -62,7 +62,7 @@ export interface InteractionLayerProps<T extends Record<string, any>> {
 // 组件
 // ============================================================
 
-export default function InteractionLayer<T extends Record<string, any>>({
+function InteractionLayerInner<T extends Record<string, any>>({
   columns,
   rows,
   editorRegistry,
@@ -70,13 +70,10 @@ export default function InteractionLayer<T extends Record<string, any>>({
   onNavigate,
   children,
 }: InteractionLayerProps<T>) {
-  // ── 焦点总线（唯一真相源，同一时间仅一个 picker 激活）──
   const focusBus = useFocusBus();
-
-  // ── 编辑器注册表 ──
+  const focusStore = focusBus.__store;
   const registry = editorRegistry ?? defaultCellEditorRegistry;
 
-  // ── 锚点 ref 缓存（每个单元格一个稳定 RefObject，供 FloatPanel 定位）──
   const anchorRefsRef = useRef<Map<string, RefObject<HTMLElement | null>>>(new Map());
   const getAnchorRef = useCallback((cellKey: string): RefObject<HTMLElement | null> => {
     const map = anchorRefsRef.current;
@@ -86,7 +83,6 @@ export default function InteractionLayer<T extends Record<string, any>>({
     return map.get(cellKey)!;
   }, []);
 
-  // ── 单元格提交（原子更新 + picker 安全网关闭）──
   const commitCell = useCallback(
     (rowIdx: number, colIdx: number, value: any) => {
       if (!onCellCommit) return;
@@ -95,34 +91,30 @@ export default function InteractionLayer<T extends Record<string, any>>({
       const record = rows[rowIdx];
       if (!record) return;
       onCellCommit(rowIdx, col.key, value, record);
-      // picker 模式提交后关闭焦点（安全网：确保面板关闭，即使业务 Picker 未调用 onClose）
-      if (col.renderMode === 'picker') {
-        focusBus.closeAfterCommit();
+      if (col.renderMode === 'picker' && value !== null && typeof value === 'object') {
+        focusStore.closeAfterCommit();
       }
     },
-    [columns, rows, onCellCommit, focusBus],
+    [columns, rows, onCellCommit, focusStore],
   );
 
-  // ── PickerCell Context（稳定引用，焦点切换时不变）──
   const pickerContextValue: PickerCellContextValue = useMemo(
     () => ({
-      store: focusBus.__store,
-      activate: focusBus.activate,
-      cancelAndClose: focusBus.cancelAndClose,
+      store: focusStore,
+      activate: focusStore.activate,
+      cancelAndClose: focusStore.cancelAndClose,
       commitCell,
       getAnchorRef,
     }),
-    [focusBus.__store, focusBus.activate, focusBus.cancelAndClose, commitCell, getAnchorRef],
+    [focusStore, commitCell, getAnchorRef],
   );
 
-  // ── 为每个列注入 CellEditor render 函数 ──
-  // columns useMemo 不依赖 focusBus.activeCell，焦点切换不触发 columns 重建
+  // interactiveColumns 不依赖 focusBus.activeCell / isActive（PickerCell 自行 useActiveCell 订阅）
   const interactiveColumns: UnifiedTableColumn<T>[] = useMemo(() => {
     return columns.map((col, colIdx) => {
       const EditorComponent = registry[col.renderMode];
       if (!EditorComponent) return col;
 
-      // 注入 render 函数：antd Table 渲染时调用，渲染对应的 CellEditor 组件
       const injectedRender = (value: any, record: T, rowIndex: number): ReactNode => {
         const isDisabled = col.isDisabled?.(record) ?? false;
         const cellKey = `${rowIndex}-${colIdx}`;
@@ -137,12 +129,10 @@ export default function InteractionLayer<T extends Record<string, any>>({
             column={col}
             onCommit={commitCell}
             onNavigate={(targetRow, targetCol) => {
-              // 键盘导航委托给 UnifiedTable 的 focusCell（DOM 查找 + 滚动 + click）
               onNavigate?.(targetRow, targetCol);
             }}
             anchorRef={anchorRef}
             isDisabled={isDisabled}
-            isActive={focusBus.isActive(rowIndex, colIdx)}
           />
         );
       };
@@ -152,7 +142,7 @@ export default function InteractionLayer<T extends Record<string, any>>({
         render: injectedRender,
       };
     });
-  }, [columns, registry, commitCell, getAnchorRef, focusBus, onNavigate]);
+  }, [columns, registry, commitCell, getAnchorRef, onNavigate]);
 
   return (
     <PickerCellContext.Provider value={pickerContextValue}>
@@ -164,3 +154,7 @@ export default function InteractionLayer<T extends Record<string, any>>({
     </PickerCellContext.Provider>
   );
 }
+
+const InteractionLayer = memo(InteractionLayerInner) as typeof InteractionLayerInner;
+
+export default InteractionLayer;

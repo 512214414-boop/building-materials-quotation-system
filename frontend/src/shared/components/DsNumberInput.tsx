@@ -14,7 +14,7 @@
 // 复用 DsInput：
 //   - 复用 clickToEdit 模式（表格内单元格编辑场景）
 //   - 复用 size 体系（sm/md/lg）
-//   - 复用 BASE/FOCUS 样式（暗色背景 + brand 色 focus）
+//   - 复用 BASE/FOCUS 样式（纸面底 + brand 色 focus）
 //   - style 透传至所有态（普通态、clickToEdit 文本态、clickToEdit 激活态）
 //
 // 使用规范：
@@ -42,7 +42,7 @@ export interface DsNumberInputProps extends Omit<DsInputProps, 'type'> {
   align?: 'left' | 'center' | 'right';
   /**
    * v10.15 变体透传：支持 DsInput 的 variant 体系
-   * - 默认 'plain'（暗色背景 + 边框）
+   * - 默认 'plain'（纸面底 + 墨色边框）
    * - 'embedded' 用于嵌入到外部容器的场景（表格单元格、明细行等）
    */
   variant?: DsInputVariant;

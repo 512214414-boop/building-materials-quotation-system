@@ -10,6 +10,7 @@
  *  POST   /:id/status        transitionStatus (rw)
  *  POST   /:id/archive       archive (rw)
  *  GET    /:id/lines         listLines
+ *  GET    /:id/lines/facets  listLineFacets（当前单据行表头级联）
  *  POST   /:id/lines         addLine (rw)
  *  PATCH  /:id/lines/:lineId updateLine (rw)
  *  DELETE /:id/lines/:lineId removeLine (rw)
@@ -19,6 +20,7 @@ import { Request, Response } from 'express';
 import { ok, fail } from '../utils/response.js';
 import * as docSvc from '../services/documentService.js';
 import * as lineSvc from '../services/documentLineService.js';
+import * as lineFacetSvc from '../services/documentLineFacets.js';
 import * as viewLockSvc from '../services/viewLockService.js';
 import {
   documentCreateSchema,
@@ -45,11 +47,13 @@ export async function getDocumentHandler(req: Request, res: Response) {
 export async function createDocumentHandler(req: Request, res: Response) {
   const parsed = documentCreateSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
-  const { customerId, title, note, lines } = parsed.data;
+  const { customerId, title, note, lines, customerPhone, customerContactMethod } = parsed.data;
   const created = await docSvc.createDocument({
     customerId: customerId ? BigInt(customerId) : null,
     title,
-    note,
+    note: note ?? title,
+    customerPhone,
+    customerContactMethod,
     createdBy: req.user!.userId,
     lines: lines?.map((l) => ({
       // v14.0：规格变体 ID（物理 NOT NULL，缺失后端兜底 0）
@@ -108,6 +112,9 @@ export async function updateDocumentBusinessHandler(req: Request, res: Response)
     orderDiscountAmount: d.orderDiscountAmount,
     roundOffAmount: d.roundOffAmount,
     orderDiscountRemark: d.orderDiscountRemark,
+    customerPhone: d.customerPhone,
+    customerContactMethod: d.customerContactMethod,
+    customerName: d.customerName,
   });
   await req.audit?.('document_business_update', 'documents', id);
   return ok(res, updated);
@@ -146,6 +153,26 @@ export async function listLinesHandler(req: Request, res: Response) {
   return ok(res, list);
 }
 
+/** 当前单据行表头级联：选项来自这一张单的全部行，不是全局档案 */
+export async function listLineFacetsHandler(req: Request, res: Response) {
+  const q = req.query as Record<string, string>;
+  const field = q.field as 'product' | 'brand' | 'spec';
+  if (!['product', 'brand', 'spec'].includes(field)) {
+    return fail(res, 422, 42201, '参数错误', [{ path: ['field'], message: 'field 必须为 product/brand/spec' }]);
+  }
+  const options = await lineFacetSvc.listDocumentLineFacets(BigInt(req.params.id), {
+    field,
+    keyword: q.keyword ?? '',
+    productId: q.productId || undefined,
+    productName: q.productName || undefined,
+    brandId: q.brandId || undefined,
+    brandName: q.brandName || undefined,
+    specModel: q.specModel || undefined,
+    specExact: q.specExact === '0' || q.specExact === 'false' ? false : q.specExact === '1' || q.specExact === 'true' ? true : undefined,
+  });
+  return ok(res, { options });
+}
+
 export async function addLineHandler(req: Request, res: Response) {
   const documentId = BigInt(req.params.id);
   const parsed = documentLineCreateSchema.safeParse(req.body);
@@ -157,6 +184,8 @@ export async function addLineHandler(req: Request, res: Response) {
     productId: parsed.data.productId ? BigInt(parsed.data.productId) : null,
     unitId: parsed.data.unitId ? BigInt(parsed.data.unitId) : undefined,
     productRef: parsed.data.productRef,
+    productName: parsed.data.productName,
+    brandName: parsed.data.brandName,
     spec: parsed.data.spec,
     unit: parsed.data.unit,
     categoryId: parsed.data.categoryId,
@@ -169,6 +198,7 @@ export async function addLineHandler(req: Request, res: Response) {
     rawDescription: parsed.data.rawDescription,
     rawUnit: parsed.data.rawUnit,
     isStandardized: parsed.data.isStandardized,
+    insertSeq: parsed.data.insertSeq,
   });
   await req.audit?.('document_line_add', 'document_lines', created.id, { documentId });
   return ok(res, created, '添加成功', 201);
@@ -185,6 +215,8 @@ export async function updateLineHandler(req: Request, res: Response) {
     lineId,
     {
       productRef: parsed.data.productRef,
+      productName: parsed.data.productName,
+      brandName: parsed.data.brandName,
       spec: parsed.data.spec,
       unit: parsed.data.unit,
       categoryId: parsed.data.categoryId,
@@ -272,6 +304,16 @@ export async function replaceLinesHandler(req: Request, res: Response) {
   const result = await lineSvc.replaceLines(documentId, lines);
   await req.audit?.('document_lines_replace', 'document_lines', null, { documentId });
   return ok(res, result);
+}
+
+// ============================================================
+// 重排单据行序号（采购报价视图「整理数据」）
+// ============================================================
+
+export async function resequenceLinesHandler(req: Request, res: Response) {
+  const documentId = BigInt(req.params.id);
+  await lineSvc.resequenceLines(documentId);
+  return ok(res, { success: true });
 }
 
 // ============================================================

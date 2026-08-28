@@ -273,7 +273,6 @@ export function DictListPanel({
             onKeyDown={(e) => {
               if (e.key === 'Escape') handleCancelEdit();
             }}
-            style={{ fontSize: 'var(--body-xs-font-size)' }}
           />
         ) : item.selectable === false ? (
           <span
@@ -297,8 +296,8 @@ export function DictListPanel({
             style={{
               textAlign: 'left',
               padding: '0 4px',
-              height: 22,
-              fontSize: 'var(--body-xs-font-size)',
+              height: 20,
+              fontSize: 'var(--body-sm-font-size)',
               color: item.isCurrent ? 'var(--text-brand)' : 'var(--text-default)',
               fontWeight: item.isCurrent ? 500 : 400,
               overflow: 'hidden',
@@ -408,7 +407,6 @@ export function DictListPanel({
           placeholder={addPlaceholder}
           disabled={disabled || adding}
           onPressEnter={() => void handleAddCommit()}
-          style={{ fontSize: 'var(--body-xs-font-size)' }}
         />
         <DsButton
           size="sm"
@@ -453,7 +451,6 @@ export function DictListPanel({
             placeholder={searchPlaceholder}
             prefix={<SearchOutlined style={{ color: 'var(--text-tertiary)', fontSize: 11 }} />}
             allowClear
-            style={{ fontSize: 'var(--body-xs-font-size)' }}
           />
         </div>
       )}

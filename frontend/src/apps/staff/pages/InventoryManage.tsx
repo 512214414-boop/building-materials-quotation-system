@@ -4,26 +4,32 @@
 //   - 内部出库成本 = 当前仓库加权平均进价；库存不足时已有的库存全额扣除（缺口走欠库/外部补齐）
 //   - 流水追溯：inventory_ledger（ledger_no / biz_no 双向可查）
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp } from 'antd';
-import { HistoryOutlined, SettingOutlined } from '@ant-design/icons';
+import { HistoryOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
+import { deriveTableColumns, mergeColumns } from '../../../shared/config/deriveTableColumns.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import ProductPicker, { type SelectedPrice } from '../../../shared/components/ProductPicker.js';
+import { PickerHostTrigger } from '../../../shared/components/PickerSlotChrome.js';
+import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
 import {
   listInventory,
   listInventoryLedgers,
   adjustInventory,
+  openingInventory,
   listEnabledWarehouses,
   type InventoryRow,
   type InventoryLedgerRow,
   type WarehouseView,
 } from '../../../shared/services/api/inventoryApi.js';
+import type { SkuSearchRow, SkuOptionUnit } from '../../../shared/services/api/baseDataApi.js';
 
 const MOVEMENT_LABELS: Record<string, string> = {
   in: '入库',
@@ -54,12 +60,14 @@ function AdjustDialog({
 }) {
   const { message } = AntdApp.useApp();
   const [targetQty, setTargetQty] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [remark, setRemark] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open && record) {
       setTargetQty(String(record.qty ?? 0));
+      setUnitCost(String(record.weighted_avg_cost ?? ''));
       setRemark('');
     }
   }, [open, record]);
@@ -70,10 +78,19 @@ function AdjustDialog({
       message.warning('盘点后数量必须 ≥ 0');
       return;
     }
+    const costVal = unitCost.trim() === '' ? undefined : Number(unitCost);
+    if (costVal !== undefined && (!isFinite(costVal) || costVal < 0)) {
+      message.warning('期初/盘点成本必须 ≥ 0');
+      return;
+    }
     if (!record) return;
     setSaving(true);
     try {
-      await adjustInventory(record.id, { targetQty: qty, remark: remark.trim() || undefined });
+      await adjustInventory(record.id, {
+        targetQty: qty,
+        remark: remark.trim() || undefined,
+        unitCost: costVal,
+      });
       message.success('盘点调整成功');
       onClose();
       onSaved();
@@ -115,6 +132,19 @@ function AdjustDialog({
               value={targetQty}
               onChange={(e) => setTargetQty(e.target.value.replace(/[^\d.]/g, ''))}
               placeholder="0"
+              inputMode="decimal"
+              style={{ width: '100%', background: 'var(--bg-base-tertiary)', borderColor: 'var(--border-neutral-l2)' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)', marginBottom: 2 }}>
+              成本单价（期初必填，空白则保持原均价）
+            </div>
+            <DsInput
+              size="sm"
+              value={unitCost}
+              onChange={(e) => setUnitCost(e.target.value.replace(/[^\d.]/g, ''))}
+              placeholder={String(record.weighted_avg_cost ?? 0)}
               inputMode="decimal"
               style={{ width: '100%', background: 'var(--bg-base-tertiary)', borderColor: 'var(--border-neutral-l2)' }}
             />
@@ -281,6 +311,153 @@ function LedgerDialog({
 }
 
 // ============================================================
+// 期初入库条（无库存行时建档入库；贴格选品，不叠独占弹窗）
+// ============================================================
+
+function OpeningStrip({
+  warehouses,
+  onDone,
+  onCancel,
+}: {
+  warehouses: WarehouseView[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [warehouseId, setWarehouseId] = useState(() => warehouses.find((w) => w.isMain)?.id ?? warehouses[0]?.id ?? '');
+  const [label, setLabel] = useState('');
+  const [sku, setSku] = useState<SkuSearchRow | null>(null);
+  const [unit, setUnit] = useState<SkuOptionUnit | null>(null);
+  const [qty, setQty] = useState('1');
+  const [unitCost, setUnitCost] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSelect = (next: SkuSearchRow, u: SkuOptionUnit, price: SelectedPrice | null) => {
+    setSku(next);
+    setUnit(u);
+    setLabel([next.brandName, next.productName, next.specModel, u.unitName].filter(Boolean).join(' '));
+    const cost = price?.purchase?.price ?? u.defaultPurchasePrice ?? next.purchasePriceDefault;
+    if (cost != null) setUnitCost(String(cost));
+    setPickerOpen(false);
+  };
+
+  const handleSave = async () => {
+    if (!warehouseId) {
+      message.warning('请选择仓库');
+      return;
+    }
+    if (!sku || !unit) {
+      message.warning('请先选品');
+      return;
+    }
+    const qtyNum = Number(qty);
+    const costNum = Number(unitCost);
+    if (!isFinite(qtyNum) || qtyNum <= 0) {
+      message.warning('期初数量必须大于 0');
+      return;
+    }
+    if (!isFinite(costNum) || costNum < 0) {
+      message.warning('期初成本不能为负');
+      return;
+    }
+    setSaving(true);
+    try {
+      await openingInventory({
+        warehouseId,
+        specId: sku.specId,
+        brandId: sku.brandId,
+        unitId: unit.unitId,
+        qty: qtyNum,
+        unitCost: costNum,
+        remark: '期初入库',
+      });
+      message.success('期初已入库');
+      onDone();
+    } catch (e) {
+      message.error((e as { message?: string })?.message || '期初入库失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 12px',
+        borderBottom: '1px solid var(--border-neutral-l1)',
+        background: 'var(--bg-base-tertiary)',
+      }}
+    >
+      <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-secondary)' }}>期初入库</span>
+      <DsSelect
+        size="sm"
+        value={warehouseId || undefined}
+        onChange={(v: string | undefined) => setWarehouseId(v ?? '')}
+        options={warehouses.map((w) => ({ label: w.isMain ? `${w.name}（主仓）` : w.name, value: w.id }))}
+        style={{ width: 140 }}
+      />
+      <div
+        ref={hostRef}
+        style={{
+          width: COL_WIDTHS.NAME_QUOTE,
+          borderWidth: 1,
+          borderStyle: 'solid',
+          borderColor: 'var(--border-neutral-l2)',
+          borderRadius: 'var(--radius-4)',
+          background: 'var(--bg-base)',
+        }}
+      >
+        <PickerHostTrigger
+          label={label}
+          placeholder="点此选品"
+          onOpen={() => setPickerOpen(true)}
+        />
+      </div>
+      <ProductPicker
+        open={pickerOpen}
+        anchorRef={hostRef}
+        initialKeyword={label}
+        onClose={() => setPickerOpen(false)}
+        onSelect={handleSelect}
+        isStaff
+        dropdownMode
+        hideHostInput
+        onDraftCommit={(kw) => setLabel(kw)}
+        onQuickCreate={() => message.info('请到产品管理或开单里建档后再做期初')}
+      />
+      <DsInput
+        size="sm"
+        value={qty}
+        onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ''))}
+        placeholder="数量"
+        inputMode="decimal"
+        style={{ width: COL_WIDTHS.AMOUNT }}
+      />
+      <DsInput
+        size="sm"
+        value={unitCost}
+        onChange={(e) => setUnitCost(e.target.value.replace(/[^\d.]/g, ''))}
+        placeholder="成本单价"
+        inputMode="decimal"
+        style={{ width: COL_WIDTHS.AMOUNT }}
+      />
+      <DsButton size="sm" variant="primary" onClick={() => void handleSave()} disabled={saving}>
+        {saving ? '写入中…' : '确认期初'}
+      </DsButton>
+      <DsButton size="sm" variant="ghost" onClick={onCancel}>
+        取消
+      </DsButton>
+    </div>
+  );
+}
+
+// ============================================================
 // 页面主组件
 // ============================================================
 
@@ -300,6 +477,7 @@ export default function InventoryManage() {
 
   const [adjustRecord, setAdjustRecord] = useState<InventoryRow | null>(null);
   const [ledgerRecord, setLedgerRecord] = useState<InventoryRow | null>(null);
+  const [showOpening, setShowOpening] = useState(false);
 
   useEffect(() => {
     listEnabledWarehouses()
@@ -329,7 +507,7 @@ export default function InventoryManage() {
   }, [fetchList]);
 
   const columns: UnifiedTableColumn<InventoryRow>[] = useMemo(
-    () => [
+    () => mergeColumns(deriveTableColumns('inventory', 'inventory'), [
       // 操作列必须在前面（点即所得：字段多/手机端无需翻到最后）
       {
         key: 'op',
@@ -460,7 +638,7 @@ export default function InventoryManage() {
           </span>
         ),
       },
-    ],
+    ]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [warehouses, canWrite],
   );
@@ -470,7 +648,12 @@ export default function InventoryManage() {
       actionBar={{
         count: total,
         countUnit: '项',
-        statusHint: '库存 = 仓库 × 单品 · 内部出库成本取加权平均进价 · 流水可追溯',
+        statusHint: '库存 = 仓库 × 单品 · 内部出库成本取加权平均进价 · 无行时用期初入库',
+        actions: canWrite ? (
+          <DsButton size="sm" variant="secondary" icon={<PlusOutlined />} onClick={() => setShowOpening(true)}>
+            期初入库
+          </DsButton>
+        ) : null,
       }}
       bizStrip={{
         left: (
@@ -527,6 +710,18 @@ export default function InventoryManage() {
           </>
         ),
       }}
+      preContent={
+        showOpening ? (
+          <OpeningStrip
+            warehouses={warehouses}
+            onDone={() => {
+              setShowOpening(false);
+              void fetchList();
+            }}
+            onCancel={() => setShowOpening(false)}
+          />
+        ) : null
+      }
     >
       <UnifiedTable<InventoryRow>
         rowKey="id"

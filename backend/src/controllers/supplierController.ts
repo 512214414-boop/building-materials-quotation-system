@@ -20,12 +20,52 @@ const createSchema = z.object({
   })).optional(),
   /** v9.0：经营业务范围 */
   businessScope: z.string().max(500).optional(),
+  categoryIds: z.array(z.number().int().positive()).optional(),
+  brandIds: z.array(z.string().regex(/^\d+$/)).optional(),
   address: z.string().max(500).optional(),
+  addresses: z.array(z.object({
+    addressTypeId: z.string().optional(),
+    addressTypeName: z.string().optional(),
+    addressText: z.string(),
+    lng: z.number().optional().nullable(),
+    lat: z.number().optional().nullable(),
+    coordSource: z.enum(['geocoded', 'manual']).optional().nullable(),
+    isDefault: z.boolean().optional(),
+    sortOrder: z.number().int().optional(),
+    remark: z.string().optional().nullable(),
+  })).optional(),
   remark: z.string().optional(),
 });
 
 export async function listSuppliersHandler(req: Request, res: Response) {
   const result = await supplierSvc.listSuppliers(req.query as Record<string, unknown>);
+  return ok(res, result);
+}
+
+export async function searchSuppliersHandler(req: Request, res: Response) {
+  const q = req.query as Record<string, string>;
+  const keyword = q.keyword ?? q.q ?? '';
+  const limit = q.limit ? Number(q.limit) : 10;
+  const allowed = ['loose', 'name', 'contact', 'address'] as const;
+  const rawView = q.entryView ?? '';
+  const entryView = (allowed as readonly string[]).includes(rawView)
+    ? (rawView as (typeof allowed)[number])
+    : 'loose';
+  const list = await supplierSvc.searchSuppliers(keyword, limit, entryView);
+  return ok(res, list);
+}
+
+export async function listSupplierFacetsHandler(req: Request, res: Response) {
+  const field = String((req.query as Record<string, unknown>).field ?? '');
+  if (!['name', 'category', 'brand'].includes(field)) {
+    return fail(res, 422, 42201, '参数错误', [{ path: ['field'], message: 'field 必须为 name/category/brand' }]);
+  }
+  const options = await supplierSvc.listSupplierFacets(req.query as Record<string, unknown>);
+  return ok(res, { options });
+}
+
+export async function listSupplierCandidatesHandler(req: Request, res: Response) {
+  const result = await supplierSvc.listSupplierCandidates(req.query as Record<string, unknown>);
   return ok(res, result);
 }
 
@@ -38,7 +78,7 @@ export async function createSupplierHandler(req: Request, res: Response) {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
   const created = await supplierSvc.createSupplier(parsed.data);
-  await req.audit?.('supplier_create', 'supplier', created.id);
+  await req.audit?.('supplier_create', 'supplier', BigInt(created.id));
   return ok(res, created, '创建成功', 201);
 }
 
@@ -47,7 +87,7 @@ export async function quickAddSupplierHandler(req: Request, res: Response) {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
   const created = await supplierSvc.quickAddSupplier(parsed.data.name);
-  await req.audit?.('supplier_quick_add', 'supplier', created.id);
+  await req.audit?.('supplier_quick_add', 'supplier', BigInt(created.id));
   return ok(res, created, '已快速新增', 201);
 }
 
@@ -70,6 +110,22 @@ export async function setSupplierStatusHandler(req: Request, res: Response) {
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
   const updated = await supplierSvc.setSupplierStatus(id, parsed.data.status);
   return ok(res, updated);
+}
+
+const batchSupplierStatusSchema = z.object({
+  ids: z.array(z.string().regex(/^\d+$/)).min(1).max(200),
+  status: z.number().int().min(0).max(1),
+});
+
+export async function batchSetSupplierStatusHandler(req: Request, res: Response) {
+  const parsed = batchSupplierStatusSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const ids = parsed.data.ids.map((id) => BigInt(id));
+  const result = await supplierSvc.batchSetSupplierStatus(ids, parsed.data.status);
+  for (const id of ids) {
+    await req.audit?.('supplier_status', 'supplier', id);
+  }
+  return ok(res, result, parsed.data.status === 1 ? `已启用 ${result.count} 家` : `已停用 ${result.count} 家`);
 }
 
 export async function deleteSupplierHandler(req: Request, res: Response) {
@@ -127,4 +183,48 @@ export async function deleteContactMethodHandler(req: Request, res: Response) {
   await supplierSvc.deleteContactMethod(id);
   await req.audit?.('contact_method_delete', 'contact_method', id);
   return ok(res, { id: String(id) });
+}
+
+export async function listAddressTypesHandler(_req: Request, res: Response) {
+  const list = await supplierSvc.listAddressTypes();
+  return ok(res, list);
+}
+
+export async function quickAddAddressTypeHandler(req: Request, res: Response) {
+  const schema = z.object({
+    name: z.string().min(1).max(50),
+    status: z.number().int().min(0).max(1).optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const created = await supplierSvc.quickAddAddressType(parsed.data.name, parsed.data.status ?? 1);
+  await req.audit?.('address_type_quick_add', 'address_type', created.id);
+  return ok(res, created, created.reused ? '已复用现有地址类型' : '新建成功', 201);
+}
+
+export async function updateAddressTypeHandler(req: Request, res: Response) {
+  const id = BigInt(req.params.id);
+  const schema = z.object({
+    name: z.string().min(1).max(50).optional(),
+    sortOrder: z.number().int().optional(),
+    status: z.number().int().min(0).max(1).optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const updated = await supplierSvc.updateAddressType(id, parsed.data);
+  await req.audit?.('address_type_update', 'address_type', id);
+  return ok(res, updated);
+}
+
+export async function deleteAddressTypeHandler(req: Request, res: Response) {
+  const id = BigInt(req.params.id);
+  const deleted = await supplierSvc.deleteAddressType(id);
+  await req.audit?.('address_type_delete', 'address_type', id);
+  return ok(res, deleted);
+}
+
+export async function addressTypeRefCountHandler(req: Request, res: Response) {
+  const id = BigInt(req.params.id);
+  const ref = await supplierSvc.addressTypeRefCount(id);
+  return ok(res, ref);
 }

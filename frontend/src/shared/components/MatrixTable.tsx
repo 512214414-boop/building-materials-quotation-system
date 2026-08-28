@@ -6,7 +6,8 @@
 // 表格工程范式「多记录字段（一列一条完整记录 + ▾ 展开矩阵面板）」的统一实现。
 // 售价/进价明细面板、联系信息矩阵等所有"表头行 + 数据行（默认星标 + 各列输入 +
 // 删除）+ 末尾常驻空行"形态的多记录面板，全部复用本组件，差异仅通过 props 注入：
-//   - 列结构：名称列 + 可选中间列(midCols) + 值列 + 默认星标列 + 操作列
+//   - 列结构跟这一层字段走：名称列 + 可选中间列(midCols) + 值列 + 默认星标列 + 操作列
+//   - 单字段 N（区位只有名称）关 showPrice/showDefault，只留名称 + 删除，不要另写一张表
 //   - 名称列内容、值列渲染、中间列渲染由调用方注入（ReactNode）
 //   - 默认星标列固定在后（名称/midCols/值 → 默认 → 操作），全系统一致，
 //     与产品管理售价/进价面板形态完全统一（v1.5 收敛：删除 defaultFirst 双形态）
@@ -26,9 +27,11 @@
 //   - 差异（表头文字/名称列/值列/空行交互）全部由 props 注入
 
 import { Fragment } from 'react';
-import { DeleteOutlined, PlusOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { Checkbox } from 'antd';
 import DsButton from './DsButton.js';
 import DsInput from './DsInput.js';
+import EntityPanel from './EntityPanel.js';
 import QuickOptionsBar, { type QuickOption } from './QuickOptionsBar.js';
 
 // ============================================================
@@ -75,16 +78,20 @@ export interface MatrixRowConfig {
 export interface MatrixTableProps {
   /** 表头名称列文字 */
   headerName: string;
-  /** 表头值列文字 */
-  headerPrice: string;
+  /** 表头值列文字（showPrice=false 时可省略） */
+  headerPrice?: string;
+  /** 是否渲染值/价格列。单字段 N（区位）关掉。默认 true */
+  showPrice?: boolean;
+  /** 是否渲染默认星标列。关系树没有默认才关。默认 true */
+  showDefault?: boolean;
   /** 名称列与值列之间的中间列表头（进价明细：面价/点位） */
   midCols?: string[];
   /** 数据行配置 */
   rows: MatrixRowConfig[];
   /** 末尾空行：名称列内容 */
   addNameCell: React.ReactNode;
-  /** 末尾空行：值列内容 */
-  addPriceCell: React.ReactNode;
+  /** 末尾空行：值列内容（showPrice=false 时可省略） */
+  addPriceCell?: React.ReactNode;
   /** 末尾空行：中间列内容（与 midCols 对齐；联系信息方式列） */
   addMidCells?: React.ReactNode[];
   /** 末尾空行：新增提交回调（联系信息可传空，用空行直接输入自动追加） */
@@ -126,6 +133,8 @@ export interface MatrixTableProps {
 export default function MatrixTable({
   headerName,
   headerPrice,
+  showPrice = true,
+  showDefault = true,
   midCols,
   rows,
   addNameCell,
@@ -144,31 +153,27 @@ export default function MatrixTable({
   onRowSelect,
   rowSelectDisabled,
 }: MatrixTableProps) {
-  // 网格模板：名称(1fr) [midCols(56px)] 值(80px) 默认(28px) 操作(24px)
-  // v1.5：默认星标列固定在后，全系统一致（删除 defaultFirst 双形态）
+  // 网格模板跟实际渲染的列对齐：名称 [mid] [值] [默认] 操作
+  // 禁止调用方用更少列的 template 去硬套仍在输出的价格/默认格（区位曾把 4 格塞进 3 列）
   const defaultTemplate =
-    `minmax(100px, 1fr)${midCols?.length ? ` ${midCols.map(() => '56px').join(' ')}` : ''} 80px` +
-    ' 28px 24px';
+    `minmax(100px, 1fr)${midCols?.length ? ` ${midCols.map(() => '56px').join(' ')}` : ''}` +
+    (showPrice ? ' 80px' : '') +
+    (showDefault ? ' 28px' : '') +
+    ' 24px';
   const gridTemplate = template ?? defaultTemplate;
 
   // 默认列（星标）
   const renderDefaultBtn = (row: MatrixRowConfig) => (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-      <DsButton
-        size="sm"
-        variant={row.isDefault ? 'primary' : 'secondary'}
-        icon={row.isDefault ? <StarFilled /> : <StarOutlined />}
-        onClick={row.onIsDefaultChange}
+    <div
+      className="ds-grid-check"
+      style={{ justifySelf: 'center' }}
+      title={row.defaultTitle}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Checkbox
+        checked={row.isDefault}
         disabled={disabled || row.defaultDisabled}
-        style={{
-          padding: '0 4px',
-          height: 20,
-          fontSize: 10,
-          background: row.isDefault ? 'var(--text-brand)' : 'transparent',
-          borderColor: row.isDefault ? 'var(--text-brand)' : 'var(--border-neutral-l2)',
-          color: row.isDefault ? 'var(--text-on-accent)' : 'var(--text-tertiary)',
-        }}
-        title={row.defaultTitle}
+        onChange={() => row.onIsDefaultChange()}
       />
     </div>
   );
@@ -194,8 +199,12 @@ export default function MatrixTable({
   const headerCells: React.ReactNode[] = [];
   headerCells.push(<span key="name" style={{ textAlign: 'left', paddingLeft: 8 }}>{headerName}</span>);
   midCols?.forEach((h) => headerCells.push(<span key={h} style={{ textAlign: 'center' }}>{h}</span>));
-  headerCells.push(<span key="price" style={{ textAlign: 'center' }}>{headerPrice}</span>);
-  headerCells.push(<span key="default" style={{ textAlign: 'center' }}>默认</span>);
+  if (showPrice) {
+    headerCells.push(<span key="price" style={{ textAlign: 'center' }}>{headerPrice ?? ''}</span>);
+  }
+  if (showDefault) {
+    headerCells.push(<span key="default" style={{ textAlign: 'center' }}>默认</span>);
+  }
   headerCells.push(<span key="op" style={{ textAlign: 'center' }}>操作</span>);
 
   // 数据行：名称 / midCols / 值 / 默认 / 操作（默认列固定在后）
@@ -207,23 +216,27 @@ export default function MatrixTable({
     row.midCells?.forEach((cell, i) => (
       cells.push(<div key={`mid_${i}`} style={{ display: 'flex', justifyContent: 'center' }}>{cell}</div>)
     ));
-    cells.push(
-      <Fragment key="price">
-        {row.priceRender ?? (
-          <DsInput
-            size="sm"
-            variant="price"
-            numericColor={priceColor}
-            value={row.price}
-            onChange={(e) => row.onPriceChange(e.target.value)}
-            inputMode="decimal"
-            placeholder="0.00"
-            disabled={disabled}
-          />
-        )}
-      </Fragment>,
-    );
-    cells.push(<Fragment key="default">{renderDefaultBtn(row)}</Fragment>);
+    if (showPrice) {
+      cells.push(
+        <Fragment key="price">
+          {row.priceRender ?? (
+            <DsInput
+              size="sm"
+              variant="price"
+              numericColor={priceColor}
+              value={row.price}
+              onChange={(e) => row.onPriceChange(e.target.value)}
+              inputMode="decimal"
+              placeholder="0.00"
+              disabled={disabled}
+            />
+          )}
+        </Fragment>,
+      );
+    }
+    if (showDefault) {
+      cells.push(<Fragment key="default">{renderDefaultBtn(row)}</Fragment>);
+    }
     cells.push(<Fragment key="op">{renderDeleteBtn(row)}</Fragment>);
     return cells;
   };
@@ -238,8 +251,16 @@ export default function MatrixTable({
   } else {
     midCols?.forEach((h) => addCells.push(<span key={h} />));
   }
-  addCells.push(<Fragment key="price">{addPriceCell}</Fragment>);
-  addCells.push(<span key="default" />);
+  if (showPrice) {
+    addCells.push(<Fragment key="price">{addPriceCell ?? <span />}</Fragment>);
+  }
+  if (showDefault) {
+    addCells.push(
+      <span key="default" className="ds-grid-check" style={{ justifySelf: 'center' }}>
+        <Checkbox disabled />
+      </span>,
+    );
+  }
   addCells.push(
     <Fragment key="op">
       {showAddButton ? (
@@ -260,62 +281,53 @@ export default function MatrixTable({
   );
 
   return (
-    <div data-shared-badge="C29" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <div className="ds-grid-header" style={{ gridTemplateColumns: gridTemplate }}>
-        {headerCells}
-      </div>
-      {rows.map((row) => {
+    <EntityPanel
+      badge="C29"
+      template={gridTemplate}
+      header={headerCells}
+      rows={rows.map((row) => {
         // v2.0：多记录字段「切换选中（本地态）」——行点击切换当前显示记录
         //   选中匹配与回传均用 selectKey（业务 key），与 rowKey（渲染标识）解耦
         const rowSelectKey = row.selectKey ?? row.rowKey;
         const selectDisabled = rowSelectDisabled?.(row.rowKey) ?? false;
         const isSelected = !!onRowSelect && rowSelectKey === selectedRowKey && !selectDisabled;
-        return (
-          <div
-            key={row.rowKey}
-            className="ds-grid-row"
-            style={{
-              gridTemplateColumns: gridTemplate,
-              cursor: onRowSelect && !selectDisabled ? 'pointer' : undefined,
-              background: isSelected ? 'var(--bg-overlay-l1)' : undefined,
-            }}
-            onClick={(e) => {
-              if (!onRowSelect || selectDisabled) return;
-              // 输入控件/按钮/下拉内点击不触发切换（保持行内编辑交互）
-              const t = e.target as HTMLElement;
-              if (
-                t.closest(
-                  'input, textarea, button, a, [role="combobox"], .ant-select, .ant-picker',
-                )
-              ) {
-                return;
-              }
-              onRowSelect(rowSelectKey);
-            }}
-            title={
-              onRowSelect && !selectDisabled
-                ? isSelected
-                  ? '当前显示记录'
-                  : '点击切换显示'
-                : undefined
-            }
-          >
-            {rowCells(row)}
-          </div>
-        );
+        return {
+          key: row.rowKey,
+          cells: rowCells(row),
+          selected: isSelected,
+          onClick:
+            onRowSelect && !selectDisabled
+              ? (e) => {
+                  const t = e.target as HTMLElement;
+                  if (
+                    t.closest(
+                      'input, textarea, button, a, [role="combobox"], .ant-select, .ant-picker, .ds-picker-edit-trigger',
+                    )
+                  ) {
+                    return;
+                  }
+                  onRowSelect(rowSelectKey);
+                }
+              : undefined,
+          title:
+            onRowSelect && !selectDisabled
+              ? isSelected
+                ? '当前显示记录'
+                : '点击切换显示'
+              : undefined,
+        };
       })}
-      <div className="ds-grid-row" style={{ gridTemplateColumns: gridTemplate }}>
-        {addCells}
-      </div>
-      {/* v1.9：预置快速选项（通用配置，不传不渲染） */}
-      {quickOptions && onQuickPick && (
-        <QuickOptionsBar
-          options={quickOptions}
-          usedValues={quickOptionsUsed ?? []}
-          disabled={disabled}
-          onPick={onQuickPick}
-        />
-      )}
-    </div>
+      addRow={addCells}
+      footer={
+        quickOptions && onQuickPick ? (
+          <QuickOptionsBar
+            options={quickOptions}
+            usedValues={quickOptionsUsed ?? []}
+            disabled={disabled}
+            onPick={onQuickPick}
+          />
+        ) : undefined
+      }
+    />
   );
 }

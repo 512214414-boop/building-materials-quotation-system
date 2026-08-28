@@ -124,14 +124,22 @@ export async function listProductsHandler(req: Request, res: Response) {
 
 export async function getProductHandler(req: Request, res: Response) {
   const q = req.query as Record<string, string>;
-  // v14.0：specId 查询参数定位当前编辑规格（不传取首个）
-  const p = await productSvc.getProduct(BigInt(req.params.id), q.specId ? BigInt(q.specId) : undefined);
+  // v14.0：specId 定位当前编辑规格；v22.0：brandId 限定品牌下规格
+  const p = await productSvc.getProduct(
+    BigInt(req.params.id),
+    q.specId ? BigInt(q.specId) : undefined,
+    q.brandId ? BigInt(q.brandId) : undefined,
+  );
   return ok(res, p);
 }
 
 export async function getSiblingSpecsHandler(req: Request, res: Response) {
   const q = req.query as Record<string, string>;
-  const specs = await productSvc.getSiblingSpecs(BigInt(req.params.id), q.specId ? BigInt(q.specId) : undefined);
+  const specs = await productSvc.getSiblingSpecs(
+    BigInt(req.params.id),
+    q.specId ? BigInt(q.specId) : undefined,
+    q.brandId ? BigInt(q.brandId) : undefined,
+  );
   return ok(res, specs);
 }
 
@@ -168,10 +176,18 @@ export async function updateProductHandler(req: Request, res: Response) {
 
 export async function deleteProductHandler(req: Request, res: Response) {
   const id = BigInt(req.params.id);
-  const deleted = await productSvc.deleteProduct(id);
+  const purgeOrphanFiles =
+    req.query.purgeOrphanFiles !== '0' && req.query.purgeOrphanFiles !== 'false';
+  const deleted = await productSvc.deleteProduct(id, { purgeOrphanFiles });
   await req.audit?.('product_delete', 'product', id);
   // v11.0：返回 deletedDocLineRefs 字段，便于前端审计/日志展示
   return ok(res, { id: deleted.id, deletedDocLineRefs: deleted.deletedDocLineRefs });
+}
+
+export async function getProductDeletePreviewHandler(req: Request, res: Response) {
+  const id = BigInt(req.params.id);
+  const preview = await productSvc.getProductDeletePreview(id);
+  return ok(res, preview);
 }
 
 /**
@@ -198,6 +214,32 @@ export async function activateProductHandler(req: Request, res: Response) {
   const result = await productSvc.activateProduct(id);
   await req.audit?.('product_activate', 'product', id);
   return ok(res, result, '已启用');
+}
+
+const batchProductIdsSchema = z.object({
+  ids: z.array(z.string().regex(/^\d+$/)).min(1).max(200),
+});
+
+export async function batchDeactivateProductsHandler(req: Request, res: Response) {
+  const parsed = batchProductIdsSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const ids = parsed.data.ids.map((id) => BigInt(id));
+  const result = await productSvc.batchDeactivateProducts(ids);
+  for (const id of ids) {
+    await req.audit?.('product_deactivate', 'product', id);
+  }
+  return ok(res, result, `已停用 ${result.count} 个产品`);
+}
+
+export async function batchActivateProductsHandler(req: Request, res: Response) {
+  const parsed = batchProductIdsSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const ids = parsed.data.ids.map((id) => BigInt(id));
+  const result = await productSvc.batchActivateProducts(ids);
+  for (const id of ids) {
+    await req.audit?.('product_activate', 'product', id);
+  }
+  return ok(res, result, `已启用 ${result.count} 个产品`);
 }
 
 /**
@@ -332,6 +374,20 @@ export async function listUnitsHandler(req: Request, res: Response) {
   return ok(res, result);
 }
 
+/** 全局单位字典快速新建（边用边建·A 类槽）：只传 unitName，幂等，不挂 spec。 */
+export async function quickAddUnitHandler(req: Request, res: Response) {
+  const schema = z.object({
+    unitName: z.string().min(1).max(50),
+    status: z.number().int().min(0).max(1).optional(),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const created = await productSvc.quickAddGlobalUnit(parsed.data.unitName, parsed.data.status ?? 1);
+  await req.audit?.('unit_quick_add', 'unit', created.id);
+  const msg = created.reused ? '已复用现有单位' : '新建单位成功';
+  return ok(res, created, msg, 201);
+}
+
 export async function getUnitHandler(req: Request, res: Response) {
   const u = await productSvc.getUnit(BigInt(req.params.id));
   return ok(res, u);
@@ -363,6 +419,7 @@ export async function updateUnitHandler(req: Request, res: Response) {
     status: z.number().int().min(0).max(1).optional(),
     isBase: z.boolean().optional(),
     isDisplay: z.boolean().optional(),
+    specId: z.coerce.bigint().positive().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
@@ -373,7 +430,9 @@ export async function updateUnitHandler(req: Request, res: Response) {
 
 export async function deleteUnitHandler(req: Request, res: Response) {
   const id = BigInt(req.params.id);
-  const deleted = await productSvc.deleteUnit(id);
+  const specIdRaw = typeof req.query.specId === 'string' ? req.query.specId : undefined;
+  const specId = specIdRaw ? BigInt(specIdRaw) : undefined;
+  const deleted = await productSvc.deleteUnit(id, specId);
   await req.audit?.('unit_delete', 'unit', id);
   return ok(res, deleted);
 }
@@ -384,7 +443,9 @@ export async function deleteUnitHandler(req: Request, res: Response) {
  */
 export async function setUnitBaseHandler(req: Request, res: Response) {
   const unitId = BigInt(req.params.id);
-  const result = await productSvc.setUnitBase(unitId);
+  const specIdRaw = (req.query.specId ?? (req.body as { specId?: string })?.specId) as string | undefined;
+  const specId = specIdRaw ? BigInt(String(specIdRaw)) : undefined;
+  const result = await productSvc.setUnitBase(unitId, specId);
   await req.audit?.('unit_set_base', 'unit', unitId);
   return ok(res, result);
 }
@@ -397,10 +458,11 @@ export async function setUnitDisplayHandler(req: Request, res: Response) {
   const unitId = BigInt(req.params.id);
   const schema = z.object({
     isDisplay: z.boolean(),
+    specId: z.coerce.bigint().positive().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
-  const result = await productSvc.setUnitDisplay(unitId, parsed.data.isDisplay);
+  const result = await productSvc.setUnitDisplay(unitId, parsed.data.isDisplay, parsed.data.specId);
   await req.audit?.('unit_set_display', 'unit', unitId);
   return ok(res, result);
 }
@@ -444,6 +506,7 @@ export async function updateSalePriceHandler(req: Request, res: Response) {
   const id = BigInt(req.params.id);
   const schema = z.object({
     price: z.union([z.coerce.number(), z.string()]).optional(),
+    priceTypeId: z.coerce.bigint().positive().optional(),
     // v1.5.6.2 修复【关键】：原 schema 缺 isDefault → zod 剥离 → ProductPicker 默认售价切换 no-op
     isDefault: z.boolean().optional(),
     status: z.number().int().min(0).max(1).optional(),
@@ -685,9 +748,16 @@ export async function searchProductsHandler(req: Request, res: Response) {
   const result = await productSvc.searchProducts({
     keyword: q.keyword ?? q.q ?? '',
     categoryId: q.categoryId ? Number(q.categoryId) : undefined,
-    status: q.status !== undefined ? Number(q.status) : undefined,
+    brandId: q.brandId || undefined,
+    brandName: q.brandName || undefined,
+    productId: q.productId || undefined,
+    productName: q.productName || undefined,
+    specModel: q.specModel || undefined,
+    specExact: q.specExact === '0' || q.specExact === 'false' ? false : q.specExact === '1' || q.specExact === 'true' ? true : undefined,
     page: q.page ? Number(q.page) : 1,
     size: q.size ? Number(q.size) : 20,
+    status: q.status !== undefined ? Number(q.status) : undefined,
+    entryView: q.entryView || undefined,
   });
   // 公开端（无 req.user）剥离进价
   if (!req.user) {
@@ -699,6 +769,29 @@ export async function searchProductsHandler(req: Request, res: Response) {
     });
   }
   return ok(res, result);
+}
+
+/** 档案列表表头级联：当前结果里的产品名 / 品牌 / 规格，不是全局字典 */
+export async function listSkuSearchFacetsHandler(req: Request, res: Response) {
+  const q = req.query as Record<string, string>;
+  const field = q.field as 'product' | 'brand' | 'spec';
+  if (!['product', 'brand', 'spec'].includes(field)) {
+    return fail(res, 422, 42201, '参数错误', [{ path: ['field'], message: 'field 必须为 product/brand/spec' }]);
+  }
+  const options = await productSvc.listSkuSearchFacets({
+    field,
+    keyword: q.keyword ?? '',
+    q: q.q ?? '',
+    categoryId: q.categoryId ? Number(q.categoryId) : undefined,
+    brandId: q.brandId || undefined,
+    brandName: q.brandName || undefined,
+    productId: q.productId || undefined,
+    productName: q.productName || undefined,
+    specModel: q.specModel || undefined,
+    specExact: q.specExact === '0' || q.specExact === 'false' ? false : q.specExact === '1' || q.specExact === 'true' ? true : undefined,
+    status: q.status !== undefined ? Number(q.status) : undefined,
+  });
+  return ok(res, { options });
 }
 
 // ============================================================
@@ -787,6 +880,7 @@ export async function saveProductHandler(req: Request, res: Response) {
     specModel: z.string().max(200),
     categoryId: z.number().int().min(0).optional(),
     remark: z.string().max(500).optional(),
+    specRemark: z.string().max(500).optional(),
     status: z.number().int().min(0).max(1).optional(),
     units: z.array(z.object({
       id: z.coerce.bigint().positive().optional(),
@@ -794,14 +888,12 @@ export async function saveProductHandler(req: Request, res: Response) {
       isBase: z.boolean().optional(),
       isDisplay: z.boolean().optional(),
       status: z.number().int().min(0).max(1).optional(),
-    })),
+    })).optional().default([]),
     brands: z.array(z.object({
       id: z.coerce.bigint().positive().optional(),
       name: z.string().min(1).max(100),
       sortOrder: z.number().int().optional(),
       status: z.number().int().min(0).max(1).optional(),
-      // v14.0：该规格下该品牌备注（存 spec_brand.remark）
-      remark: z.string().max(500).optional(),
       images: z.array(z.object({
         imageUrl: z.string().min(1).max(500),
         // v11.0 生产级：多版本图片元数据（前端 uploadProductImage 返回后随 saveProduct 提交）
@@ -820,7 +912,7 @@ export async function saveProductHandler(req: Request, res: Response) {
         unitIdx: z.number().int().min(0),
         conversionRate: z.union([z.coerce.number(), z.string()]),
       })).optional(),
-    })).min(1, '至少需要一个品牌'),
+    })).optional().default([]),
     salePrices: z.array(z.object({
       brandIdx: z.number().int().min(0),
       unitIdx: z.number().int().min(0),
@@ -953,4 +1045,201 @@ export async function deletePriceTypeHandler(req: Request, res: Response) {
   await productSvc.deletePriceType(id);
   await req.audit?.('price_type_delete', 'price_type', id);
   return ok(res, { id: req.params.id });
+}
+
+/** 选品空行：给已有产品挂一个品牌（所有规格都挂上） */
+export async function attachBrandToProductHandler(req: Request, res: Response) {
+  const productId = BigInt(req.params.id);
+  const parsed = z.object({ brandName: z.string().min(1).max(100) }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const created = await productSvc.attachBrandToProduct(productId, parsed.data.brandName);
+  await req.audit?.('spec_brand_attach', 'product', productId);
+  return ok(res, created, '已挂品牌', 201);
+}
+
+/** 选品空行：当前品牌下加规格 */
+export async function ensureSpecOnProductBrandHandler(req: Request, res: Response) {
+  const productId = BigInt(req.params.id);
+  const parsed = z.object({
+    specModel: z.string().min(1).max(200),
+    brandName: z.string().min(1).max(100),
+  }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const created = await productSvc.ensureSpecOnProductBrand(
+    productId,
+    parsed.data.specModel,
+    parsed.data.brandName,
+  );
+  await req.audit?.('spec_ensure', 'product', productId);
+  return ok(res, created, '已加规格', 201);
+}
+
+/** 选品点品牌名换绑；档案列表备注格只传 remark */
+export async function rebindSpecBrandHandler(req: Request, res: Response) {
+  const specBrandId = BigInt(req.params.id);
+  const parsed = z
+    .object({
+      brandName: z.string().min(1).max(100).optional(),
+      remark: z.string().max(500).optional(),
+    })
+    .safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  if (parsed.data.brandName === undefined && parsed.data.remark === undefined) {
+    return fail(res, 422, 42201, '参数错误', [
+      { path: ['body'], message: 'brandName 或 remark 至少一项' },
+    ]);
+  }
+  let updated;
+  if (parsed.data.brandName !== undefined) {
+    updated = await productSvc.rebindSpecBrand(specBrandId, parsed.data.brandName);
+    await req.audit?.('spec_brand_rebind', 'spec_brand', specBrandId);
+  }
+  if (parsed.data.remark !== undefined) {
+    updated = await productSvc.updateSpecBrandRemark(specBrandId, parsed.data.remark);
+    await req.audit?.('spec_brand_remark', 'spec_brand', specBrandId);
+  }
+  return ok(res, updated);
+}
+
+/** 选品点单位名：这条规格换单位，不改全局单位字典名 */
+export async function rebindSpecUnitHandler(req: Request, res: Response) {
+  const specId = BigInt(req.params.specId);
+  const unitId = BigInt(req.params.unitId);
+  const parsed = z.object({ unitName: z.string().min(1).max(50) }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const updated = await productSvc.rebindSpecUnit(specId, unitId, parsed.data.unitName);
+  await req.audit?.('spec_unit_rebind', 'spec_unit', specId);
+  return ok(res, updated);
+}
+
+/** 选品改换算：这一条规格×品牌、这个单位。基准单位固定 1。 */
+export async function upsertSpecBrandConversionHandler(req: Request, res: Response) {
+  const specBrandId = BigInt(req.params.specBrandId);
+  const unitId = BigInt(req.params.unitId);
+  const parsed = z.object({ conversionRate: z.coerce.number().positive() }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.upsertSpecBrandConversion(
+    specBrandId,
+    unitId,
+    parsed.data.conversionRate,
+  );
+  await req.audit?.('spec_brand_conversion', 'brand_unit_conversion', specBrandId);
+  return ok(res, result);
+}
+
+export async function upsertSaleSpecPointHandler(req: Request, res: Response) {
+  const parsed = z.object({
+    specBrandId: z.coerce.bigint().positive(),
+    priceTypeId: z.coerce.bigint().positive(),
+    point: z.coerce.number().positive(),
+  }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.upsertSaleSpecPoint(
+    parsed.data.specBrandId,
+    parsed.data.priceTypeId,
+    parsed.data.point,
+  );
+  return ok(res, result);
+}
+
+export async function upsertPurchaseSpecPointHandler(req: Request, res: Response) {
+  const parsed = z.object({
+    specBrandId: z.coerce.bigint().positive(),
+    supplierId: z.coerce.bigint().positive(),
+    point: z.coerce.number().positive(),
+  }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.upsertPurchaseSpecPoint(
+    parsed.data.specBrandId,
+    parsed.data.supplierId,
+    parsed.data.point,
+  );
+  return ok(res, result);
+}
+
+const pointChangePreviewSchema = z.object({
+  side: z.enum(['sale', 'purchase']),
+  brandName: z.string().min(1).max(100),
+  categoryName: z.string().min(1).max(100),
+  newPoint: z.coerce.number().positive(),
+  priceTypeId: z.coerce.bigint().positive().optional(),
+  supplierId: z.coerce.bigint().positive().optional(),
+});
+
+/** 改全局点位前先看：跟组规格会改，已有例外的不动 */
+export async function previewPointChangeHandler(req: Request, res: Response) {
+  const parsed = pointChangePreviewSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.previewPointChange(parsed.data);
+  return ok(res, result);
+}
+
+export async function upsertSaleGroupPointHandler(req: Request, res: Response) {
+  const parsed = z.object({
+    priceTypeId: z.coerce.bigint().positive(),
+    brandName: z.string().min(1).max(100),
+    categoryName: z.string().min(1).max(100),
+    point: z.coerce.number().positive(),
+  }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.upsertSaleGroupPoint(
+    parsed.data.priceTypeId,
+    parsed.data.brandName,
+    parsed.data.categoryName,
+    parsed.data.point,
+  );
+  await req.audit?.('sale_point_rule_upsert', 'sale_point_rule', parsed.data.priceTypeId, {
+    brandName: parsed.data.brandName,
+    categoryName: parsed.data.categoryName,
+    point: parsed.data.point,
+  });
+  return ok(res, result);
+}
+
+export async function upsertPurchaseGroupPointHandler(req: Request, res: Response) {
+  const parsed = z.object({
+    supplierId: z.coerce.bigint().positive(),
+    brandName: z.string().min(1).max(100),
+    categoryName: z.string().min(1).max(100),
+    point: z.coerce.number().positive(),
+  }).safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.upsertPurchaseGroupPoint(
+    parsed.data.supplierId,
+    parsed.data.brandName,
+    parsed.data.categoryName,
+    parsed.data.point,
+  );
+  await req.audit?.('supplier_point_rule_upsert', 'supplier_point_rule', parsed.data.supplierId, {
+    brandName: parsed.data.brandName,
+    categoryName: parsed.data.categoryName,
+    point: parsed.data.point,
+  });
+  return ok(res, result);
+}
+
+const dictChangeSchema = z.object({
+  kind: z.enum(['brand', 'unit', 'category', 'priceType', 'supplier']),
+  fromId: z.string().min(1),
+  toName: z.string().min(1).max(200),
+});
+
+/** 选品改全局：先看本次会改到哪些档案（改名或并到已有 ID），确认修改（当前）不走这里 */
+export async function previewDictChangeHandler(req: Request, res: Response) {
+  const parsed = dictChangeSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.previewDictChange(parsed.data);
+  return ok(res, result);
+}
+
+export async function applyDictChangeHandler(req: Request, res: Response) {
+  const parsed = dictChangeSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const result = await productSvc.applyDictChange(parsed.data);
+  await req.audit?.('dict_change', parsed.data.kind, null, {
+    fromId: parsed.data.fromId,
+    toName: parsed.data.toName,
+    mode: result.mode,
+  });
+  return ok(res, result);
 }

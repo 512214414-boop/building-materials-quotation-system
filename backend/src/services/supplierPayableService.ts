@@ -8,6 +8,7 @@ import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
 import { round2 } from '../engines/pricing-engine.js';
+import { agingBucket } from './opsReportService.js';
 
 const BIZ_TYPE_LABELS: Record<string, string> = {
   allocation_external: '等额直发',
@@ -127,4 +128,45 @@ export async function listPayablesForExport() {
     amount: Number(r.amount),
     bizTypeLabel: BIZ_TYPE_LABELS[r.biz_type] ?? r.biz_type,
   }));
+}
+
+/** 应付账龄：仅未结算，按生成日分桶（聚合，禁全表 N+1） */
+export async function apAging() {
+  const rows = await prisma.supplier_payable_lines.findMany({
+    where: { status: 'pending' },
+    select: {
+      id: true,
+      payable_no: true,
+      supplierName: true,
+      amount: true,
+      created_at: true,
+      biz_type: true,
+    },
+    orderBy: { created_at: 'asc' },
+    take: 2000,
+  });
+  const buckets: Record<string, { count: number; amount: number }> = {
+    '0-30': { count: 0, amount: 0 },
+    '31-60': { count: 0, amount: 0 },
+    '61-90': { count: 0, amount: 0 },
+    '90+': { count: 0, amount: 0 },
+  };
+  const list = [];
+  for (const r of rows) {
+    const amount = round2(Number(r.amount));
+    const bucket = agingBucket(r.created_at);
+    buckets[bucket].count += 1;
+    buckets[bucket].amount = round2(buckets[bucket].amount + amount);
+    list.push({
+      id: String(r.id),
+      payableNo: r.payable_no,
+      supplierName: r.supplierName,
+      amount,
+      bucket,
+      bizType: r.biz_type,
+      bizTypeLabel: BIZ_TYPE_LABELS[r.biz_type] ?? r.biz_type,
+      createdAt: r.created_at,
+    });
+  }
+  return { buckets, list: list.slice(0, 200) };
 }

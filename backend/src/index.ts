@@ -4,16 +4,8 @@ import { prisma } from './config/prisma.js';
 import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { wsManager } from './ws/index.js';
-import { ensurePriceTypes } from './services/productService.js';
-import { ensureSystemDefaults } from './services/businessDefaults.js';
 
 async function start() {
-  // v12.0：启动即预置价格类型字典（零售价/批发价/工程价），幂等
-  await ensurePriceTypes();
-  // v13.1：启动即预置系统缺省记录（「面价渠道」供应商 + 「零售价」价格类型），幂等
-  // 顶层规范：数据规范.md 缺省值注册表 —— 保证供应商/售价类型为空时的缺省引用始终真实存在、列表可见
-  await ensureSystemDefaults();
-
   const app = createApp();
   const server = http.createServer(app);
 

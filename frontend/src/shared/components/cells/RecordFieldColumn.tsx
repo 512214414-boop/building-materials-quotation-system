@@ -17,13 +17,12 @@
 
 import { Popover } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
+import type { ReactNode } from 'react';
 import type { UnifiedTableColumn } from '../UnifiedTable.js';
 import { resolveDefaultRecord } from '../../utils/defaultRecord.js';
-import {
-  smartPopupContainer,
-  PANEL_POPPER_Z_INDEX,
-} from '../../utils/smartPopupContainer.js';
+import { smartPopupContainer } from '../../utils/smartPopupContainer.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
+import { isPointerOnFloatPanel } from '../PanelTree.js';
 
 // ============================================================
 // §1 类型定义
@@ -45,7 +44,7 @@ export interface RecordFieldDisplayCtx {
 
 export interface RecordFieldColumnOptions<T = any, R = any> {
   /** 列标题 */
-  title: string;
+  title: ReactNode;
   minWidth?: number;
   align?: 'left' | 'center' | 'right';
   /** 取该多记录字段的记录数组（数据行）；R = 业务记录类型（如 SupplierContact/SkuOptionUnit） */
@@ -69,6 +68,18 @@ export interface RecordFieldColumnOptions<T = any, R = any> {
     /** 自定义单元格渲染（价格等特殊场景；优先级最高，覆盖默认显示模式渲染） */
     render?: (ctx: RecordFieldDisplayCtx) => React.ReactNode;
   };
+  /**
+   * 量列宽用的格子正文（不含 ▾）。自定义 render 时必填，否则按 single/combined 字段拼。
+   * N 项集合（经营范围）不要把全部名称拼成长串塞进来：那会把列越撑越宽。那种列用 wrap。
+   */
+  getFitText?: (record: T) => string;
+  /**
+   * 列宽封顶、格子里换行。给「一项集合会很多」的列（经营范围按钮组合）。
+   * 和开单 fitContent 相反：禁止按当前页最长一串撑开。
+   */
+  wrap?: boolean;
+  /** 单行按内容撑开。wrap 列会强制 false。 */
+  fitContent?: boolean;
   /** 推算判定（当前显示记录为推算值 → derived=true，用系统补全语义色） */
   isDerived?: (
     records: Array<Record<string, unknown>>,
@@ -153,13 +164,45 @@ export function createRecordFieldColumn<T = any>(
 
   const getRecordKey = opts.getRecordKey ?? ((rec, idx) => (rec.id != null ? String(rec.id) : `__${idx}`));
 
+  const getFitText = (record: T) => {
+    let text = '';
+    if (opts.getFitText) {
+      text = opts.getFitText(record);
+    } else {
+      const records = (getRecords(record) ?? []).filter(Boolean) as Array<Record<string, unknown>>;
+      const selectedKey =
+        typeof select?.selectedKey === 'function'
+          ? select.selectedKey(record)
+          : (select?.selectedKey ?? null);
+      const { record: displayRecord } = resolveDisplayRecord(records, selectedKey, getRecordKey);
+      if (displayRecord) {
+        if (display.mode === 'single') {
+          const v = displayRecord[display.field ?? 'name'];
+          text = v != null ? String(v) : '';
+        } else {
+          text = (display.fields ?? [])
+            .map((f) => (displayRecord[f] != null ? String(displayRecord[f]) : ''))
+            .filter(Boolean)
+            .join(display.separator ?? '·');
+        }
+      }
+    }
+    const body = text.trim() || display.emptyText || '—';
+    return `${body} ▾`;
+  };
+
+  const wrap = !!opts.wrap;
+
   return {
-    key: title,
+    key: typeof title === 'string' ? title : 'record-field',
     title,
     dataIndex: undefined as never,
     minWidth,
     renderMode: 'custom',
     align,
+    wrap,
+    fitContent: wrap ? false : opts.fitContent,
+    getFitText: wrap ? undefined : getFitText,
     render: (_v: unknown, record: T) => {
       const records = (getRecords(record) ?? []).filter(Boolean) as Array<
         Record<string, unknown>
@@ -231,30 +274,29 @@ export function createRecordFieldColumn<T = any>(
         <Popover
           trigger="click"
           placement="bottomLeft"
+          arrow={false}
           destroyOnHidden={false}
           open={typeof open === 'function' ? open(record) : open}
           onOpenChange={(o) => {
+            if (!o && isPointerOnFloatPanel()) return;
             onOpenChange?.(o, record);
             if (o) onOpen?.(record);
             else onClose?.(record);
           }}
           getPopupContainer={smartPopupContainer}
-          // v14.3：面板统一低于弹窗基准层，保证「弹窗内打开的弹窗在弹窗之上」
-          zIndex={PANEL_POPPER_Z_INDEX}
+          autoAdjustOverflow={false}
+          styles={{ container: { padding: 0 }, content: { padding: 0 } }}
           content={panelContent}
         >
           <a
             onClick={(e) => e.stopPropagation()}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 2,
-              cursor: 'pointer',
-              color: 'var(--text-default)',
-            }}
+            className={['ds-record-field-trigger', wrap ? 'is-wrap' : ''].filter(Boolean).join(' ')}
           >
-            {cell}
-            <DownOutlined style={{ fontSize: 10, color: 'var(--text-tertiary)' }} />
+            <span className="ds-record-field-trigger-body">{cell}</span>
+            <DownOutlined
+              className="ds-record-field-trigger-caret"
+              style={{ fontSize: 10, color: 'var(--text-tertiary)' }}
+            />
           </a>
         </Popover>
       );

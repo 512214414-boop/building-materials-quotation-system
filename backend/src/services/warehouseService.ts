@@ -1,15 +1,19 @@
-// v1.7.0 内部仓库档案服务（配货·成本推演方案落地）
-// 设计依据（《配货与成本核算推演方案.md》）：
-//   - 内部仓库（自有库房）与外部供应商底层架构永久拆分，warehouse 为独立档案实体
-//   - 支持多仓库、多库区点位（zones Json），A库房/B门店仓/样品仓均归类内部
-//   - isMain = 主自有库房（超额入库默认入仓；同店有且仅有一个 true）
-// v11.0 解耦对齐：业务台账（inventory/allocation_lines）通过 warehouse_id/source_id
-//   BigInt 字段 + 索引引用，无物理外键；档案删除不影响历史业务（快照/ID 留存）
+// v1.7.0 内部仓库档案服务（v20 拆表：区位 / 负责人联系信息）
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
+import {
+  formatWarehouseView,
+  loadWarehouseWithRelations,
+  syncWarehouseContacts,
+  syncWarehouseManagerLegacy,
+  syncWarehouseZones,
+  warehouseInclude,
+  type WarehouseContactInput,
+  type WarehouseZoneInput,
+} from './warehouseRelations.js';
 
 export interface WarehouseZoneItem {
   name: string;
@@ -18,153 +22,234 @@ export interface WarehouseZoneItem {
 
 export interface CreateWarehouseInput {
   name: string;
-  code?: string;
   zones?: WarehouseZoneItem[] | null;
+  contacts?: WarehouseContactInput[];
   address?: string;
   manager?: string;
+  lng?: number | string | null;
+  lat?: number | string | null;
+  coordSource?: 'geocoded' | 'manual' | null;
   isMain?: boolean;
   sortOrder?: number;
 }
 
+function parseDecimal(v: number | string | null | undefined): Prisma.Decimal | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? new Prisma.Decimal(n) : null;
+}
+
+function queryTrim(v: unknown): string {
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+function isExactFlag(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+function parseOptionalBigIntId(v: unknown): bigint | null {
+  if (typeof v === 'string' && /^\d+$/.test(v)) return BigInt(v);
+  return null;
+}
+
+function parseEnabledListStatus(query: Record<string, unknown>): number | undefined {
+  const s = query.status;
+  if (s === 'all' || s === -1 || s === '-1') return undefined;
+  if (s === undefined || s === null || s === '') return 1;
+  const n = typeof s === 'number' ? s : Number(s);
+  if (n === 0 || n === 1) return n;
+  return 1;
+}
+
+function buildWarehouseWhere(
+  query: Record<string, unknown>,
+  haystack: string,
+  skip?: 'name',
+): Prisma.warehouseWhereInput {
+  const parts: Prisma.warehouseWhereInput[] = [];
+  if (haystack) {
+    parts.push({
+      OR: [
+        { name: { contains: haystack } },
+        { address: { contains: haystack } },
+        { contacts: { some: { name: { contains: haystack } } } },
+      ],
+    });
+  }
+  if (skip !== 'name') {
+    const nameId = parseOptionalBigIntId(query.nameId);
+    const name = queryTrim(query.name);
+    if (nameId) parts.push({ id: nameId });
+    else if (name) parts.push(isExactFlag(query.nameExact) ? { name } : { name: { contains: name } });
+  }
+  const status = parseEnabledListStatus(query);
+  if (status !== undefined) parts.push({ status });
+  if (!parts.length) return {};
+  if (parts.length === 1) return parts[0];
+  return { AND: parts };
+}
+
+const WAREHOUSE_FACET_LIMIT = 80;
+
 export async function listWarehouses(query: Record<string, unknown>) {
   const { page, pageSize, skip, take } = parsePagination(query);
-  const where: Record<string, unknown> = {};
-  if (typeof query.keyword === 'string' && query.keyword) {
-    where.OR = [
-      { name: { contains: query.keyword } },
-      { code: { contains: query.keyword } },
-      { address: { contains: query.keyword } },
-      { manager: { contains: query.keyword } },
-    ];
-  }
-  // 默认只返回启用仓库（status=1）；传 status='all' 返回全部
-  if (typeof query.status === 'string' && query.status !== '') {
-    if (query.status === 'all') {
-      // 不添加过滤
-    } else {
-      where.status = Number(query.status);
-    }
-  } else {
-    where.status = 1;
-  }
+  const where = buildWarehouseWhere(query, queryTrim(query.keyword));
 
   const [total, list] = await Promise.all([
     prisma.warehouse.count({ where }),
     prisma.warehouse.findMany({
       where,
-      // 启用优先 + 主仓优先 + 排序字段 + ID 兜底（下拉稳定顺序）
       orderBy: [{ status: 'desc' }, { isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
       skip,
       take,
+      include: warehouseInclude,
     }),
   ]);
-  return paginate(list, total, page, pageSize);
+  return paginate(
+    list.map((w) => formatWarehouseView(w)),
+    total,
+    page,
+    pageSize,
+  );
 }
 
-/** 启用仓库列表（配货来源内部组 / 下拉，无分页） */
+export async function listWarehouseFacets(query: Record<string, unknown>) {
+  if (query.field !== 'name') return [];
+  const headerKw = queryTrim(query.keyword);
+  const haystack = queryTrim(query.q);
+  const where = buildWarehouseWhere(query, haystack, 'name');
+  if (!headerKw && !haystack) return [];
+  const rows = await prisma.warehouse.findMany({
+    where: headerKw ? { AND: [where, { name: { contains: headerKw } }] } : where,
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+    take: WAREHOUSE_FACET_LIMIT,
+  });
+  return rows
+    .filter((r) => r.name)
+    .map((r) => ({ type: 'existing' as const, label: r.name, value: r.name, id: String(r.id) }));
+}
+
 export async function listEnabledWarehouses() {
-  return prisma.warehouse.findMany({
+  const list = await prisma.warehouse.findMany({
     where: { status: 1 },
     orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+    include: warehouseInclude,
   });
+  return list.map((w) => formatWarehouseView(w));
 }
 
 export async function getWarehouse(id: bigint) {
-  const w = await prisma.warehouse.findUnique({ where: { id } });
+  const w = await loadWarehouseWithRelations(id);
   if (!w) throw Errors.notFound('仓库不存在');
-  return w;
+  return formatWarehouseView(w);
 }
 
-/** 主自有库房（超额入库默认入仓；无主仓标记时取排序第一的启用仓库） */
 export async function getMainWarehouse() {
   const main = await prisma.warehouse.findFirst({
     where: { status: 1, isMain: true },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    include: warehouseInclude,
   });
-  if (main) return main;
-  return prisma.warehouse.findFirst({
+  if (main) return formatWarehouseView(main);
+  const fallback = await prisma.warehouse.findFirst({
     where: { status: 1 },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+    include: warehouseInclude,
   });
+  if (!fallback) throw Errors.notFound('无启用仓库');
+  return formatWarehouseView(fallback);
+}
+
+async function applyWarehouseExtras(id: bigint, data: Partial<CreateWarehouseInput>) {
+  if (data.zones !== undefined) {
+    await syncWarehouseZones(id, data.zones ?? []);
+  }
+  if (data.contacts !== undefined) {
+    await syncWarehouseContacts(id, data.contacts);
+  } else if (data.manager !== undefined) {
+    await syncWarehouseManagerLegacy(id, data.manager);
+  }
 }
 
 export async function createWarehouse(data: CreateWarehouseInput) {
   const name = data.name.trim();
   if (!name) throw Errors.unprocessable('仓库名称不能为空');
-  if (data.code) {
-    const dup = await prisma.warehouse.findUnique({ where: { code: data.code } });
-    if (dup) throw Errors.unprocessable(`仓库编码「${data.code}」已存在`);
-  }
   const count = await prisma.warehouse.count();
-  // 首个仓库自动设为主自有库房（保证系统始终有主仓可默认入仓）
   const isMain = data.isMain === true || count === 0;
-  return prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     if (isMain) {
       await tx.warehouse.updateMany({ where: { isMain: true }, data: { isMain: false } });
     }
     return tx.warehouse.create({
       data: {
         name,
-        code: data.code?.trim() || null,
-        zones: data.zones?.length ? (data.zones as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         address: data.address ?? null,
-        manager: data.manager ?? null,
+        lng: parseDecimal(data.lng),
+        lat: parseDecimal(data.lat),
+        coordSource: data.coordSource ?? null,
         isMain,
         sortOrder: data.sortOrder ?? 0,
         status: 1,
       },
     });
   });
+  await applyWarehouseExtras(created.id, data);
+  const record = await loadWarehouseWithRelations(created.id);
+  if (!record) throw Errors.notFound('仓库不存在');
+  return formatWarehouseView(record);
 }
 
-/** 快速新建：仅名称（配货来源检索无匹配时一键建档，幂等） */
 export async function quickAddWarehouse(name: string) {
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable('仓库名称不能为空');
-  const existing = await prisma.warehouse.findFirst({ where: { name: trimmed } });
-  if (existing) return existing;
+  const existing = await prisma.warehouse.findFirst({
+    where: { name: trimmed },
+    include: warehouseInclude,
+  });
+  if (existing) return formatWarehouseView(existing);
   return createWarehouse({ name: trimmed });
 }
 
-export async function updateWarehouse(id: bigint, data: Partial<CreateWarehouseInput> & { status?: number }) {
+export async function updateWarehouse(
+  id: bigint,
+  data: Partial<CreateWarehouseInput> & { status?: number },
+) {
   const existing = await prisma.warehouse.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('仓库不存在');
-  if (data.code && data.code.trim()) {
-    const dup = await prisma.warehouse.findFirst({
-      where: { code: data.code.trim(), id: { not: id } },
-    });
-    if (dup) throw Errors.unprocessable(`仓库编码「${data.code}」已存在`);
-  }
-  const update: Record<string, unknown> = {};
+  const update: Prisma.warehouseUpdateInput = {};
   if (data.name !== undefined) {
     const name = data.name.trim();
     if (!name) throw Errors.unprocessable('仓库名称不能为空');
     update.name = name;
   }
-  if (data.code !== undefined) update.code = data.code?.trim() || null;
-  if (data.zones !== undefined) {
-    update.zones = data.zones?.length ? (data.zones as unknown as Prisma.InputJsonValue) : Prisma.JsonNull;
-  }
   if (data.address !== undefined) update.address = data.address;
-  if (data.manager !== undefined) update.manager = data.manager;
+  if (data.lng !== undefined) update.lng = parseDecimal(data.lng);
+  if (data.lat !== undefined) update.lat = parseDecimal(data.lat);
+  if (data.coordSource !== undefined) update.coordSource = data.coordSource;
   if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
   if (data.status !== undefined) update.status = data.status;
-  // isMain 互斥：设置为主仓时清其他仓库的主仓标记
+
   if (data.isMain === true) {
-    return prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.warehouse.updateMany({ where: { id: { not: id }, isMain: true }, data: { isMain: false } });
-      return tx.warehouse.update({ where: { id }, data: { ...update, isMain: true } });
+      await tx.warehouse.update({ where: { id }, data: { ...update, isMain: true } });
     });
-  }
-  if (data.isMain === false) {
-    // 取消主仓标记前确认不是唯一启用主仓
+  } else if (data.isMain === false) {
     const otherMain = await prisma.warehouse.findFirst({
       where: { isMain: true, id: { not: id }, status: 1 },
     });
     if (!otherMain) throw Errors.unprocessable('至少保留一个主自有库房，请先设置其他仓库为主仓');
     update.isMain = false;
+    await prisma.warehouse.update({ where: { id }, data: update });
+  } else if (Object.keys(update).length > 0) {
+    await prisma.warehouse.update({ where: { id }, data: update });
   }
-  return prisma.warehouse.update({ where: { id }, data: update });
+
+  await applyWarehouseExtras(id, data);
+  const record = await loadWarehouseWithRelations(id);
+  if (!record) throw Errors.notFound('仓库不存在');
+  return formatWarehouseView(record);
 }
 
 export async function setWarehouseStatus(id: bigint, status: number) {
@@ -177,10 +262,22 @@ export async function setWarehouseStatus(id: bigint, status: number) {
     });
     if (!otherMain) throw Errors.unprocessable('主自有库房不能停用，请先设置其他仓库为主仓');
   }
-  return prisma.warehouse.update({ where: { id }, data: { status } });
+  await prisma.warehouse.update({ where: { id }, data: { status } });
+  const record = await loadWarehouseWithRelations(id);
+  if (!record) throw Errors.notFound('仓库不存在');
+  return formatWarehouseView(record);
 }
 
-/** v1.7.0 仓库引用计数（删除确认时前端调用） */
+export async function batchSetWarehouseStatus(ids: bigint[], status: number) {
+  if (status !== 0 && status !== 1) throw Errors.unprocessable('状态值必须为 0 或 1');
+  const unique = [...new Set(ids.map((id) => id.toString()))].map((s) => BigInt(s));
+  if (unique.length === 0) return { count: 0, status };
+  for (const id of unique) {
+    await setWarehouseStatus(id, status);
+  }
+  return { count: unique.length, status };
+}
+
 export async function getWarehouseRefCounts(id: bigint) {
   const existing = await prisma.warehouse.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw Errors.notFound('仓库不存在');
@@ -198,7 +295,6 @@ export async function getWarehouseRefCounts(id: bigint) {
   };
 }
 
-/** v1.7.0 删除仓库（物理删除，允许被引用；历史业务通过快照/ID 留存） */
 export async function deleteWarehouse(id: bigint) {
   const existing = await prisma.warehouse.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('仓库不存在');
@@ -215,7 +311,6 @@ export async function deleteWarehouse(id: bigint) {
   ]);
 
   await prisma.$transaction(async (tx) => {
-    // 删除仓库前清理其库存台账与流水（仓库删除后库存无意义）
     await tx.inventory_ledger.deleteMany({ where: { warehouse_id: id } });
     await tx.inventory.deleteMany({ where: { warehouse_id: id } });
     await tx.warehouse.delete({ where: { id } });

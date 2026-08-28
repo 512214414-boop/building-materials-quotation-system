@@ -8,16 +8,19 @@
 //     次要字段：method + paid_at + reconcile_status（3个）
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { App as AntdApp, Spin, Empty, DatePicker, Menu } from 'antd';
-import { LockOutlined, UnlockOutlined, PlusOutlined, CheckOutlined } from '@ant-design/icons';
+import { Spin, Empty, DatePicker, Menu } from 'antd';
+import { LockOutlined, UnlockOutlined, CheckOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import DsButton from '../../../../../shared/components/DsButton.js';
 import DsNumberInput from '../../../../../shared/components/DsNumberInput.js';
 import DsSelect from '../../../../../shared/components/DsSelect.js';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
 import DsTag from '../../../../../shared/components/DsTag.js';
+import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
+import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
+import { WORKBENCH_TEXT } from '../../../../../shared/styles/shell-constants.js';
 import {
   listPayments,
   addPayment,
@@ -35,6 +38,7 @@ import { useSaveStatus } from '../../../../../shared/components/common/SaveStatu
 import type { PaymentType, ReconcileStatus } from '../../../../../shared/types/index.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
+import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
 
 const PAYMENT_TYPE_MAP: Record<PaymentType, { label: string; color: 'brand' | 'warning' | 'default' }> = {
   deposit: { label: '定金', color: 'brand' },
@@ -68,14 +72,8 @@ interface QuickAddBuffer {
   paidAt: dayjs.Dayjs;
 }
 
-// 行内编辑缓冲（次要字段）
-interface EditBuffer {
-  method: string;
-  paidAt: string; // ISO string
-}
-
 export default function PaymentReconcile({ documentId }: { documentId: string }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const { trackSave } = useSaveStatus();
 
   const [payments, setPayments] = useState<PaymentView[]>([]);
@@ -90,11 +88,7 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
     paidAt: dayjs(),
   });
   const [addingPayment, setAddingPayment] = useState(false);
-
-  // 行内编辑缓冲
-  const [editBuffer, setEditBuffer] = useState<Record<string, EditBuffer>>({});
   const submittingRef = useRef<Set<string>>(new Set());
-  const [savingLineId, setSavingLineId] = useState<string | null>(null);
 
   // 视图锁定
   const [viewLocked, setViewLocked] = useState(false);
@@ -116,15 +110,6 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
       // 读取视图锁定状态
       const locks = docDetail?.viewLocks ?? {};
       setViewLocked(!!locks['paymentReconcile']);
-      // 初始化编辑缓冲
-      const buf: Record<string, EditBuffer> = {};
-      for (const p of list || []) {
-        buf[p.id] = {
-          method: p.method ?? '',
-          paidAt: p.paidAt ?? '',
-        };
-      }
-      setEditBuffer(buf);
     } catch (e) {
       message.error((e as Error).message || '加载收款记录失败');
     } finally {
@@ -167,11 +152,6 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
         paidAt: quickBuffer.paidAt.toISOString(),
       });
       setPayments((prev) => [...prev, created]);
-      // 初始化新行的编辑缓冲
-      setEditBuffer((prev) => ({
-        ...prev,
-        [created.id]: { method: created.method ?? '', paidAt: created.paidAt ?? '' },
-      }));
       // 重置快录行（保留类型和方式，清空金额）
       setQuickBuffer((prev) => ({ ...prev, amount: '' }));
       await refreshSummary();
@@ -186,47 +166,39 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
   // ----------------------------------------------------------
   // 行内编辑：提交次要字段
   // ----------------------------------------------------------
-  const commitEditLine = useCallback(
-    async (paymentId: string) => {
-      if (submittingRef.current.has(paymentId)) return;
-      const buf = editBuffer[paymentId];
-      if (!buf) return;
-      const original = payments.find((p) => p.id === paymentId);
-      if (!original) return;
-      // 检查是否有变化
-      const methodChanged = buf.method !== original.method;
-      const paidAtChanged = buf.paidAt !== original.paidAt;
-      if (!methodChanged && !paidAtChanged) return;
+  const commitPaymentFields = useCallback(
+    async (
+      payment: PaymentView,
+      patch: { method?: string; paidAt?: string; paymentType?: PaymentType; amount?: number },
+    ) => {
+      if (viewLocked) return;
+      if (submittingRef.current.has(payment.id)) return;
+      const method = patch.method ?? payment.method ?? '';
+      const paidAt = patch.paidAt ?? payment.paidAt ?? '';
+      const paymentType = patch.paymentType ?? payment.paymentType;
+      const amount = patch.amount ?? Number(payment.amount);
+      const same =
+        method === (payment.method ?? '') &&
+        paidAt === (payment.paidAt ?? '') &&
+        paymentType === payment.paymentType &&
+        amount === Number(payment.amount);
+      if (same) return;
 
-      submittingRef.current.add(paymentId);
-      setSavingLineId(paymentId);
+      submittingRef.current.add(payment.id);
       try {
-        const updated = await trackSave(
-          paymentId,
-          updatePayment(paymentId, {
-            method: buf.method,
-            paidAt: buf.paidAt,
-          }),
-        ) as PaymentView;
+        const updated = (await trackSave(
+          payment.id,
+          updatePayment(payment.id, { method, paidAt, paymentType, amount }),
+        )) as PaymentView;
         setPayments((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-        setEditBuffer((prev) => ({
-          ...prev,
-          [updated.id]: { method: updated.method ?? '', paidAt: updated.paidAt ?? '' },
-        }));
-        // trackSave 静默处理保存反馈（行级状态点+全局状态栏），无需 message.success
+        if (patch.amount != null || patch.paymentType) await refreshSummary();
       } catch (e) {
-        // trackSave 内部已弹 message.error，这里仅回滚到原值
         void e;
-        setEditBuffer((prev) => ({
-          ...prev,
-          [paymentId]: { method: original.method ?? '', paidAt: original.paidAt ?? '' },
-        }));
       } finally {
-        submittingRef.current.delete(paymentId);
-        setSavingLineId(null);
+        submittingRef.current.delete(payment.id);
       }
     },
-    [editBuffer, payments, trackSave],
+    [viewLocked, trackSave, refreshSummary],
   );
 
   // ----------------------------------------------------------
@@ -308,99 +280,168 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
         title: '收款类型',
         dataIndex: 'paymentType',
         key: 'paymentType',
-        minWidth: 90,
+        minWidth: COL_WIDTHS.TAG_L,
         align: 'center',
         renderMode: 'custom',
-        render: (v: PaymentType) => {
-          const cfg = PAYMENT_TYPE_MAP[v];
-          return <DsTag color={cfg.color}>{cfg.label}</DsTag>;
-        },
+        render: (v: PaymentType, record: PaymentView) => (
+          <WorkbenchFieldCell
+            text={PAYMENT_TYPE_MAP[v]?.label ?? ''}
+            placeholder="—"
+            align="center"
+            disabled={viewLocked}
+            title="收款类型"
+            bullets={['点选写入。', '取消不保存。']}
+            onApply={(next) => {
+              const hit = PAYMENT_TYPE_OPTIONS.find((o) => o.label === next || o.value === next);
+              if (!hit) return;
+              void commitPaymentFields(record, { paymentType: hit.value });
+            }}
+            pickerRender={(ctx) => (
+              <div>
+                {PAYMENT_TYPE_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => {
+                      void commitPaymentFields(record, { paymentType: o.value });
+                      ctx.close();
+                    }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 8px',
+                      border: 'none',
+                      borderBottom: '1px solid var(--border-neutral-l1)',
+                      background: v === o.value ? 'var(--bg-overlay-l1)' : 'transparent',
+                      cursor: 'pointer',
+                      color: 'var(--text-default)',
+                      fontSize: 'var(--body-xs-font-size)',
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          />
+        ),
       },
       {
         title: '收款方式',
         dataIndex: 'method',
         key: 'method',
-        minWidth: 120,
+        minWidth: COL_WIDTHS.TAG_L,
         align: 'center',
         renderMode: 'custom',
-        render: (v: string, record: PaymentView) => {
-          if (viewLocked) return v || '—';
-          const buf = editBuffer[record.id];
-          return (
-            <DsSelect
-              size="sm"
-              value={buf?.method ?? v}
-              options={PAYMENT_METHOD_OPTIONS}
-              style={{ width: '100%' }}
-              disabled={false}
-              onChange={(val) =>
-                setEditBuffer((prev) => ({
-                  ...prev,
-                  [record.id]: { ...prev[record.id], method: val as string },
-                }))
-              }
-              onBlur={() => commitEditLine(record.id)}
-            />
-          );
-        },
+        render: (v: string, record: PaymentView) => (
+          <WorkbenchFieldCell
+            text={v || ''}
+            placeholder="—"
+            align="center"
+            disabled={viewLocked}
+            title="收款方式"
+            bullets={['点选写入。', '手输确认也可。', '取消不保存。']}
+            onApply={(next) => void commitPaymentFields(record, { method: next })}
+            pickerRender={(ctx) => (
+              <div>
+                {PAYMENT_METHOD_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => {
+                      void commitPaymentFields(record, { method: o.value });
+                      ctx.close();
+                    }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 8px',
+                      border: 'none',
+                      borderBottom: '1px solid var(--border-neutral-l1)',
+                      background:
+                        (v || '') === o.value ? 'var(--bg-overlay-l1)' : 'transparent',
+                      cursor: 'pointer',
+                      color: 'var(--text-default)',
+                      fontSize: 'var(--body-xs-font-size)',
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          />
+        ),
       },
       {
         title: '金额',
         dataIndex: 'amount',
         key: 'amount',
-        minWidth: 120,
+        minWidth: COL_WIDTHS.AMOUNT,
         align: 'center',
         renderMode: 'custom',
-        render: (v: string) => (
-          <span
-            style={{
-              fontVariantNumeric: 'tabular-nums',
-              fontWeight: 500,
-              color: 'var(--text-default)',
+        render: (v: string, record: PaymentView) => (
+          <WorkbenchFieldCell
+            text={Number(v || 0).toFixed(2)}
+            placeholder="0.00"
+            align="center"
+            mono
+            input="number"
+            disabled={viewLocked}
+            title="收款金额"
+            bullets={['确认后写入。', '取消不保存。']}
+            onApply={(next) => {
+              const n = parseFloat(next);
+              if (!Number.isFinite(n) || n <= 0) return;
+              void commitPaymentFields(record, { amount: n });
             }}
-          >
-            ¥{Number(v || 0).toFixed(2)}
-          </span>
+          />
         ),
       },
       {
         title: '收款日期',
         dataIndex: 'paidAt',
         key: 'paidAt',
-        minWidth: 180,
+        minWidth: COL_WIDTHS.DATETIME,
         align: 'center',
         renderMode: 'custom',
-        render: (v: string, record: PaymentView) => {
-          if (viewLocked) return v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '—';
-          const buf = editBuffer[record.id];
-          const dateVal = buf?.paidAt ? dayjs(buf.paidAt) : v ? dayjs(v) : dayjs();
-          return (
-            <DatePicker
-              showTime
-              size="small"
-              style={{ width: '100%' }}
-              format="YYYY-MM-DD HH:mm"
-              value={dateVal}
-              disabled={false}
-              onChange={(val) => {
-                if (!val) return;
-                setEditBuffer((prev) => ({
-                  ...prev,
-                  [record.id]: { ...prev[record.id], paidAt: val.toISOString() },
-                }));
-              }}
-              onOpenChange={(open) => {
-                if (!open) commitEditLine(record.id);
-              }}
-            />
-          );
-        },
+        render: (v: string, record: PaymentView) => (
+          <WorkbenchFieldCell
+            text={v ? dayjs(v).format('YYYY-MM-DD HH:mm') : ''}
+            placeholder="—"
+            align="center"
+            disabled={viewLocked}
+            title="收款日期"
+            bullets={['点选日期写入。', '取消不保存。']}
+            onApply={(next) => {
+              const d = dayjs(next);
+              if (!d.isValid()) return;
+              void commitPaymentFields(record, { paidAt: d.toISOString() });
+            }}
+            pickerRender={(ctx) => (
+              <DatePicker
+                showTime
+                size="small"
+                style={{ width: '100%' }}
+                format="YYYY-MM-DD HH:mm"
+                value={v ? dayjs(v) : dayjs()}
+                onChange={(val) => {
+                  if (!val) return;
+                  void commitPaymentFields(record, { paidAt: val.toISOString() });
+                  ctx.close();
+                }}
+              />
+            )}
+          />
+        ),
       },
       {
         title: '对账状态',
         dataIndex: 'reconcileStatus',
         key: 'reconcileStatus',
-        minWidth: 100,
+        minWidth: COL_WIDTHS.TAG_M,
         align: 'center',
         renderMode: 'custom',
         render: (v: ReconcileStatus) => {
@@ -409,7 +450,7 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
         },
       },
     ],
-    [viewLocked, editBuffer, savingLineId, commitEditLine, handleReconcile, handleRemove],
+    [viewLocked, commitPaymentFields, handleReconcile, handleRemove],
   );
 
   // ----------------------------------------------------------
@@ -493,71 +534,66 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
       {!viewLocked && (
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacer-8)',
             padding: 'var(--spacer-8) var(--spacer-12)',
             marginBottom: 'var(--spacer-8)',
-            background: 'var(--bg-brand-popup)',
-            border: '1px dashed var(--border-brand)',
+            background: 'var(--bg-base-secondary)',
+            border: '1px solid var(--border-neutral-l1)',
             borderRadius: 'var(--radius-6)',
           }}
         >
-          <PlusOutlined style={{ color: 'var(--text-tertiary)' }} />
-          <DsSelect
-            size="sm"
-            value={quickBuffer.paymentType}
-            options={PAYMENT_TYPE_OPTIONS}
-            style={{ width: 90 }}
-            disabled={addingPayment}
-            onChange={(val) =>
-              setQuickBuffer((prev) => ({ ...prev, paymentType: val as PaymentType }))
-            }
-          />
-          <DsNumberInput
-            size="sm"
-            prefix="¥"
-            placeholder="金额"
-            value={quickBuffer.amount}
-            style={{ width: 120 }}
-            disabled={addingPayment}
-            onChange={(e) =>
-              setQuickBuffer((prev) => ({ ...prev, amount: e.target.value }))
-            }
-            onPressEnter={commitQuickAdd}
-          />
-          <DsSelect
-            size="sm"
-            value={quickBuffer.method}
-            options={PAYMENT_METHOD_OPTIONS}
-            style={{ width: 110 }}
-            disabled={addingPayment}
-            onChange={(val) =>
-              setQuickBuffer((prev) => ({ ...prev, method: val as string }))
-            }
-          />
-          <DatePicker
-            showTime
-            size="small"
-            style={{ width: 170 }}
-            format="YYYY-MM-DD HH:mm"
-            value={quickBuffer.paidAt}
-            disabled={addingPayment}
-            onChange={(val) => {
-              if (val) setQuickBuffer((prev) => ({ ...prev, paidAt: val }));
-            }}
-          />
-          <DsButton
-            variant="primary"
-            size="sm"
-            loading={addingPayment}
-            onClick={commitQuickAdd}
-          >
-            添加
-          </DsButton>
-          <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)' }}>
-            回车快速添加
-          </span>
+          <div className="ds-workbench-quick-row">
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>类型:</span>
+            <DsSelect
+              size="sm"
+              value={quickBuffer.paymentType}
+              options={PAYMENT_TYPE_OPTIONS}
+              style={{ width: COL_WIDTHS.TAG_L }}
+              disabled={addingPayment}
+              onChange={(val) =>
+                setQuickBuffer((prev) => ({ ...prev, paymentType: val as PaymentType }))
+              }
+            />
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>金额:</span>
+            <DsNumberInput
+              size="sm"
+              prefix="¥"
+              placeholder="0"
+              value={quickBuffer.amount}
+              style={{ width: COL_WIDTHS.NAME_S }}
+              disabled={addingPayment}
+              onChange={(e) =>
+                setQuickBuffer((prev) => ({ ...prev, amount: e.target.value }))
+              }
+              onPressEnter={commitQuickAdd}
+            />
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>方式:</span>
+            <DsSelect
+              size="sm"
+              value={quickBuffer.method}
+              options={PAYMENT_METHOD_OPTIONS}
+              style={{ width: COL_WIDTHS.TAG_L }}
+              disabled={addingPayment}
+              onChange={(val) =>
+                setQuickBuffer((prev) => ({ ...prev, method: val as string }))
+              }
+            />
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>日期:</span>
+            <DatePicker
+              showTime
+              size="small"
+              className="ds-compact-picker"
+              style={{ width: COL_WIDTHS.NAME_S }}
+              format="YYYY-MM-DD HH:mm"
+              value={quickBuffer.paidAt}
+              disabled={addingPayment}
+              onChange={(val) => {
+                if (val) setQuickBuffer((prev) => ({ ...prev, paidAt: val }));
+              }}
+            />
+            <DsButton variant="primary" size="sm" loading={addingPayment} onClick={commitQuickAdd}>
+              添加
+            </DsButton>
+          </div>
         </div>
       )}
 

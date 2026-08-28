@@ -14,8 +14,25 @@ import { DsButton } from '../../../shared/components/DsButton.js';
 import DsShellRow from '../../../shared/components/DsShellRow.js';
 import DocumentContextBar from '../../../shared/components/DocumentContextBar.js';
 import CreateDocumentModal from '../../../shared/components/CreateDocumentModal.js';
+import DocumentSourcePicker from '../../../shared/components/DocumentSourcePicker.js';
 import { PermissionDenied } from '../../../shared/components/common/PermissionDenied.js';
+import { PickerEditGateProvider } from '../../../shared/components/product-picker/PickerEditGate.js';
+import { WorkbenchFieldCell } from '../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { DS_SHELL_INLINE_BTN } from '../../../shared/styles/shell-constants.js';
+import type { StaffDocumentListItem } from '../../../shared/services/api/documentApi.js';
 import { getWorkbenchViews } from '../menu.config.js';
+
+/** 标签栏「＋新建 / 检索」同一套虚线品牌芯片，高度锁 20，跟 DsButton sm 对齐 */
+const TAB_CHIP: CSSProperties = {
+  ...DS_SHELL_INLINE_BTN,
+  appearance: 'none',
+  WebkitAppearance: 'none',
+  borderStyle: 'dashed',
+  borderColor: 'var(--border-brand)',
+  color: 'var(--text-brand)',
+  background: 'transparent',
+  flexShrink: 0,
+};
 
 // v10.32 适配 AppShell 新骨架：工作台拥有独立内部骨架（单据标签行 + 单据上下文栏 + 视图内容），
 // 需 full-bleed 撑满 main 的全部空间。
@@ -33,13 +50,16 @@ function WorkbenchTabBar({
   onNew,
   onTabClick,
   onCloseTab,
+  onOpenHistory,
 }: {
   documentId?: string;
   onNew: () => void;
   onTabClick: (id: string) => void;
   onCloseTab: (id: string, e: MouseEvent) => void;
+  onOpenHistory: (doc: StaffDocumentListItem) => void;
 }) {
   const tabs = useWorkbenchStore((s) => s.tabs);
+  const { message } = AntdApp.useApp();
 
   return (
     <DsShellRow
@@ -115,19 +135,7 @@ function WorkbenchTabBar({
       <button
         type="button"
         onClick={onNew}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          padding: '0 6px',
-          border: '1px dashed var(--border-brand)',
-          borderRadius: 'var(--radius-4)',
-          color: 'var(--text-brand)',
-          background: 'transparent',
-          cursor: 'pointer',
-          fontSize: 'var(--body-sm-font-size)',
-          whiteSpace: 'nowrap',
-          transition: 'background .15s ease',
-        }}
+        style={TAB_CHIP}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = 'var(--bg-brand-popup)';
         }}
@@ -137,6 +145,34 @@ function WorkbenchTabBar({
       >
         ＋ 新建
       </button>
+      <div className="ds-shell-search-chip" style={{ ...TAB_CHIP, minWidth: 56, maxWidth: 88, padding: '0 6px' }}>
+        <WorkbenchFieldCell
+          embed="inline"
+          text=""
+          placeholder="检索"
+          color="var(--text-brand)"
+          title="打开历史单据"
+          bullets={['点单号在工作台打开。', '点预看明细，不撑列表。', '手输确认不跳单。']}
+          onApply={() => {
+            message.warning('请从列表点单号打开');
+          }}
+          pickerRender={(ctx) => (
+            <DocumentSourcePicker
+              hostedInGate
+              parentPanelId={ctx.panelId}
+              hostedKeyword={ctx.keyword}
+              onHostedKeywordChange={ctx.setKeyword}
+              hostedListExpanded={ctx.listExpanded}
+              hostReady={ctx.hostReady}
+              anchorRef={ctx.inputHostRef}
+              onOpenDocument={(doc) => {
+                ctx.close();
+                onOpenHistory(doc);
+              }}
+            />
+          )}
+        />
+      </div>
     </DsShellRow>
   );
 }
@@ -159,7 +195,11 @@ function ContentLoading() {
 }
 
 function Shell({ children }: { children: ReactNode }) {
-  return <div style={shellStyle}>{children}</div>;
+  return (
+    <PickerEditGateProvider>
+      <div style={shellStyle}>{children}</div>
+    </PickerEditGateProvider>
+  );
 }
 
 /**
@@ -325,7 +365,7 @@ export default function OrderWorkbench() {
         // v11.0 解耦：使用 customerName 快照字段替代 customer?.name
         activeDocument.customerName ?? '',
         dateStr,
-        activeDocument.note ?? '',
+        activeDocument.title || activeDocument.note || '',
       );
     }
   }, [activeDocument, documentId, openTab]);
@@ -366,12 +406,27 @@ export default function OrderWorkbench() {
     navigate(`/staff/workbench/${doc.id}${qs ? `?${qs}` : ''}`);
   };
 
+  /** 标签栏检索：直接在工作台打开历史单，不必绕采购清单 */
+  const handleOpenHistory = (doc: StaffDocumentListItem) => {
+    const dateStr = doc.createdAt ? new Date(doc.createdAt).toISOString().slice(0, 10) : '';
+    openTab(
+      doc.id,
+      doc.documentNo,
+      doc.customerName ?? '',
+      dateStr,
+      doc.title || doc.note || '',
+    );
+    const qs = searchParams.toString();
+    navigate(`/staff/workbench/${doc.id}${qs ? `?${qs}` : ''}`);
+  };
+
   const tabBar = (
     <WorkbenchTabBar
       documentId={documentId}
       onNew={handleNewDocument}
       onTabClick={handleTabClick}
       onCloseTab={handleCloseTab}
+      onOpenHistory={handleOpenHistory}
     />
   );
 
@@ -413,7 +468,7 @@ export default function OrderWorkbench() {
               暂无单据
             </div>
             <p style={{ margin: 0, fontSize: 'var(--body-base-font-size)', color: 'var(--text-secondary)' }}>
-              点击下方按钮新建第一个单据，或前往采购清单查看已有单据。
+              点击下方按钮新建第一个单据。有历史单后可在标签栏「检索」打开。
             </p>
             <DsButton variant="primary" onClick={handleNewDocument}>
               + 新建单据

@@ -25,6 +25,7 @@ import DsDialog from './DsDialog.js';
 import DsButton from './DsButton.js';
 import DsInput from './DsInput.js';
 import SuggestList from './SuggestList.js';
+import ValueChangePair from './ValueChangePair.js';
 import {
   updateLine,
   type StaffDocumentLine,
@@ -34,6 +35,7 @@ import {
   searchProducts,
   type SkuSearchRow,
 } from '../services/api/baseDataApi.js';
+import { isRecognizedGoods } from '../utils/documentLineInvariants.js';
 
 /** 每条非标行的检索状态 */
 interface RowState {
@@ -75,9 +77,9 @@ export default function BatchStandardizeDialog({
   const { message } = AntdApp.useApp();
   const [binding, setBinding] = useState(false);
 
-  /** 非标行 = 未关联产品 ID（productId 为空） */
+  /** 非标行 = 规格、牌子、单位没齐（没认成货） */
   const nonStandardLines = useMemo(
-    () => lines.filter((l) => !l.productId),
+    () => lines.filter((l) => !isRecognizedGoods(l)),
     [lines],
   );
 
@@ -239,47 +241,52 @@ export default function BatchStandardizeDialog({
                 }}
               >
                 {/* 行头：序号 + 当前文字 + 状态 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-quaternary)', flexShrink: 0 }}>#{idx + 1}</span>
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 12,
-                      color: selected ? 'var(--text-tertiary)' : 'var(--text-default)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      textDecoration: selected ? 'line-through' : 'none',
-                    }}
-                    title={l.productRef ?? ''}
-                  >
-                    {l.productRef || '（空行文字）'}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacer-8)', marginBottom: 'var(--spacer-6)' }}>
+                  <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-quaternary)', flexShrink: 0 }}>#{idx + 1}</span>
                   {selected ? (
-                    <span style={{ fontSize: 11, color: 'var(--status-star-default)', flexShrink: 0 }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <ValueChangePair from={l.productRef || '（空行文字）'} to={buildFullName(selected)} />
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: 'var(--body-md-font-size)',
+                        color: 'var(--text-default)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={l.productRef ?? ''}
+                    >
+                      {l.productRef || '（空行文字）'}
+                    </span>
+                  )}
+                  {selected ? (
+                    <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--status-star-default)', flexShrink: 0 }}>
                       <CheckCircleFilled style={{ marginRight: 2 }} />
                       已匹配
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11, color: 'var(--text-quaternary)', flexShrink: 0 }}>
+                    <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-quaternary)', flexShrink: 0 }}>
                       待匹配
                     </span>
                   )}
+                  {selected ? (
+                    <DsButton variant="secondary" size="sm" disabled={binding} onClick={() => handleUnpick(l.id)}>
+                      取消
+                    </DsButton>
+                  ) : null}
                 </div>
 
                 {/* 检索与匹配区 */}
                 {selected ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-brand)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <CheckCircleFilled style={{ marginRight: 4 }} />
-                      {buildFullName(selected)}
-                      {selected.defaultUnitName ? `（${selected.defaultUnitName}）` : ''}
+                  (selected.defaultUnitName || selected.retailPrice != null) ? (
+                    <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--body-xs-font-size)' }}>
+                      {selected.defaultUnitName ?? ''}
                       {selected.retailPrice != null ? ` ¥${selected.retailPrice.toFixed(2)}` : ''}
-                    </span>
-                    <DsButton variant="secondary" size="sm" disabled={binding} onClick={() => handleUnpick(l.id)}>
-                      取消
-                    </DsButton>
-                  </div>
+                    </div>
+                  ) : null
                 ) : (
                   <div style={{ position: 'relative' }}>
                     <DsInput

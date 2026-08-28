@@ -10,15 +10,16 @@
 // ------------------------------------------------------------
 // A.1 能抽象统一的（代码层面，本组件已实现）
 // ------------------------------------------------------------
-//  ① 列表容器：宽度自适应锚点、高度自适应内容、最大高度限制、超出滚动
+//  ① 列表容器：宽度自适应锚点、高度自适应内容、最大高度限制、超出只纵向滚动
 //     - maxHeight 默认 280（ProductPicker 传 228）
-//     - overflowY auto + -webkit-overflow-scrolling: touch（iOS 触摸滚动）
+//     - overflowY auto、overflowX hidden（横向完整显示，不在列表里横滚）
+//     - -webkit-overflow-scrolling: touch（iOS 触摸滚动）
 //  ② 行高/字体：padding 4px 8px + body-xs 字号 + lineHeight 1.4（可确定，全场景一致）
 //  ③ 面板定位：SuggestInput 用 getPopupContainer（约束父容器），
 //              ProductPicker 用 FloatPanel anchor（锚点定位）——定位策略由外壳决定
 //  ④ 关闭逻辑：选中/点击外部/ESC 关闭——SuggestInput 用 onDropdownVisibleChange，
 //              ProductPicker 用 FloatPanel onClose——关闭策略由外壳决定
-//  ⑤ 新建项显示/交互：keyword 非空 && allowCreate → 绿色背景 + "新建「kw」" + onCreate
+//  ⑤ 新建项显示/交互：keyword 非空 && allowCreate → 绿色背景 + 「新建」+ 关键词卡片 + onCreate
 //
 // ------------------------------------------------------------
 // A.2 逻辑层面抽象（设计指导，非硬编码参数获取）
@@ -94,6 +95,7 @@
 import { Fragment, type CSSProperties } from 'react';
 import { Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { ValueChip } from './ValueChangePair.js';
 import type { SuggestOption } from '../services/api/baseDataApi.js';
 
 // ============================================================
@@ -129,6 +131,12 @@ export interface SuggestListProps<T = SuggestOption> {
   rowKey?: (item: T, index: number) => string;
   /** 自定义列表容器样式（覆盖默认） */
   style?: CSSProperties;
+  /** 无关键词且无结果时的提示（选用检索打开空面板） */
+  idleText?: string;
+  /** 无关键词也显示新建行（客户选用：空词也能点快速新建） */
+  allowCreateWhenEmpty?: boolean;
+  /** 新建行文案。默认「新建「关键词」」 */
+  createLabel?: string;
 }
 
 // ============================================================
@@ -141,9 +149,9 @@ const DEFAULT_MAX_HEIGHT = 280;
 const LIST_CONTAINER_STYLE: CSSProperties = {
   maxHeight: DEFAULT_MAX_HEIGHT,
   overflowY: 'auto',
-  overflowX: 'auto',
+  overflowX: 'hidden',
   WebkitOverflowScrolling: 'touch',
-  touchAction: 'pan-x pan-y',
+  touchAction: 'pan-y',
 };
 
 /** 默认行样式（单列模式） */
@@ -199,10 +207,13 @@ function DefaultRow({
   onSelect: (opt: SuggestOption) => void;
 }) {
   const tag = TYPE_TAG_MAP[opt.type] ?? TYPE_TAG_MAP.existing;
+  const tagText = opt.badge?.trim() || tag.text;
+  const tagColor = opt.badge?.trim() ? 'var(--text-brand)' : tag.color;
   return (
     <div
       role="button"
       tabIndex={0}
+      onMouseDown={(e) => e.preventDefault()}
       onClick={() => onSelect(opt)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -229,7 +240,7 @@ function DefaultRow({
       >
         {opt.label}
       </span>
-      <span style={{ fontSize: 10, color: tag.color, flexShrink: 0 }}>{tag.text}</span>
+      <span style={{ fontSize: 10, color: tagColor, flexShrink: 0 }}>{tagText}</span>
     </div>
   );
 }
@@ -265,10 +276,14 @@ export default function SuggestList<T = SuggestOption>({
   rowRender,
   rowKey,
   style,
+  idleText,
+  allowCreateWhenEmpty = false,
+  createLabel,
 }: SuggestListProps<T>) {
   const trimmedKw = keyword.trim();
-  const showCreate = allowCreate && trimmedKw !== '' && !!onCreate;
+  const showCreate = allowCreate && !!onCreate && (trimmedKw !== '' || allowCreateWhenEmpty);
   const showEmpty = !loading && options.length === 0 && !showCreate && trimmedKw !== '';
+  const showIdle = !loading && options.length === 0 && trimmedKw === '' && !!idleText;
   const showList = !loading && options.length > 0;
 
   return (
@@ -278,6 +293,7 @@ export default function SuggestList<T = SuggestOption>({
         <div
           role="button"
           tabIndex={0}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             if (!createLoading) onCreate!(trimmedKw);
           }}
@@ -306,13 +322,19 @@ export default function SuggestList<T = SuggestOption>({
           <span
             style={{
               flex: 1,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--spacer-4)',
               minWidth: 0,
+              overflow: 'hidden',
             }}
           >
-            新建「{trimmedKw}」
+            {createLabel ?? (trimmedKw ? (
+              <>
+                <span style={{ flexShrink: 0 }}>新建</span>
+                <ValueChip tone="onBrand">{trimmedKw}</ValueChip>
+              </>
+            ) : '快速新建')}
           </span>
         </div>
       )}
@@ -321,6 +343,20 @@ export default function SuggestList<T = SuggestOption>({
       {loading && (
         <div style={{ padding: 20, textAlign: 'center' }}>
           <Spin size="small" />
+        </div>
+      )}
+
+      {/* 空面板提示 */}
+      {showIdle && (
+        <div
+          style={{
+            padding: 12,
+            textAlign: 'center',
+            color: 'var(--text-tertiary)',
+            fontSize: 'var(--body-xs-font-size)',
+          }}
+        >
+          {idleText}
         </div>
       )}
 

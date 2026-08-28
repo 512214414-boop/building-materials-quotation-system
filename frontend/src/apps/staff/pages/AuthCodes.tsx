@@ -2,7 +2,7 @@
 // 授权码列表（分页）+ 状态/手机号筛选 + 单个/批量创建 + 作废 + 统计信息
 
 import { useEffect, useState, useCallback } from 'react';
-import { App as AntdApp, Form, Menu, Statistic } from 'antd';
+import { Form, Menu, Statistic } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
@@ -11,6 +11,7 @@ import DsSelect from '../../../shared/components/DsSelect.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
 import {
   listAuthCodes,
   createAuthCodes,
@@ -57,7 +58,7 @@ function getDisplayStatus(record: AuthCodeView): DisplayStatus {
 }
 
 export default function AuthCodes() {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
 
   // 列表状态
   const [loading, setLoading] = useState(false);
@@ -376,10 +377,12 @@ export default function AuthCodes() {
                   </span>
                 }
                 value={item.value ?? '—'}
-                valueStyle={{
-                  color: item.color,
-                  fontFamily: 'var(--code-editor-font-family)',
-                  fontSize: 'var(--heading-md-font-size)',
+                styles={{
+                  content: {
+                    color: item.color,
+                    fontFamily: 'var(--code-editor-font-family)',
+                    fontSize: 'var(--heading-md-font-size)',
+                  },
                 }}
               />
             </div>
@@ -438,7 +441,7 @@ export default function AuthCodes() {
         confirmLoading={createLoading}
         okText="生成"
         cancelText={createdCodes ? '关闭' : '取消'}
-        destroyOnClose
+        destroyOnHidden
         width={520}
         footer={
           createdCodes ? (

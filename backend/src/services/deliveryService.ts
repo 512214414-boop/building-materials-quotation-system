@@ -26,6 +26,7 @@ export interface DeliveryCreateInput {
   receiverPhone?: string;
   note?: string;
   attachmentUrls?: string[];
+  freight?: number;
 }
 
 export interface DeliveryUpdateInput {
@@ -35,6 +36,7 @@ export interface DeliveryUpdateInput {
   status?: delivery_status;
   note?: string;
   attachmentUrls?: string[];
+  freight?: number;
 }
 
 function broadcastDeliveryChanged(documentId: bigint) {
@@ -69,6 +71,7 @@ export async function listByDocument(documentId: bigint) {
     signedAt: r.signed_at,
     attachmentUrls: r.attachment_urls,
     note: r.note,
+    freight: Number(r.freight),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }));
@@ -97,6 +100,7 @@ export async function createDelivery(
       receiver_phone: input.receiverPhone ?? null,
       attachment_urls: input.attachmentUrls ?? undefined,
       note: input.note ?? null,
+      freight: input.freight ?? 0,
     },
   });
 
@@ -121,6 +125,7 @@ export async function createDelivery(
     signedAt: created.signed_at,
     attachmentUrls: created.attachment_urls,
     note: created.note,
+    freight: Number(created.freight),
     createdAt: created.created_at,
     updatedAt: created.updated_at,
   };
@@ -148,6 +153,7 @@ export async function updateDelivery(
   if (input.receiver !== undefined) data.receiver = input.receiver;
   if (input.receiverPhone !== undefined) data.receiver_phone = input.receiverPhone;
   if (input.note !== undefined) data.note = input.note;
+  if (input.freight !== undefined) data.freight = input.freight;
   if (input.attachmentUrls !== undefined) data.attachment_urls = input.attachmentUrls;
 
   if (input.status !== undefined) {
@@ -192,6 +198,7 @@ export async function updateDelivery(
     signedAt: updated.signed_at,
     attachmentUrls: updated.attachment_urls,
     note: updated.note,
+    freight: Number(updated.freight),
     createdAt: updated.created_at,
     updatedAt: updated.updated_at,
   };

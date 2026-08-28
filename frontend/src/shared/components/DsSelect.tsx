@@ -14,13 +14,23 @@ const SIZE_MAP: Record<'sm' | 'md' | 'lg', NonNullable<SelectProps['size']>> = {
 const STYLE_ID = 'ds-select-styles';
 let injected = false;
 const SELECT_CSS = `
-/* !important 用于覆盖 Ant Design 6 CSS-in-JS 注入的高 specificity 样式，
-   这是 Ant Design 暗色主题定制的社区标准做法，非 hack */
+/* !important 用于覆盖 Ant Design CSS-in-JS 注入的高 specificity 样式 */
 .ds-select .ant-select-selector {
-  background: var(--bg-base-tertiary) !important;
+  background: var(--bg-base-secondary) !important;
   border-color: var(--border-neutral-l2) !important;
   color: var(--text-default) !important;
-  border-radius: var(--radius-6) !important;
+  border-radius: var(--radius-4) !important;
+}
+.ds-select.ant-select-sm .ant-select-selector {
+  height: 20px !important;
+  min-height: 20px !important;
+  padding-inline: 4px !important;
+  font-size: var(--body-sm-font-size) !important;
+}
+.ds-select.ant-select-sm .ant-select-selection-item,
+.ds-select.ant-select-sm .ant-select-selection-placeholder {
+  line-height: 18px !important;
+  font-size: var(--body-sm-font-size) !important;
 }
 .ds-select .ant-select-selection-placeholder {
   color: var(--text-tertiary) !important;

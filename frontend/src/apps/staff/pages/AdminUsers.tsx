@@ -2,7 +2,7 @@
 // 用户列表（分页）+ 搜索/状态筛选 + 新增/编辑弹窗 + 重置密码 + 启用/停用 + 角色多选配置
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { App as AntdApp, Form, Menu } from 'antd';
+import { Form, Menu } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
@@ -23,6 +23,7 @@ import {
   type RoleView,
 } from '../../../shared/services/api/systemApi.js';
 import type { RoleCode } from '../../../shared/types/index.js';
+import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
 
 // ============================================================
 // 常量
@@ -67,7 +68,7 @@ const PASSWORD_INPUT_STYLE = {
 } as const;
 
 export default function AdminUsers() {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
 
   // 列表状态
   const [loading, setLoading] = useState(false);
@@ -426,7 +427,7 @@ export default function AdminUsers() {
         confirmLoading={editLoading}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form form={form} layout="vertical" requiredMark>
@@ -505,7 +506,7 @@ export default function AdminUsers() {
         confirmLoading={resetLoading}
         okText="重置"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={440}
       >
         <Form form={resetForm} layout="vertical" requiredMark>

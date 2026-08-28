@@ -13,6 +13,7 @@
 
 import request from '../request.js';
 import type { ArchiveStatus, DocumentStatus, StageStatus } from '../../types/index.js';
+import type { SuggestOption } from './baseDataApi.js';
 
 // ============================================================
 // 嵌套对象类型
@@ -88,8 +89,12 @@ export interface StaffDocumentLine {
   imageUrls: unknown | null;
   createdAt: string;
   updatedAt: string;
+  /** v11.0 解耦：产品名称快照（替代嵌套 product.name） */
+  productName?: string | null;
   /** v11.0 解耦：品牌名称快照（替代 brand 嵌套对象） */
   brandName: string | null;
+  /** v11.0 解耦：规格型号快照（与 spec 语义一致） */
+  specModel?: string | null;
   /** v8.0：品牌实时档案（含产品主体嵌套，单字段 name） */
   brand: DocumentBrandRef | null;
   /** v8.0：单位实时档案 */
@@ -114,6 +119,19 @@ export interface StaffDocumentListItem {
   createdAt: string;
   updatedAt: string;
   note: string | null;
+  totalQty?: string;
+  customerContactMethod?: string | null;
+  previewLines?: {
+    productRef: string;
+    productName?: string | null;
+    brandName?: string | null;
+    spec?: string | null;
+    unit?: string;
+    qty: string;
+    unitPrice?: string | null;
+    amount?: string | null;
+    remark?: string | null;
+  }[];
   // v11.0 解耦：客户档案快照字段（替代 customer 嵌套对象）
   customerName: string | null;
   customerPhone: string | null;
@@ -206,8 +224,7 @@ export interface StaffDocumentDetail {
   customerName: string | null;
   customerPhone: string | null;
   customerCompany: string | null;
-  // v11.0 解耦：员工档案快照字段（替代 creator 嵌套对象）
-  // 员工档案删除后，单据展示仍可正常显示创建者/业务员名
+  customerContactMethod?: string | null;
   creatorName: string | null;
   salespersonName: string | null;
   documentLines: StaffDocumentLine[];
@@ -232,6 +249,8 @@ export interface StaffDocumentListQuery {
   dateFrom?: string;
   dateTo?: string;
   includeArchived?: boolean | string;
+  entryView?: 'loose' | 'customer' | 'qty' | 'amount';
+  preview?: boolean | string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   page?: number;
@@ -265,6 +284,8 @@ export interface DocumentLineInput {
   /** v8.0：单位 ID（FK → unit.id，由 ProductPicker 选品时透传） */
   unitId?: string | number;
   productRef: string;
+  productName?: string | null;
+  brandName?: string | null;
   /** v8.0：规格型号快照（来自 SPU.specModel） */
   spec?: string;
   unit: string;
@@ -277,6 +298,8 @@ export interface DocumentLineInput {
   isStandardized?: boolean;
   /** v4.0 保留：主图 URL 快照（选品时透传，后端 validation.ts 接受） */
   thumbnailUrl?: string;
+  /** 插入到该序号（1-based）；不传则追加末尾 */
+  insertSeq?: number;
 }
 
 export interface DocumentLineUpdateInput {
@@ -289,6 +312,8 @@ export interface DocumentLineUpdateInput {
   /** v8.0：单位 ID（更换商品时透传，可空——手输非标商品） */
   unitId?: string | number | null;
   productRef?: string;
+  productName?: string | null;
+  brandName?: string | null;
   /** v8.0：规格型号快照（来自 SPU.specModel） */
   spec?: string;
   unit?: string;
@@ -323,6 +348,8 @@ export function createDocument(data: {
   customerId?: string | number;
   title?: string;
   note?: string;
+  customerPhone?: string;
+  customerContactMethod?: string;
   lines?: DocumentLineInput[];
 }): Promise<StaffDocumentDetail> {
   return request.post<unknown, StaffDocumentDetail>('/api/staff/documents', data);
@@ -345,6 +372,9 @@ export function updateDocumentBusiness(
   id: string,
   data: {
     customerId?: string | number | null;
+    customerPhone?: string | null;
+    customerContactMethod?: string | null;
+    customerName?: string | null;
     salespersonId?: string | number;
     deliveryAddress?: string;
     contactPhone?: string;
@@ -384,6 +414,31 @@ export function listLines(id: string): Promise<StaffDocumentLine[]> {
   return request.get<unknown, StaffDocumentLine[]>(`/api/staff/documents/${id}/lines`);
 }
 
+/**
+ * 当前单据行表头级联候选（这一张单的全部行，不是全局档案）。
+ * 后端：GET /api/staff/documents/:id/lines/facets
+ */
+export function listDocumentLineFacets(
+  documentId: string,
+  query: {
+    field: 'product' | 'brand' | 'spec';
+    keyword?: string;
+    productId?: string;
+    productName?: string;
+    brandId?: string;
+    brandName?: string;
+    specModel?: string;
+    specExact?: boolean;
+  },
+): Promise<SuggestOption[]> {
+  return request
+    .get<unknown, { options: SuggestOption[] }>(
+      `/api/staff/documents/${documentId}/lines/facets`,
+      { params: query },
+    )
+    .then((res) => res.options ?? []);
+}
+
 /** 新增单据行 */
 export function addLine(id: string, data: DocumentLineInput): Promise<StaffDocumentLine> {
   return request.post<unknown, StaffDocumentLine>(`/api/staff/documents/${id}/lines`, data);
@@ -408,6 +463,11 @@ export function removeLine(id: string, lineId: string, lineVersion?: number): Pr
 /** 整体替换单据行 */
 export function replaceLines(id: string, lines: DocumentLineInput[]): Promise<StaffDocumentLine[]> {
   return request.put<unknown, StaffDocumentLine[]>(`/api/staff/documents/${id}/lines`, { lines });
+}
+
+/** 按当前顺序重排序号（整理数据：去掉中间空档、seq 从 1 紧凑） */
+export function resequenceLines(id: string): Promise<{ success: boolean }> {
+  return request.post<unknown, { success: boolean }>(`/api/staff/documents/${id}/lines/resequence`);
 }
 
 // ============================================================

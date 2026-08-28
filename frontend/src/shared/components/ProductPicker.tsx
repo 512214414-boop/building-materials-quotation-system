@@ -28,26 +28,70 @@
 // 交互流程：
 //   - 输入关键词 → 防抖 250ms → searchProducts → SkuSearchRow[]
 //   - 首条 CreationPrompt → 快速建档（quickCreateProduct）
-//   - 点击行（非按钮区域）→ onSelect(sku, defaultUnit) → onClose
-//   - 点击单位/售价/进价按钮 → 展开合并面板（getSkuOptions 懒加载）
-//   - 点击面板内单位 → onSelect(sku, unit) → onClose
+//   - 写入单据只走插入按钮；点名称改档案，面价/点位直输
+//   - 改档案：点格子打开够宽的输入浮层（看全文 + 影响范围 + 确认/取消），取消即恢复；格子里不留半改状态
+//   - 插入前若有正在写库的确认，等写完再抄此刻面板里的字和价；已开单据行不跟档案自动刷
+//   - 点击单位/售价/进价箭头 → 展开下一层（getSkuOptions 懒加载）
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp, Checkbox, Spin } from 'antd';
 import type { InputRef } from 'antd';
 import { ArrowRightOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import FloatPanel from './FloatPanel.js';
 import DsInput from './DsInput.js';
 import SuggestList from './SuggestList.js';
-import { calcEffectivePrice } from '../utils/format.js';
+import PickerTreeViewBar from './PickerTreeViewBar.js';
+import { PickerOverlayInput } from './PickerSlotChrome.js';
 import {
+  PRODUCT_PICKER_TREE_VIEWS,
+  DEFAULT_PRODUCT_PICKER_VIEW,
+  pickerTreeGrain,
+  pickerTreeFront,
+  parseProductPickerEntryView,
+  type PickerTreeFrontCol,
+  type PickerTreeGrain,
+  type ProductPickerEntryView,
+} from '../config/pickerTree.js';
+import { ArchiveFieldCell, PickerEmptyName, PickerNameCell, PickerNumCell } from './product-picker/PickerInlineCells.js';
+import { PickerEditGateProvider } from './product-picker/PickerEditGate.js';
+import { SupplierCandidateBrowse } from './product-picker/SupplierCandidateBrowse.js';
+import {
+  supplierCtxFromSku,
+  type SupplierCandidateContext,
+} from '../utils/supplierCandidateFetcher.js';
+import { calcEffectivePrice, formatPoint } from '../utils/format.js';
+import { sortUnitsByRate } from '../utils/unitRateText.js';
+import {
+  attachBrandToProduct,
+  applyDictChange,
+  createPriceType,
+  createPurchasePrice,
+  createSalePrice,
+  createUnit,
+  ensureSpecOnProductBrand,
   getSkuOptions,
   getSkuOptionsPublic,
+  listPriceTypes,
+  quickAddCategory,
+  quickAddSupplier,
+  rebindSpecBrand,
+  rebindSpecUnit,
+  resolveSpecBrand,
   searchProducts,
   searchProductsPublic,
   setUnitDisplay,
+  updateProduct,
   updatePurchasePrice,
   updateSalePrice,
+  updateSpec,
+  updateSpecBrandRemark,
+  upsertPurchaseSpecPoint,
+  upsertSaleSpecPoint,
+  upsertPurchaseGroupPoint,
+  upsertSaleGroupPoint,
+  previewPointChange,
+  upsertSpecBrandConversion,
+  type PickerSkuCreated,
   type QuickCreateProductResult,
   type SkuOptionUnit,
   type SkuSearchRow,
@@ -63,6 +107,26 @@ export interface SelectedPrice {
   sale?: { priceTypeId: string; priceTypeName: string; price: number };
   /** 进价：供应商 + 价格 */
   purchase?: { supplierId: string; supplierName: string; price: number };
+}
+
+/**
+ * 选品槽位：同一套展开框架，检索主行放的表不同，后面的面板就自动对。
+ * - search：产品名称列。主行 = 产品名称检索。
+ * - unit：单位列。名称已定，主行放规格单位层（单位 | 换算率 | 售价 | 进价）。
+ * - price：单价列。名称+单位已定，主行放售价/进价叶子（单位已锁定，不显示换算列）。
+ */
+export type ProductPickerSlot = 'search' | 'unit' | 'price';
+
+/** 后面列截断用的已锁定上下文（单据行已选出的产品 / 规格 / 单位） */
+export interface ProductPickerLockedContext {
+  specId: string;
+  brandId: string;
+  productId?: string | null;
+  productName?: string;
+  brandName?: string;
+  specModel?: string;
+  unitId?: string | null;
+  unitName?: string;
 }
 
 export interface ProductPickerProps {
@@ -82,6 +146,40 @@ export interface ProductPickerProps {
    */
   dropdownMode?: boolean;
   /**
+   * 宿主格只展示：输入+下拉挂在确认层里（默认展开，可收起）。
+   * 不要在表格格再放一套 C61。
+   */
+  hideHostInput?: boolean;
+  /**
+   * 点空白关掉确认层时，若词相对打开时变了、又没插入档案，把词写回格子（非标）。
+   * 挂在确认层里时不要用：确认/取消由 Gate 管。
+   */
+  onDraftCommit?: (keyword: string) => void;
+  /**
+   * 挂在 PickerEditGate 确认层：列表是子层，不要自己当第一层、不要再画一套顶栏输入。
+   */
+  hostedInGate?: boolean;
+  parentPanelId?: string;
+  hostedKeyword?: string;
+  onHostedKeywordChange?: (v: string) => void;
+  /**
+   * hostedInGate 时由确认层托管列表显隐（确认层展开/收起钮控制）。
+   * 不传则默认常开（保持原行为）。
+   */
+  hostedListExpanded?: boolean;
+  /**
+   * 确认层定位稳定后为 true。hostedInGate 时子层 FloatPanel 应等它再 open，避免跳动。
+   * 不传视为已就绪。
+   */
+  hostReady?: boolean;
+  /**
+   * 检索主行放哪一层。默认 search（产品名称列）。
+   * 单位列 / 单价列传入 unit / price，并给 lockedContext——不要另写一套菜单。
+   */
+  entrySlot?: ProductPickerSlot;
+  /** entrySlot 为 unit / price 时必填：当前行已确定的规格×品牌（及单位） */
+  lockedContext?: ProductPickerLockedContext | null;
+  /**
    * v11.5 快速建档入口（必传）：
    * 所有新建档案一律上抛关键词，由调用方（视图层）弹出二次确认建档弹窗
    * （QuickCreateConfirmDialog：字段分开编辑 + 缺省值二次确认），
@@ -98,6 +196,143 @@ interface SkuRow {
   units: SkuOptionUnit[] | null;
   unitsLoading: boolean;
   unitsError: string | null;
+}
+
+interface ProductBrandSlot {
+  brandId: string;
+  brandName: string;
+  isDefault: boolean;
+  rows: SkuRow[];
+}
+
+interface ProductGroup {
+  key: string;
+  productId: string;
+  productName: string;
+  categoryId: string;
+  categoryName: string;
+  brands: ProductBrandSlot[];
+}
+
+function skuFromCreated(created: PickerSkuCreated): SkuSearchRow {
+  return {
+    type: 'sku',
+    id: created.specBrandId,
+    productId: created.productId,
+    productName: created.productName,
+    specId: created.specId,
+    specModel: created.specModel,
+    categoryId: created.categoryId,
+    categoryName: created.categoryName,
+    specBrandId: created.specBrandId,
+    brandId: created.brandId,
+    brandName: created.brandName,
+    remark: '',
+    defaultUnitId: created.defaultUnitId,
+    defaultUnitName: created.defaultUnitName,
+    retailPrice: null,
+    purchasePriceDefault: null,
+    mainImageUrl: null,
+    mainImageThumbUrl: null,
+    status: 1,
+    updateTime: '',
+  };
+}
+
+function groupByProduct(rows: SkuRow[]): ProductGroup[] {
+  const map = new Map<string, ProductGroup>();
+  for (const row of rows) {
+    let g = map.get(row.sku.productId);
+    if (!g) {
+      g = {
+        key: row.sku.productId,
+        productId: row.sku.productId,
+        productName: row.sku.productName,
+        categoryId: row.sku.categoryId,
+        categoryName: row.sku.categoryName,
+        brands: [],
+      };
+      map.set(row.sku.productId, g);
+    }
+    let b = g.brands.find((x) => x.brandId === row.sku.brandId);
+    if (!b) {
+      b = {
+        brandId: row.sku.brandId,
+        brandName: row.sku.brandName,
+        isDefault: row.sku.brandName === '普通品牌',
+        rows: [],
+      };
+      g.brands.push(b);
+    }
+    b.rows.push(row);
+  }
+  return [...map.values()];
+}
+
+function groupByProductBrand(rows: SkuRow[]): ProductGroup[] {
+  const map = new Map<string, ProductGroup>();
+  for (const row of rows) {
+    const key = `${row.sku.productId}:${row.sku.brandId}`;
+    let g = map.get(key);
+    if (!g) {
+      g = {
+        key,
+        productId: row.sku.productId,
+        productName: row.sku.productName,
+        categoryId: row.sku.categoryId,
+        categoryName: row.sku.categoryName,
+        brands: [],
+      };
+      map.set(key, g);
+    }
+    let b = g.brands.find((x) => x.brandId === row.sku.brandId);
+    if (!b) {
+      b = {
+        brandId: row.sku.brandId,
+        brandName: row.sku.brandName,
+        isDefault: row.sku.brandName === '普通品牌',
+        rows: [],
+      };
+      g.brands.push(b);
+    }
+    b.rows.push(row);
+  }
+  return [...map.values()];
+}
+
+function nSlotSplit<T>(
+  items: T[],
+  cap: number,
+  query: string,
+  nameOf: (t: T) => string,
+  isDefault: (t: T) => boolean,
+): { visible: T[]; rest: T[] } {
+  const chosen: T[] = [];
+  const take = (pred: (t: T) => boolean) => {
+    for (const it of items) {
+      if (chosen.length >= cap) return;
+      if (chosen.includes(it)) continue;
+      if (pred(it)) chosen.push(it);
+    }
+  };
+  const k = query.trim().toLowerCase();
+  if (k) take((it) => nameOf(it).toLowerCase().includes(k));
+  take(isDefault);
+  take(() => true);
+  return { visible: chosen, rest: items.filter((it) => !chosen.includes(it)) };
+}
+
+function fitBrandCap(names: string[], availPx = 220): number {
+  let used = 0;
+  let n = 0;
+  const moreW = 56;
+  for (const name of names) {
+    const w = Math.min(name.length * 12 + 24, 88) + 4;
+    if (n > 0 && used + w + moreW > availPx) break;
+    used += w;
+    n += 1;
+  }
+  return Math.max(1, n);
 }
 
 /** 格式化价格显示（v8.0 price 为 number） */
@@ -183,12 +418,92 @@ function deriveDefaultUnit(sku: SkuSearchRow, isStaff: boolean): SkuOptionUnit {
   };
 }
 
-/** 单位排序：基础单位在前，其次按 unitId 兜底 */
+/** 这一条规格×品牌下该单位的换算率。基准单位没有行也当 1。 */
+function unitConversionRate(u: SkuOptionUnit): number | null {
+  if (u.isBase) return 1;
+  const r = u.conversions?.[0]?.conversionRate;
+  return r == null || !Number.isFinite(Number(r)) ? null : Number(r);
+}
+
+function conversionCellText(units: SkuOptionUnit[] | null | undefined, u: SkuOptionUnit | undefined): string {
+  if (!u) return '';
+  if (u.isBase) return '1';
+  const rate = unitConversionRate(u);
+  if (rate == null) return '';
+  if (rate === 1) return '1';
+  const list = units ?? [];
+  const base = list.find((x) => x.isBase) ?? list.find((x) => unitConversionRate(x) === 1);
+  return base ? `1${u.unitName}=${rate}${base.unitName}` : String(rate);
+}
+
+/** 单位排序：按换算率升序，基准单位恒首 */
 function sortUnits(units: SkuOptionUnit[]): SkuOptionUnit[] {
-  return [...units].sort((a, b) => {
-    if (a.isBase !== b.isBase) return a.isBase ? -1 : 1;
-    return a.unitId < b.unitId ? -1 : 1;
-  });
+  return sortUnitsByRate(units, unitConversionRate);
+}
+
+/** 单位列表写回行：刷新主行默认单位上的售价/进价，插入时抄到的是此刻面板数字 */
+function applyLoadedUnits(row: SkuRow, units: SkuOptionUnit[]): SkuRow {
+  const sorted = sortUnits(units);
+  const currentId = row.sku.defaultUnitId;
+  const current =
+    sorted.find((u) => u.unitId === currentId) ??
+    sorted.find((u) => u.isDisplay) ??
+    sorted.find((u) => u.isBase) ??
+    sorted[0];
+  return {
+    ...row,
+    units: sorted,
+    unitsLoading: false,
+    unitsError: null,
+    sku: current
+      ? {
+          ...row.sku,
+          defaultUnitId: current.unitId,
+          defaultUnitName: current.unitName,
+          retailPrice: current.defaultSalePrice,
+          purchasePriceDefault: current.defaultPurchasePrice,
+        }
+      : row.sku,
+  };
+}
+
+function catalogScope(parts: Array<string | null | undefined>) {
+  return parts.filter((s) => !!s && String(s).trim()).join(' · ');
+}
+
+/** 后面列截断：用单据行已锁定的规格×品牌拼出选品行，不再重新检索产品名 */
+function buildLockedSku(
+  ctx: ProductPickerLockedContext,
+  specBrandId: string,
+  units: SkuOptionUnit[],
+): SkuSearchRow {
+  const current =
+    (ctx.unitId ? units.find((u) => u.unitId === ctx.unitId) : undefined) ??
+    units.find((u) => u.isDisplay) ??
+    units.find((u) => u.isBase) ??
+    units[0];
+  return {
+    type: 'sku',
+    id: specBrandId,
+    productId: ctx.productId || '',
+    productName: ctx.productName || '',
+    specId: ctx.specId,
+    specModel: ctx.specModel || '',
+    categoryId: '',
+    categoryName: '',
+    specBrandId,
+    brandId: ctx.brandId,
+    brandName: ctx.brandName || '',
+    remark: '',
+    defaultUnitId: current?.unitId ?? ctx.unitId ?? null,
+    defaultUnitName: current?.unitName ?? ctx.unitName ?? null,
+    retailPrice: current?.defaultSalePrice ?? null,
+    purchasePriceDefault: current?.defaultPurchasePrice ?? null,
+    mainImageUrl: null,
+    mainImageThumbUrl: null,
+    status: 1,
+    updateTime: '',
+  };
 }
 
 // ============================================================
@@ -199,22 +514,133 @@ function sortUnits(units: SkuOptionUnit[]): SkuOptionUnit[] {
 
 /** 主行后3列列宽（与 renderRow grid 模板一致） */
 const COL_UNIT = 56;
+const COL_RATE = 80;
 const COL_PRICE = 72;
+const COL_POINT = 56;
+const COL_SPEC = 108;
+const COL_CAT = 72;
+const COL_NAME = 128;
 const GRID_GAP = 4;
 /** v10.14 插入按钮列宽 */
 const COL_INSERT = 28;
 
-/** 单位面板 4 列模板（单位|售价|进价|插入） */
-const UNIT_PANEL_GRID_COLS = `${COL_UNIT}px ${COL_PRICE}px ${COL_PRICE}px ${COL_INSERT}px`;
-/** 售价面板 3 列模板（价格类型名|价格|插入） */
-const SALE_PANEL_GRID_COLS = `${COL_UNIT}px ${COL_PRICE}px ${COL_INSERT}px`;
-/** 进价面板 3 列模板（供应商名|价格|插入） */
-const PURCHASE_PANEL_GRID_COLS = `${COL_PRICE}px ${COL_PRICE}px ${COL_INSERT}px`;
+/** 单位面板：单位 | 换算率 | 售价 | 进价 | 插入 */
+const UNIT_PANEL_GRID_COLS = `${COL_UNIT}px ${COL_RATE}px ${COL_PRICE}px ${COL_PRICE}px ${COL_INSERT}px`;
+/** 单价槽：单位层去掉单位列和换算列（售价|进价|插入） */
+const PRICE_SLOT_GRID_COLS = `${COL_PRICE}px ${COL_PRICE}px ${COL_INSERT}px`;
+/** 售价面板：类型 | 面价 | 点位 | 售价 | 插入 */
+const SALE_PANEL_GRID_COLS = `${COL_UNIT}px ${COL_PRICE}px ${COL_POINT}px ${COL_PRICE}px ${COL_INSERT}px`;
+/** 进价面板：渠道 | 面价 | 点位 | 进价 | 插入 */
+const PURCHASE_PANEL_GRID_COLS = `${COL_PRICE}px ${COL_PRICE}px ${COL_POINT}px ${COL_PRICE}px ${COL_INSERT}px`;
 
-/** 面板宽度（由 grid 列宽 + gap 决定，确保面板宽度精确） */
-const UNIT_PANEL_WIDTH = COL_UNIT + GRID_GAP + COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
-const SALE_PANEL_WIDTH = COL_UNIT + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
-const PURCHASE_PANEL_WIDTH = COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+const PANEL_X_PAD = 16;
+const PANEL_BORDER_X = 2;
+const UNIT_PANEL_WIDTH = PANEL_BORDER_X + PANEL_X_PAD + COL_UNIT + GRID_GAP + COL_RATE + GRID_GAP + COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+const PRICE_SLOT_WIDTH = PANEL_BORDER_X + PANEL_X_PAD + COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+const SALE_PANEL_WIDTH = PANEL_BORDER_X + PANEL_X_PAD + COL_UNIT + GRID_GAP + COL_PRICE + GRID_GAP + COL_POINT + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+const PURCHASE_PANEL_WIDTH = PANEL_BORDER_X + PANEL_X_PAD + COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_POINT + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+const SPEC_PANEL_WIDTH = PANEL_BORDER_X + PANEL_X_PAD + COL_SPEC + GRID_GAP + COL_UNIT + GRID_GAP + COL_RATE + GRID_GAP + COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+const SPEC_ROW_GRID = `${COL_SPEC}px ${COL_UNIT}px ${COL_RATE}px ${COL_PRICE}px ${COL_PRICE}px ${COL_INSERT}px`;
+const COL_LEAD = 140;
+const COL_BRAND = COL_CAT;
+const LEAF_TAIL_GRID = `${COL_UNIT}px ${COL_RATE}px ${COL_PRICE}px ${COL_PRICE}px ${COL_INSERT}px`;
+const LEAF_TAIL_LABELS = ['单位', '换算率', '售价', '进价', ''] as const;
+const LEAF_TAIL_WIDTH =
+  COL_UNIT + GRID_GAP + COL_RATE + GRID_GAP + COL_PRICE + GRID_GAP + COL_PRICE + GRID_GAP + COL_INSERT;
+
+const FRONT_LABEL: Record<PickerTreeFrontCol, string> = {
+  category: '分类',
+  product: '产品名称',
+  brandN: '品牌',
+  brand: '品牌',
+  spec: '规格',
+  remark: '执行标准',
+  supplier: '渠道',
+};
+
+function frontColTemplate(col: PickerTreeFrontCol, grain: PickerTreeGrain): string {
+  switch (col) {
+    case 'category':
+      return `${COL_CAT}px`;
+    case 'product':
+      return `${COL_NAME}px`;
+    case 'brandN':
+      return 'minmax(220px, 1fr)';
+    case 'brand':
+      return grain === 'pair' ? 'minmax(120px, 1fr)' : `${COL_BRAND}px`;
+    case 'spec':
+      return `${COL_SPEC}px`;
+    case 'remark':
+    case 'supplier':
+      return `${COL_LEAD}px`;
+  }
+}
+
+function frontColPx(col: PickerTreeFrontCol, grain: PickerTreeGrain): number {
+  switch (col) {
+    case 'category':
+      return COL_CAT;
+    case 'product':
+      return COL_NAME;
+    case 'brandN':
+      return 220;
+    case 'brand':
+      return grain === 'pair' ? 120 : COL_BRAND;
+    case 'spec':
+      return COL_SPEC;
+    case 'remark':
+    case 'supplier':
+      return COL_LEAD;
+  }
+}
+
+function pickerRowLayout(viewId: string): { grid: string; labels: string[]; minWidth: number; grain: PickerTreeGrain } {
+  const grain = pickerTreeGrain(viewId);
+  const front = pickerTreeFront(viewId);
+  const frontGrid = front.map((c) => frontColTemplate(c, grain)).join(' ');
+  const frontPx =
+    front.reduce((sum, c) => sum + frontColPx(c, grain), 0) + GRID_GAP * Math.max(0, front.length - 1);
+  if (grain === 'leaf') {
+    return {
+      grain,
+      grid: `${frontGrid} ${LEAF_TAIL_GRID}`,
+      labels: [...front.map((c) => FRONT_LABEL[c]), ...LEAF_TAIL_LABELS],
+      minWidth: PANEL_BORDER_X + PANEL_X_PAD + frontPx + GRID_GAP + LEAF_TAIL_WIDTH,
+    };
+  }
+  return {
+    grain,
+    grid: frontGrid,
+    labels: front.map((c) => FRONT_LABEL[c]),
+    minWidth: Math.max(420, PANEL_BORDER_X + PANEL_X_PAD + frontPx),
+  };
+}
+
+/** 每一层浮层表都要有列头，数字才知道是售价还是进价 */
+function renderPanelHead(cols: string[], grid: string) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: grid,
+        alignItems: 'center',
+        gap: GRID_GAP,
+        width: '100%',
+        padding: '4px 8px',
+        background: 'var(--bg-base-tertiary)',
+        fontSize: 'var(--body-xs-font-size)',
+        color: 'var(--text-tertiary)',
+        fontWeight: 500,
+      }}
+    >
+      {cols.map((c, i) => (
+        <span key={`${c}-${i}`} style={{ textAlign: i === 0 ? 'left' : 'center' }}>
+          {c}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /**
  * v10.14 插入按钮样式（小图标按钮，点击填入并关闭）
@@ -240,6 +666,32 @@ const INSERT_BTN_STYLE: React.CSSProperties = {
 };
 /** v10.14 插入按钮 hover 样式 */
 const INSERT_BTN_HOVER_BG = 'var(--bg-overlay-l2)';
+
+function dropdownBtnStyle(isActive: boolean, color = 'var(--text-default)'): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    padding: '1px 4px',
+    width: '100%',
+    border: '1px solid var(--border-neutral-l2)',
+    borderRadius: 3,
+    background: isActive ? 'var(--bg-overlay-l2)' : 'var(--bg-overlay-l1)',
+    color,
+    fontSize: 'var(--body-xs-font-size)',
+    cursor: 'pointer',
+    lineHeight: '16px',
+  };
+}
+
+function priceBtnStyle(isActive: boolean, color = 'var(--text-default)'): React.CSSProperties {
+  return {
+    ...dropdownBtnStyle(isActive, color),
+    fontFamily: 'var(--font-family-mono)',
+    fontVariantNumeric: 'tabular-nums',
+  };
+}
 
 /** 共享行样式（padding 左右0，让 grid 起点紧贴面板边缘） */
 const LIST_ROW_STYLE: React.CSSProperties = {
@@ -275,13 +727,44 @@ type SalePriceItem = SkuOptionUnit['salePrices'][number];
 /** 进价明细项类型 */
 type PurchasePriceItem = SkuOptionUnit['purchasePrices'][number];
 
+type SaleListEdit = {
+  canEdit: boolean;
+  scope?: string;
+  /** 点位改全局：售价类型 · 品牌 · 分类，不是当前产品名 */
+  pointGroup?: string;
+  onRenameType: (sp: SalePriceItem, name: string) => void;
+  onRenameTypeGlobal: (sp: SalePriceItem, name: string) => void;
+  onFace: (sp: SalePriceItem, n: number) => void;
+  onPoint: (sp: SalePriceItem, n: number) => void;
+  onPointGlobal: (sp: SalePriceItem, n: number) => void;
+  previewPoint: (sp: SalePriceItem, to: string) => Promise<{
+    summary: string;
+    total: number;
+    examples: { title: string; sub?: string }[];
+  }>;
+  onAdd: (name: string) => void;
+};
+
+type PurchaseListEdit = {
+  canEdit: boolean;
+  scope?: string;
+  /** 点位改全局：渠道 · 品牌 · 分类，不是当前产品名 */
+  pointGroup?: string;
+  onRenameSupplier: (p: PurchasePriceItem, name: string) => void;
+  onRenameSupplierGlobal: (p: PurchasePriceItem, name: string) => void;
+  onFace: (p: PurchasePriceItem, n: number) => void;
+  onPoint: (p: PurchasePriceItem, n: number) => void;
+  onPointGlobal: (p: PurchasePriceItem, n: number) => void;
+  previewPoint: (p: PurchasePriceItem, to: string) => Promise<{
+    summary: string;
+    total: number;
+    examples: { title: string; sub?: string }[];
+  }>;
+  onAdd: (name: string) => void;
+};
+
 /**
- * 售价明细面板内容（一级主行售价面板 + 二级单位面板内售价面板 共用）
- * - 3列结构：价格类型名（56px，对齐单位列）+ 价格（72px，对齐售价列）+ 插入按钮（28px）
- * - placement="bottomRight" 对齐售价列右边缘 → 面板左边缘自动对齐单位列左边缘
- * - v10.14: 复选框可点击修改默认值（调用 updateSalePrice，不关闭弹窗）
- *           插入按钮点击 → onPickSalePrice 回调，快速填入外部表格并关闭
- *           行点击不触发插入，避免误触
+ * 售价明细。插入只走按钮。名称点改、面价/点位直输；售价列是算出来的。
  */
 function renderSalePriceList(
   prices: SalePriceItem[],
@@ -289,23 +772,12 @@ function renderSalePriceList(
   onPickSalePrice?: (sp: SalePriceItem) => void,
   onToggleDefault?: (sp: SalePriceItem, nextDefault: boolean) => Promise<void>,
   togglingId?: string | null,
+  edit?: SaleListEdit,
 ) {
-  if (prices.length === 0) {
-    return (
-      <div
-        style={{
-          padding: 12,
-          textAlign: 'center',
-          color: 'var(--text-quaternary)',
-          fontSize: 'var(--body-xs-font-size)',
-        }}
-      >
-        {emptyText}
-      </div>
-    );
-  }
+  const canEdit = !!edit?.canEdit;
   return (
     <div style={{ padding: 0 }}>
+      {renderPanelHead(['售价类型', '面价', '点位', '售价', ''], SALE_PANEL_GRID_COLS)}
       {prices.map((sp, idx) => {
         const isToggling = togglingId === sp.id;
         return (
@@ -315,6 +787,7 @@ function renderSalePriceList(
               ...LIST_ROW_STYLE,
               display: 'grid',
               gridTemplateColumns: SALE_PANEL_GRID_COLS,
+              padding: '4px 8px',
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = PANEL_ROW_HOVER_BG)}
             onMouseLeave={(e) => (e.currentTarget.style.background = PANEL_ROW_DEFAULT_BG)}
@@ -327,9 +800,9 @@ function renderSalePriceList(
                 gap: 4,
                 overflow: 'hidden',
                 padding: '0 2px',
+                minWidth: 0,
               }}
             >
-              {/* v10.14 复选框可点击修改默认值（调用API），onClick stopPropagation 不触发行 onClick */}
               <Checkbox
                 checked={sp.isDefault}
                 disabled={isToggling}
@@ -343,27 +816,44 @@ function renderSalePriceList(
                   transformOrigin: 'center',
                 }}
               />
-              <span
-                style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  minWidth: 0,
-                }}
-              >
-                {sp.priceTypeName}
-              </span>
+              <PickerNameCell
+                value={sp.priceTypeName}
+                disabled={!canEdit}
+                kind="priceType"
+                scope={edit?.scope}
+                fromId={sp.priceTypeId}
+                onApply={(name) => edit?.onRenameType(sp, name)}
+                onApplyGlobal={(name) => edit?.onRenameTypeGlobal(sp, name)}
+              />
             </span>
+            <PickerNumCell
+              value={sp.price}
+              disabled={!canEdit}
+              kind="saleFace"
+              scope={edit?.scope}
+              onApply={(n) => edit?.onFace(sp, n)}
+            />
+            <PickerNumCell
+              value={sp.point ?? 1}
+              label={formatPoint(sp.point ?? 1)}
+              disabled={!canEdit}
+              kind="salePoint"
+              scope={catalogScope([sp.priceTypeName, edit?.pointGroup])}
+              color={sp.specPoint ? 'var(--status-warning-default)' : 'var(--text-tertiary)'}
+              onApply={(n) => edit?.onPoint(sp, n)}
+              onApplyGlobal={edit?.onPointGlobal ? (n) => edit.onPointGlobal(sp, n) : undefined}
+              previewGlobal={edit?.previewPoint ? (to) => edit.previewPoint(sp, to) : undefined}
+            />
             <span
               style={{
                 ...PRICE_NUM_STYLE,
                 textAlign: 'center',
                 padding: '0 2px',
               }}
+              title="实际售价 = 面价 × 点位"
             >
-              {formatPrice(sp.price)}
+              {formatPrice(sp.effectivePrice ?? sp.price)}
             </span>
-            {/* v10.14 插入按钮：点击填入并关闭 */}
             <span style={{ display: 'flex', justifyContent: 'center' }}>
               <button
                 type="button"
@@ -382,41 +872,74 @@ function renderSalePriceList(
           </div>
         );
       })}
+      {canEdit && (
+        <div
+          style={{
+            ...LIST_ROW_STYLE,
+            display: 'grid',
+            gridTemplateColumns: SALE_PANEL_GRID_COLS,
+            padding: '4px 8px',
+          }}
+        >
+          <PickerEmptyName
+            placeholder="加售价类型…"
+            kind="addSaleType"
+            scope={edit.scope}
+            leadCheck
+            onApply={(name) => edit.onAdd(name)}
+          />
+        </div>
+      )}
+      {!canEdit && prices.length === 0 && (
+        <div
+          style={{
+            padding: 12,
+            textAlign: 'center',
+            color: 'var(--text-quaternary)',
+            fontSize: 'var(--body-xs-font-size)',
+          }}
+        >
+          {emptyText}
+        </div>
+      )}
     </div>
   );
 }
 
-/**
- * 进价明细面板内容（一级主行进价面板 + 二级单位面板内进价面板 共用）
- * - 3列结构：供应商名（72px，对齐售价列）+ 价格（72px，对齐进价列，红色）+ 插入按钮（28px）
- * - placement="bottomRight" 对齐进价列右边缘 → 面板左边缘自动对齐售价列左边缘
- * - v10.14: 复选框可点击修改默认值；插入按钮点击快速填入
- */
 function renderPurchasePriceList(
   prices: PurchasePriceItem[],
   emptyText = '未设进价',
   onPickPurchasePrice?: (p: PurchasePriceItem) => void,
   onToggleDefault?: (p: PurchasePriceItem, nextDefault: boolean) => Promise<void>,
   togglingId?: string | null,
+  edit?: PurchaseListEdit,
+  supplierCandidateCtx?: SupplierCandidateContext,
+  hitSupplierId?: string | null,
 ) {
-  if (prices.length === 0) {
-    return (
-      <div
-        style={{
-          padding: 12,
-          textAlign: 'center',
-          color: 'var(--text-quaternary)',
-          fontSize: 'var(--body-xs-font-size)',
-        }}
-      >
-        {emptyText}
-      </div>
-    );
-  }
+  const canEdit = !!edit?.canEdit;
   return (
     <div style={{ padding: 0 }}>
+      {renderPanelHead(['供应渠道', '面价', '点位', '进价', ''], PURCHASE_PANEL_GRID_COLS)}
+      {(supplierCandidateCtx?.categoryId || supplierCandidateCtx?.brandId) ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 8px',
+            borderBottom: `1px solid ${PANEL_ROW_DEFAULT_BG}`,
+            flexWrap: 'wrap',
+          }}
+        >
+          <SupplierCandidateBrowse ctx={supplierCandidateCtx} disabled={!canEdit} />
+          <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)' }}>
+            查询槽 · 只读
+          </span>
+        </div>
+      ) : null}
       {prices.map((p, idx) => {
         const isToggling = togglingId === p.id;
+        const isHit = !!hitSupplierId && String(p.supplierId) === String(hitSupplierId);
         return (
           <div
             key={`${p.id}-${idx}`}
@@ -424,9 +947,13 @@ function renderPurchasePriceList(
               ...LIST_ROW_STYLE,
               display: 'grid',
               gridTemplateColumns: PURCHASE_PANEL_GRID_COLS,
+              padding: '4px 8px',
+              background: isHit ? 'var(--bg-brand-popup)' : PANEL_ROW_DEFAULT_BG,
             }}
             onMouseEnter={(e) => (e.currentTarget.style.background = PANEL_ROW_HOVER_BG)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = PANEL_ROW_DEFAULT_BG)}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = isHit ? 'var(--bg-brand-popup)' : PANEL_ROW_DEFAULT_BG)
+            }
           >
             <span
               style={{
@@ -436,6 +963,7 @@ function renderPurchasePriceList(
                 gap: 4,
                 overflow: 'hidden',
                 padding: '0 2px',
+                minWidth: 0,
               }}
             >
               <Checkbox
@@ -451,17 +979,34 @@ function renderPurchasePriceList(
                   transformOrigin: 'center',
                 }}
               />
-              <span
-                style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  minWidth: 0,
-                }}
-              >
-                {p.supplierName}
-              </span>
+              <PickerNameCell
+                value={p.supplierName}
+                disabled={!canEdit}
+                kind="supplier"
+                scope={edit?.scope}
+                fromId={p.supplierId}
+                onApply={(name) => edit?.onRenameSupplier(p, name)}
+                onApplyGlobal={(name) => edit?.onRenameSupplierGlobal(p, name)}
+              />
             </span>
+            <PickerNumCell
+              value={p.price}
+              disabled={!canEdit}
+              kind="purchaseFace"
+              scope={edit?.scope}
+              onApply={(n) => edit?.onFace(p, n)}
+            />
+            <PickerNumCell
+              value={p.point ?? 1}
+              label={formatPoint(p.point ?? 1)}
+              disabled={!canEdit}
+              kind="purchasePoint"
+              scope={catalogScope([p.supplierName, edit?.pointGroup])}
+              color={p.specPoint ? 'var(--status-warning-default)' : 'var(--text-tertiary)'}
+              onApply={(n) => edit?.onPoint(p, n)}
+              onApplyGlobal={edit?.onPointGlobal ? (n) => edit.onPointGlobal(p, n) : undefined}
+              previewGlobal={edit?.previewPoint ? (to) => edit.previewPoint(p, to) : undefined}
+            />
             <span
               style={{
                 ...PRICE_NUM_STYLE,
@@ -469,8 +1014,8 @@ function renderPurchasePriceList(
                 textAlign: 'center',
                 padding: '0 2px',
               }}
+              title="进价 = 面价 × 点位"
             >
-              {/* v12.0：进价列显示有效进价（面价 × 点位） */}
               {(() => {
                 const eff = calcEffectivePrice(p);
                 return formatPrice(isNaN(eff) ? null : eff);
@@ -494,9 +1039,40 @@ function renderPurchasePriceList(
           </div>
         );
       })}
+      {canEdit && (
+        <div
+          style={{
+            ...LIST_ROW_STYLE,
+            display: 'grid',
+            gridTemplateColumns: PURCHASE_PANEL_GRID_COLS,
+            padding: '4px 8px',
+          }}
+        >
+          <PickerEmptyName
+            placeholder="加供应渠道…"
+            kind="addChannel"
+            scope={edit.scope}
+            leadCheck
+            onApply={(name) => edit.onAdd(name)}
+          />
+        </div>
+      )}
+      {!canEdit && prices.length === 0 && (
+        <div
+          style={{
+            padding: 12,
+            textAlign: 'center',
+            color: 'var(--text-quaternary)',
+            fontSize: 'var(--body-xs-font-size)',
+          }}
+        >
+          {emptyText}
+        </div>
+      )}
     </div>
   );
 }
+
 
 export default function ProductPicker({
   open,
@@ -506,12 +1082,76 @@ export default function ProductPicker({
   initialKeyword = '',
   isStaff = true,
   dropdownMode = false,
+  hideHostInput = false,
+  entrySlot = 'search',
+  lockedContext = null,
   onQuickCreate,
+  onDraftCommit,
+  hostedInGate = false,
+  parentPanelId,
+  hostedKeyword,
+  onHostedKeywordChange,
+  hostedListExpanded,
+  hostReady = true,
 }: ProductPickerProps) {
   const { message } = AntdApp.useApp();
-  const [keyword, setKeyword] = useState(initialKeyword);
+  const [keyword, setKeywordState] = useState(initialKeyword);
+  const setKeyword = (v: string) => {
+    if (hostedInGate && onHostedKeywordChange) onHostedKeywordChange(v);
+    setKeywordState(v);
+  };
+  const [listExpanded, setListExpanded] = useState(true);
+  const pickedRef = useRef(false);
+  const skipDraftRef = useRef(false);
+  const initialAtOpenRef = useRef(initialKeyword ?? '');
+  const keywordRef = useRef(keyword);
+  keywordRef.current = keyword;
+  const [entryView, setEntryView] = useState<ProductPickerEntryView>(DEFAULT_PRODUCT_PICKER_VIEW);
+  const entryViewRef = useRef<ProductPickerEntryView>(DEFAULT_PRODUCT_PICKER_VIEW);
+  entryViewRef.current = entryView;
   const [rows, setRows] = useState<SkuRow[]>([]);
+  const rowsRef = useRef<SkuRow[]>([]);
+  const pendingSaves = useRef(0);
+  const saveWaiters = useRef<Array<() => void>>([]);
+  const insertingRef = useRef(false);
   const [searching, setSearching] = useState(false);
+
+  // 写 rows 必须走这里（同步 rowsRef，插入才读得到最新面板）。
+  // 函数体内只能调 setRows，不能再调 commitRows，否则自己调自己撑爆栈。
+  const commitRows = (updater: SkuRow[] | ((prev: SkuRow[]) => SkuRow[])) => {
+    setRows((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      rowsRef.current = next;
+      return next;
+    });
+  };
+
+  const runSave = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    pendingSaves.current += 1;
+    try {
+      return await fn();
+    } finally {
+      pendingSaves.current -= 1;
+      if (pendingSaves.current === 0) {
+        saveWaiters.current.splice(0).forEach((w) => w());
+      }
+    }
+  };
+
+  /** 插入前先把正在改的名称/面价/点位写完，再抄此刻面板里的字和价 */
+  const flushPickerEdits = async () => {
+    const el = document.activeElement;
+    if (el instanceof HTMLElement) el.blur();
+    await Promise.resolve();
+    if (pendingSaves.current === 0) return;
+    await new Promise<void>((resolve) => {
+      const t = window.setTimeout(resolve, 8000);
+      saveWaiters.current.push(() => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+  };
   /** v10.14 当前正在切换默认值的价格记录 ID（防并发，显示 disabled） */
   const [togglingPriceId, setTogglingPriceId] = useState<string | null>(null);
   /** v10.14 当前正在切换默认显示标记的单位 ID */
@@ -530,6 +1170,10 @@ export default function ProductPicker({
     tab: 'sale' | 'purchase';
     source: 'main' | 'sub';
   } | null>(null);
+  const [openBrand, setOpenBrand] = useState<string | null>(null);
+  const [openMore, setOpenMore] = useState<string | null>(null);
+  const brandAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const moreAnchorRef = useRef<HTMLButtonElement | null>(null);
   // v10.19：inputRef 改为 InputRef，DsInput 移到 FloatPanel 外部（单元格内）
   const inputRef = useRef<InputRef>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -544,11 +1188,15 @@ export default function ProductPicker({
   //
   //   由于 FloatPanel 内部管理 panelId（不通过 props 暴露），这里通过 DOM 查询
   //   主面板的 data-panel-id 属性来获取 panelId，传给二级面板作为 parentId。
-  //   查询时机：主面板 open 后，FloatPanel 注册并 re-render 写入 data-panel-id，
-  //   用 requestAnimationFrame 轮询直到属性就绪（通常 1-2 帧内完成）。
+  //   查询时机：主面板 open 后首帧即有 data-panel-id；仍用 rAF 等到节点进文档。
   // ============================================================
   const MAIN_PANEL_CLASS = 'product-picker-main-float-panel';
+  const MORE_PANEL_CLASS = 'product-picker-more-float-panel';
+  const SPEC_PANEL_CLASS = 'product-picker-spec-float-panel';
   const [mainPanelId, setMainPanelId] = useState<string | null>(null);
+  const mainPanelIdRef = useRef<string | null>(null);
+  const [morePanelId, setMorePanelId] = useState<string | null>(null);
+  const [specPanelId, setSpecPanelId] = useState<string | null>(null);
 
   // 5 个二级面板的锚点 ref，在按钮 onClick 时通过 e.currentTarget 捕获触发元素
   // 主行三个按钮：单位 / 售价 / 进价
@@ -560,18 +1208,32 @@ export default function ProductPicker({
   const subPurchaseAnchorRef = useRef<HTMLSpanElement | null>(null);
 
   // 主面板 panelId 探测：open 变 true 后轮询 DOM 获取 data-panel-id
+  const syncMainPanelId = useCallback((from?: HTMLElement | null) => {
+    const pid =
+      from?.closest<HTMLElement>('[data-panel-id]')?.getAttribute('data-panel-id') ??
+      document.querySelector<HTMLElement>(`.${MAIN_PANEL_CLASS}`)?.getAttribute('data-panel-id') ??
+      null;
+    if (pid) {
+      mainPanelIdRef.current = pid;
+      setMainPanelId(pid);
+    }
+    return pid;
+  }, []);
+
   useEffect(() => {
     if (!open) {
+      mainPanelIdRef.current = null;
       setMainPanelId(null);
       return;
     }
     let cancelled = false;
     let attempts = 0;
     const query = () => {
-      if (cancelled || attempts++ > 10) return; // 最多重试 10 帧，避免死循环
+      if (cancelled || attempts++ > 60) return;
       const el = document.querySelector(`.${MAIN_PANEL_CLASS}`);
       const pid = el?.getAttribute('data-panel-id') ?? null;
       if (pid) {
+        mainPanelIdRef.current = pid;
         setMainPanelId(pid);
       } else {
         requestAnimationFrame(query);
@@ -581,58 +1243,135 @@ export default function ProductPicker({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, syncMainPanelId]);
 
+  const resolvedMainPanelId = mainPanelIdRef.current ?? mainPanelId;
 
   useEffect(() => {
-    if (open) {
-      // dropdown 模式：initialKeyword 来自 PickerCell 的 freeText（用户自由编辑态暂存值）
-      // - 非空时作为初始关键词注入，立即触发搜索并展开列表
-      // - 为空时维持原有行为（空输入等待用户搜索）
-      const initial = initialKeyword?.trim() ?? '';
-      setKeyword(initial);
-      setRows([]);
-      setExpandedKey(null);
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
-      // 非空 initialKeyword 立即触发搜索
-      if (initial) {
-        void doSearch(initial);
-      }
-    } else {
+    if (!openMore) {
+      setMorePanelId(null);
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const query = () => {
+      if (cancelled || attempts++ > 10) return;
+      const el = document.querySelector(`.${MORE_PANEL_CLASS}`);
+      const pid = el?.getAttribute('data-panel-id') ?? null;
+      if (pid) setMorePanelId(pid);
+      else requestAnimationFrame(query);
+    };
+    requestAnimationFrame(query);
+    return () => {
+      cancelled = true;
+    };
+  }, [openMore]);
+
+  useEffect(() => {
+    if (!openBrand) {
+      setSpecPanelId(null);
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const query = () => {
+      if (cancelled || attempts++ > 10) return;
+      const el = document.querySelector(`.${SPEC_PANEL_CLASS}`);
+      const pid = el?.getAttribute('data-panel-id') ?? null;
+      if (pid) setSpecPanelId(pid);
+      else requestAnimationFrame(query);
+    };
+    requestAnimationFrame(query);
+    return () => {
+      cancelled = true;
+    };
+  }, [openBrand]);
+
+
+  const isLayerSlot = entrySlot === 'unit' || entrySlot === 'price';
+
+  useEffect(() => {
+    if (!open) {
       setExpandedKey(null);
       setExpandedPriceCell(null);
+      setOpenBrand(null);
+      setOpenMore(null);
+      return;
     }
+    setListExpanded(true);
+    pickedRef.current = false;
+    skipDraftRef.current = hostedInGate;
+    if (hostedInGate) return;
+    const next = initialKeyword ?? '';
+    initialAtOpenRef.current = next;
+    setKeywordState(next);
+    if (isLayerSlot) return;
+    setEntryView(DEFAULT_PRODUCT_PICKER_VIEW);
+    entryViewRef.current = DEFAULT_PRODUCT_PICKER_VIEW;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!next.trim()) {
+      commitRows([]);
+      return;
+    }
+    timerRef.current = setTimeout(() => void doSearch(next), 250);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, hideHostInput, isLayerSlot, hostedInGate]);
+
+  useEffect(() => {
+    if (!open || !hostedInGate) return undefined;
+    const next = hostedKeyword ?? '';
+    setKeywordState(next);
+    if (isLayerSlot) return undefined;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!next.trim()) {
+      commitRows([]);
+      return undefined;
+    }
+    timerRef.current = setTimeout(() => void doSearch(next), 250);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, hostedInGate, hostedKeyword, isLayerSlot]);
+
+  useLayoutEffect(() => {
+    if (!open || hideHostInput || isLayerSlot) return;
+    inputRef.current?.focus();
+  }, [open, hideHostInput, isLayerSlot]);
 
   const doSearch = useCallback(
-    async (kw: string) => {
+    async (kw: string, view?: ProductPickerEntryView) => {
       if (!kw.trim()) {
-        setRows([]);
+        commitRows([]);
         setSearching(false);
         return;
       }
       setSearching(true);
       try {
-        const query = { keyword: kw.trim(), size: 30 };
+        const entry = view ?? entryViewRef.current;
+        const query = {
+          keyword: kw.trim(),
+          size: 30,
+          ...(isStaff ? { entryView: entry } : {}),
+        };
         const result = isStaff
           ? await searchProducts(query)
           : await searchProductsPublic(query);
         const skuRows: SkuRow[] = result.list
           .filter((r): r is SkuSearchRow => r.type === 'sku')
           .map((sku) => ({
-            key: sku.id,
+            key: sku.hitSupplierId ? `${sku.id}:${sku.hitSupplierId}` : sku.id,
             sku,
             units: null,
             unitsLoading: false,
             unitsError: null,
           }));
-        setRows(skuRows);
+        commitRows(skuRows);
         setExpandedKey(null);
+        setOpenBrand(null);
+        setOpenMore(null);
       } catch {
-        setRows([]);
+        commitRows([]);
       } finally {
         setSearching(false);
       }
@@ -640,66 +1379,236 @@ export default function ProductPicker({
     [isStaff],
   );
 
+  const lockedSpecId = lockedContext?.specId ?? '';
+  const lockedBrandId = lockedContext?.brandId ?? '';
+  const lockedUnitId = lockedContext?.unitId ?? '';
+  const lockedProductId = lockedContext?.productId ?? '';
+  const lockedProductName = lockedContext?.productName ?? '';
+  const lockedBrandName = lockedContext?.brandName ?? '';
+  const lockedSpecModel = lockedContext?.specModel ?? '';
+  const lockedUnitName = lockedContext?.unitName ?? '';
+
+  const loadLockedLayer = useCallback(async () => {
+    if (!lockedSpecId || !lockedBrandId || String(lockedSpecId) === '0') {
+      commitRows([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    try {
+      const resolved = await resolveSpecBrand(String(lockedSpecId), String(lockedBrandId));
+      if (!resolved.specBrandId) {
+        commitRows([]);
+        return;
+      }
+      const result = isStaff
+        ? await getSkuOptions(resolved.specBrandId)
+        : await getSkuOptionsPublic(resolved.specBrandId);
+      const units = sortUnits(result.units ?? []);
+      const sku = buildLockedSku(
+        {
+          specId: lockedSpecId,
+          brandId: lockedBrandId,
+          productId: lockedProductId,
+          productName: lockedProductName,
+          brandName: lockedBrandName,
+          specModel: lockedSpecModel,
+          unitId: lockedUnitId,
+          unitName: lockedUnitName,
+        },
+        resolved.specBrandId,
+        units,
+      );
+      commitRows([
+        {
+          key: sku.id,
+          sku,
+          units,
+          unitsLoading: false,
+          unitsError: null,
+        },
+      ]);
+    } catch {
+      commitRows([]);
+    } finally {
+      setSearching(false);
+    }
+  }, [
+    isStaff,
+    lockedSpecId,
+    lockedBrandId,
+    lockedUnitId,
+    lockedProductId,
+    lockedProductName,
+    lockedBrandName,
+    lockedSpecModel,
+    lockedUnitName,
+  ]);
+
+  const refreshPickerCatalog = useCallback(async () => {
+    const kw = keyword.trim();
+    if (kw) await doSearch(kw);
+    else if (lockedContext) await loadLockedLayer();
+  }, [keyword, doSearch, lockedContext, loadLockedLayer]);
+
+  useEffect(() => {
+    if (!open || !isLayerSlot) return;
+    void loadLockedLayer();
+  }, [open, isLayerSlot, loadLockedLayer]);
+
   const onKwChange = (v: string) => {
     setKeyword(v);
+    setListExpanded(true);
+    if (isLayerSlot) return;
     if (timerRef.current) clearTimeout(timerRef.current);
     if (!v.trim()) {
-      setRows([]);
+      commitRows([]);
       return;
     }
     timerRef.current = setTimeout(() => void doSearch(v), 250);
   };
 
+  const handlePanelClose = () => {
+    if (!pickedRef.current && !skipDraftRef.current) {
+      const kw = keywordRef.current;
+      if (kw !== (initialAtOpenRef.current ?? '')) onDraftCommit?.(kw);
+    }
+    skipDraftRef.current = false;
+    pickedRef.current = false;
+    onClose();
+  };
+
   /** 懒加载单位列表（getSkuOptions，v14.0：按 specBrandId） */
   const loadUnits = useCallback(
     async (rowKey: string, specBrandId: string) => {
-      setRows((prev) =>
+      pendingSaves.current += 1;
+      commitRows((prev) =>
         prev.map((r) => (r.key === rowKey ? { ...r, unitsLoading: true } : r)),
       );
       try {
         const result = isStaff
           ? await getSkuOptions(specBrandId)
           : await getSkuOptionsPublic(specBrandId);
-        setRows((prev) =>
-          prev.map((r) =>
-            r.key === rowKey
-              ? {
-                  ...r,
-                  units: sortUnits(result.units ?? []),
-                  unitsLoading: false,
-                  unitsError: null,
-                }
-              : r,
-          ),
+        commitRows((prev) =>
+          prev.map((r) => (r.key === rowKey ? applyLoadedUnits(r, result.units ?? []) : r)),
         );
       } catch {
-        setRows((prev) =>
+        commitRows((prev) =>
           prev.map((r) =>
             r.key === rowKey
               ? { ...r, unitsLoading: false, unitsError: '加载单位失败' }
               : r,
           ),
         );
+      } finally {
+        pendingSaves.current -= 1;
+        if (pendingSaves.current === 0) {
+          saveWaiters.current.splice(0).forEach((w) => w());
+        }
       }
     },
     [isStaff],
   );
 
-  /** 选品确认：使用默认单位或指定单位；selectedPrice 为用户点击的具体售价/进价（v10.13 快速填入）
-   *  常驻模式：选择后清空 keyword/rows/creationPrompt，输入框恢复 placeholder 等待下次搜索
-   *  v10.26 同时关闭所有二级面板（SubTask 4.3 填充触发协议统一） */
+  /** 选品确认：先写完正在改的格子，再按此刻面板数据抄进当前单据行（P-015 单位必须真实） */
   const confirmPick = (
     row: SkuRow,
     unitOverride?: SkuOptionUnit,
     selectedPrice: SelectedPrice | null = null,
   ) => {
-    const unit = unitOverride ?? deriveDefaultUnit(row.sku, isStaff);
-    if (!unit.unitId) return;
-    onSelect(row.sku, unit, selectedPrice);
-    setKeyword('');
-    setRows([]);
-    closeAllSubPanels();
-    onClose();
+    void (async () => {
+      if (insertingRef.current) return;
+      insertingRef.current = true;
+      try {
+        await flushPickerEdits();
+        const start = Date.now();
+        while (Date.now() - start < 8000) {
+          const loading = rowsRef.current.find((r) => r.key === row.key);
+          if (!loading?.unitsLoading) break;
+          await new Promise((res) => setTimeout(res, 30));
+        }
+        const latest = rowsRef.current.find((r) => r.key === row.key) ?? row;
+
+        const valid = (u: SkuOptionUnit | null | undefined): u is SkuOptionUnit =>
+          !!u && !!u.unitId && String(u.unitId) !== '0' && !!u.unitName.trim();
+
+        let unit: SkuOptionUnit | null = null;
+        if (unitOverride && valid(unitOverride)) {
+          unit = latest.units?.find((u) => u.unitId === unitOverride.unitId) ?? unitOverride;
+          if (!valid(unit)) unit = null;
+        }
+        if (!unit && latest.units?.length) {
+          unit =
+            latest.units.find((u) => u.isDisplay && valid(u)) ??
+            latest.units.find((u) => u.isBase && valid(u)) ??
+            latest.units.find(valid) ??
+            null;
+        }
+        if (!unit && latest.sku.specBrandId) {
+          try {
+            const result = isStaff
+              ? await getSkuOptions(latest.sku.specBrandId)
+              : await getSkuOptionsPublic(latest.sku.specBrandId);
+            const loaded = sortUnits(result.units ?? []);
+            commitRows((prev) =>
+              prev.map((r) => (r.key === latest.key ? applyLoadedUnits(r, loaded) : r)),
+            );
+            const refreshed = rowsRef.current.find((r) => r.key === latest.key) ?? latest;
+            unit =
+              refreshed.units?.find((u) => u.isDisplay && valid(u)) ??
+              refreshed.units?.find((u) => u.isBase && valid(u)) ??
+              refreshed.units?.find(valid) ??
+              null;
+          } catch {
+            unit = null;
+          }
+        }
+        if (!unit) {
+          const derived = deriveDefaultUnit(latest.sku, isStaff);
+          unit = valid(derived) ? derived : null;
+        }
+        if (!unit) {
+          message.warning('该规格还没有可用单位，补一个单位后再插入');
+          return;
+        }
+
+        let price = selectedPrice;
+        const priceUnit = latest.units?.find((x) => x.unitId === unit.unitId) ?? unit;
+        if (price?.sale) {
+          const sp = priceUnit.salePrices?.find((s) => s.priceTypeId === price!.sale!.priceTypeId);
+          if (sp) {
+            price = {
+              sale: {
+                priceTypeId: sp.priceTypeId,
+                priceTypeName: sp.priceTypeName,
+                price: sp.effectivePrice ?? sp.price,
+              },
+            };
+          }
+        }
+        if (price?.purchase) {
+          const p = priceUnit.purchasePrices?.find((s) => s.supplierId === price!.purchase!.supplierId);
+          if (p) {
+            price = {
+              purchase: {
+                supplierId: p.supplierId,
+                supplierName: p.supplierName,
+                price: calcEffectivePrice(p),
+              },
+            };
+          }
+        }
+
+        onSelect(latest.sku, unit, price);
+        pickedRef.current = true;
+        setKeyword('');
+        commitRows([]);
+        closeAllSubPanels();
+        onClose();
+      } finally {
+        insertingRef.current = false;
+      }
+    })();
   };
 
   /**
@@ -731,7 +1640,7 @@ export default function ProductPicker({
       sale: {
         priceTypeId: sp.priceTypeId,
         priceTypeName: sp.priceTypeName,
-        price: sp.price,
+        price: sp.effectivePrice ?? sp.price,
       },
     };
     confirmPick(row, unitOverride, selectedPrice);
@@ -766,9 +1675,10 @@ export default function ProductPicker({
       if (togglingPriceId) return;
       setTogglingPriceId(sp.id);
       try {
-        await updateSalePrice(sp.id, { isDefault: nextDefault });
+        await runSave(async () => {
+          await updateSalePrice(sp.id, { isDefault: nextDefault });
         // 本地更新：同 SKU（同 rowKey + unitId）下互斥，仅当前 sp.isDefault=true
-        setRows((prev) =>
+        commitRows((prev) =>
           prev.map((r) => {
             if (r.key !== rowKey || !r.units) return r;
             const newUnits = r.units.map((u) => {
@@ -812,6 +1722,7 @@ export default function ProductPicker({
           }),
         );
         message.success(nextDefault ? '已设为默认售价' : '已取消默认售价');
+        });
       } catch (e) {
         message.error((e as Error).message || '修改默认售价失败');
       } finally {
@@ -829,8 +1740,9 @@ export default function ProductPicker({
       if (togglingPriceId) return;
       setTogglingPriceId(p.id);
       try {
-        await updatePurchasePrice(p.id, { isDefault: nextDefault });
-        setRows((prev) =>
+        await runSave(async () => {
+          await updatePurchasePrice(p.id, { isDefault: nextDefault });
+        commitRows((prev) =>
           prev.map((r) => {
             if (r.key !== rowKey || !r.units) return r;
             const newUnits = r.units.map((u) => {
@@ -876,6 +1788,7 @@ export default function ProductPicker({
           }),
         );
         message.success(nextDefault ? '已设为默认进价' : '已取消默认进价');
+        });
       } catch (e) {
         message.error((e as Error).message || '修改默认进价失败');
       } finally {
@@ -885,18 +1798,269 @@ export default function ProductPicker({
     [togglingPriceId, message],
   );
 
+  const canEdit = isStaff;
+  const errMsg = (e: unknown) => (e as Error).message || '保存失败';
+
+  const appendCreated = (created: PickerSkuCreated | PickerSkuCreated[]) => {
+    const list = Array.isArray(created) ? created : [created];
+    commitRows((prev) => {
+      const have = new Set(prev.map((r) => r.sku.specBrandId));
+      const extra: SkuRow[] = [];
+      for (const c of list) {
+        if (have.has(c.specBrandId)) continue;
+        extra.push({
+          key: c.specBrandId,
+          sku: skuFromCreated(c),
+          units: null,
+          unitsLoading: false,
+          unitsError: null,
+        });
+      }
+      return extra.length ? [...prev, ...extra] : prev;
+    });
+  };
+
+  const saleEditFor = (row: SkuRow, unit: SkuOptionUnit): SaleListEdit => ({
+    canEdit,
+    scope: catalogScope([row.sku.productName, row.sku.brandName, row.sku.specModel, unit.unitName]),
+    pointGroup: catalogScope([row.sku.brandName, row.sku.categoryName]),
+    onRenameType: async (sp, name) => {
+      try {
+        await runSave(async () => {
+          const types = await listPriceTypes();
+          let pt = types.find((t) => t.name === name);
+          if (!pt) pt = await createPriceType({ name });
+          await updateSalePrice(sp.id, { priceTypeId: pt.id });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onRenameTypeGlobal: async (sp, name) => {
+      try {
+        await runSave(async () => {
+          await applyDictChange({ kind: 'priceType', fromId: sp.priceTypeId, toName: name });
+          await loadUnits(row.key, row.sku.specBrandId);
+          await refreshPickerCatalog();
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onFace: async (sp, n) => {
+      try {
+        await runSave(async () => {
+          await updateSalePrice(sp.id, { price: n });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onPoint: async (sp, n) => {
+      try {
+        await runSave(async () => {
+          await upsertSaleSpecPoint({
+            specBrandId: row.sku.specBrandId,
+            priceTypeId: sp.priceTypeId,
+            point: n,
+          });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onPointGlobal: async (sp, n) => {
+      try {
+        await runSave(async () => {
+          await upsertSaleGroupPoint({
+            priceTypeId: sp.priceTypeId,
+            brandName: row.sku.brandName,
+            categoryName: row.sku.categoryName,
+            point: n,
+          });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    previewPoint: (sp, to) =>
+      previewPointChange({
+        side: 'sale',
+        brandName: row.sku.brandName,
+        categoryName: row.sku.categoryName,
+        newPoint: Number(to),
+        priceTypeId: sp.priceTypeId,
+      }),
+    onAdd: async (name) => {
+      try {
+        await runSave(async () => {
+          const types = await listPriceTypes();
+          let pt = types.find((t) => t.name === name);
+          if (!pt) pt = await createPriceType({ name });
+          await createSalePrice({
+            specBrandId: row.sku.specBrandId,
+            unitId: unit.unitId,
+            priceTypeId: pt.id,
+            price: 0,
+            isDefault: (unit.salePrices?.length ?? 0) === 0,
+          });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+      }
+    },
+  });
+
+  const purchaseEditFor = (row: SkuRow, unit: SkuOptionUnit): PurchaseListEdit => ({
+    canEdit,
+    scope: catalogScope([row.sku.productName, row.sku.brandName, row.sku.specModel, unit.unitName]),
+    pointGroup: catalogScope([row.sku.brandName, row.sku.categoryName]),
+    onRenameSupplier: async (p, name) => {
+      try {
+        await runSave(async () => {
+          const sup = await quickAddSupplier({ name });
+          await updatePurchasePrice(p.id, { supplierId: sup.id });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onRenameSupplierGlobal: async (p, name) => {
+      try {
+        await runSave(async () => {
+          await applyDictChange({ kind: 'supplier', fromId: p.supplierId, toName: name });
+          await loadUnits(row.key, row.sku.specBrandId);
+          await refreshPickerCatalog();
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onFace: async (p, n) => {
+      try {
+        await runSave(async () => {
+          await updatePurchasePrice(p.id, { price: n });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onPoint: async (p, n) => {
+      try {
+        await runSave(async () => {
+          await upsertPurchaseSpecPoint({
+            specBrandId: row.sku.specBrandId,
+            supplierId: p.supplierId,
+            point: n,
+          });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    onPointGlobal: async (p, n) => {
+      try {
+        await runSave(async () => {
+          await upsertPurchaseGroupPoint({
+            supplierId: p.supplierId,
+            brandName: row.sku.brandName,
+            categoryName: row.sku.categoryName,
+            point: n,
+          });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+        throw e;
+      }
+    },
+    previewPoint: (p, to) =>
+      previewPointChange({
+        side: 'purchase',
+        brandName: row.sku.brandName,
+        categoryName: row.sku.categoryName,
+        newPoint: Number(to),
+        supplierId: p.supplierId,
+      }),
+    onAdd: async (name) => {
+      try {
+        await runSave(async () => {
+          const supplier = await quickAddSupplier({ name });
+          await createPurchasePrice({
+            specBrandId: row.sku.specBrandId,
+            unitId: unit.unitId,
+            supplierId: supplier.id,
+            price: 0,
+            isDefault: (unit.purchasePrices?.length ?? 0) === 0,
+          });
+          await loadUnits(row.key, row.sku.specBrandId);
+        });
+      } catch (e) {
+        message.error(errMsg(e));
+      }
+    },
+  });
+
+  const mainUnitOf = (row: SkuRow) =>
+    row.units?.find((uu) => uu.unitId === row.sku.defaultUnitId) ?? row.units?.[0];
+
+  /** 换算率格：展示「1根=4米」，写入数字。基准单位不能改。 */
+  const renderConversionCell = (row: SkuRow, u: SkuOptionUnit | undefined) => (
+    <span style={{ display: 'flex', justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
+      <PickerNumCell
+        value={u ? unitConversionRate(u) : null}
+        disabled={!canEdit || !u || u.isBase}
+        kind="conversion"
+        label={conversionCellText(row.units, u)}
+        placeholder="—"
+        scope={catalogScope([row.sku.productName, row.sku.brandName, row.sku.specModel, u?.unitName])}
+        onApply={async (n) => {
+          if (!u) return;
+          try {
+            await runSave(async () => {
+              await upsertSpecBrandConversion(row.sku.specBrandId, u.unitId, n);
+              await loadUnits(row.key, row.sku.specBrandId);
+            });
+          } catch (e) {
+            message.error(errMsg(e));
+            throw e;
+          }
+        }}
+      />
+    </span>
+  );
+
   /** v10.14 切换单位默认显示标记（调用 setUnitDisplay，互斥清除同 SPU 其他默认显示）
    *  v10.15 同步主行显示：切换默认单位后，row.sku 的 defaultUnitId/Name/retailPrice/purchasePriceDefault
    *    立即跟随更新，让主行的"单位/售价/进价"列显示新默认单位的数据
    *    （否则用户改了默认但主行还是旧值，"默认"标记形同虚设）
    */
   const handleToggleUnitDisplay = useCallback(
-    async (rowKey: string, unit: SkuOptionUnit, nextDisplay: boolean) => {
+    async (rowKey: string, unit: SkuOptionUnit, nextDisplay: boolean, specId?: string) => {
       if (togglingUnitId) return;
       setTogglingUnitId(unit.unitId);
       try {
-        await setUnitDisplay(unit.unitId, nextDisplay);
-        setRows((prev) =>
+        await runSave(async () => {
+          await setUnitDisplay(unit.unitId, nextDisplay, specId);
+
+        commitRows((prev) =>
           prev.map((r) => {
             if (r.key !== rowKey || !r.units) return r;
             const newUnits = r.units.map((u) => ({
@@ -934,6 +2098,7 @@ export default function ProductPicker({
           }),
         );
         message.success(nextDisplay ? '已设为默认显示单位' : '已取消默认显示单位');
+        });
       } catch (e) {
         message.error((e as Error).message || '修改默认显示单位失败');
       } finally {
@@ -967,8 +2132,8 @@ export default function ProductPicker({
       subPurchaseAnchorRef.current = null;
       return;
     }
-    // mainPanelId 未就绪时不打开（避免 parentId=null 与主面板互斥导致主面板被关闭）
-    if (!mainPanelId) return;
+    // resolvedMainPanelId 未就绪时不打开（避免 parentId=null 与主面板互斥导致主面板被关闭）
+    if (!resolvedMainPanelId) return;
     unitAnchorRef.current = e.currentTarget as HTMLButtonElement;
     setExpandedKey(row.key);
     // 切换单位列表时清除价格明细展开
@@ -979,10 +2144,20 @@ export default function ProductPicker({
     }
   };
 
-  /** 主行售价按钮点击：展开主行售价明细面板 */
-  const openMainSalePanel = (row: SkuRow, e: React.MouseEvent) => {
+  /** 主行售价按钮点击：展开/收起主行售价明细面板 */
+  const toggleMainSalePanel = (row: SkuRow, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!mainPanelId) return;
+    const isThisOpen =
+      expandedPriceCell?.rowKey === row.key &&
+      expandedPriceCell?.unitId === (row.sku.defaultUnitId ?? '') &&
+      expandedPriceCell?.tab === 'sale' &&
+      expandedPriceCell?.source === 'main';
+    if (isThisOpen) {
+      setExpandedPriceCell(null);
+      mainSaleAnchorRef.current = null;
+      return;
+    }
+    if (!resolvedMainPanelId) return;
     mainSaleAnchorRef.current = e.currentTarget as HTMLButtonElement;
     ensureUnitsLoaded(row);
     setExpandedPriceCell({
@@ -994,10 +2169,20 @@ export default function ProductPicker({
     setExpandedKey(null);
   };
 
-  /** 主行进价按钮点击：展开主行进价明细面板 */
-  const openMainPurchasePanel = (row: SkuRow, e: React.MouseEvent) => {
+  /** 主行进价按钮点击：展开/收起主行进价明细面板 */
+  const toggleMainPurchasePanel = (row: SkuRow, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!mainPanelId) return;
+    const isThisOpen =
+      expandedPriceCell?.rowKey === row.key &&
+      expandedPriceCell?.unitId === (row.sku.defaultUnitId ?? '') &&
+      expandedPriceCell?.tab === 'purchase' &&
+      expandedPriceCell?.source === 'main';
+    if (isThisOpen) {
+      setExpandedPriceCell(null);
+      mainPurchaseAnchorRef.current = null;
+      return;
+    }
+    if (!resolvedMainPanelId) return;
     mainPurchaseAnchorRef.current = e.currentTarget as HTMLButtonElement;
     ensureUnitsLoaded(row);
     setExpandedPriceCell({
@@ -1026,7 +2211,7 @@ export default function ProductPicker({
       subSaleAnchorRef.current = null;
       return;
     }
-    if (!mainPanelId) return;
+    if (!resolvedMainPanelId) return;
     subSaleAnchorRef.current = e.currentTarget as HTMLSpanElement;
     setExpandedPriceCell({
       rowKey: row.key,
@@ -1053,7 +2238,7 @@ export default function ProductPicker({
       subPurchaseAnchorRef.current = null;
       return;
     }
-    if (!mainPanelId) return;
+    if (!resolvedMainPanelId) return;
     subPurchaseAnchorRef.current = e.currentTarget as HTMLSpanElement;
     setExpandedPriceCell({
       rowKey: row.key,
@@ -1063,60 +2248,451 @@ export default function ProductPicker({
     });
   };
 
+  /** 单位层：和选品里点单位下拉同一张表（单位 | 换算率 | 售价 | 进价 | 插入），不另写 */
+  const renderUnitList = (
+    row: SkuRow,
+    parentId: string | null,
+    opts?: { hideUnitCol?: boolean; onlyUnitId?: string },
+  ) => {
+    const hideUnitCol = !!opts?.hideUnitCol;
+    const grid = hideUnitCol ? PRICE_SLOT_GRID_COLS : UNIT_PANEL_GRID_COLS;
+    const head = hideUnitCol ? ['售价', '进价', ''] : ['单位', '换算率', '售价', '进价', ''];
+    if (row.unitsError) {
+      return (
+        <div style={{ padding: 8, color: 'var(--status-error-default)', textAlign: 'center' }}>
+          {row.unitsError}
+        </div>
+      );
+    }
+    if (row.unitsLoading) {
+      return (
+        <div style={{ padding: 12, textAlign: 'center' }}>
+          <Spin size="small" />
+        </div>
+      );
+    }
+    const units = opts?.onlyUnitId
+      ? (row.units ?? []).filter((u) => u.unitId === opts.onlyUnitId)
+      : (row.units ?? []);
+    if (!canEdit && units.length === 0) {
+      return (
+        <div style={{ padding: 8, color: 'var(--text-quaternary)', textAlign: 'center' }}>
+          {hideUnitCol ? '先选定产品和单位' : '该 SKU 暂无单位数据'}
+        </div>
+      );
+    }
+    const activeUnitId = lockedUnitId || row.sku.defaultUnitId || '';
+    return (
+      <>
+        {renderPanelHead(head, grid)}
+        {units.map((u) => {
+      const active = u.unitId === activeUnitId;
+      const uSalePrices = u.salePrices ?? [];
+      const uPurchasePrices = isStaff ? (u.purchasePrices ?? []) : [];
+      const defaultSalePrice = u.defaultSalePrice;
+      const defaultPurchasePrice = isStaff ? u.defaultPurchasePrice : null;
+      const isUnitToggling = togglingUnitId === u.unitId;
+      const isSubSaleOpen =
+        expandedPriceCell?.rowKey === row.key &&
+        expandedPriceCell?.unitId === u.unitId &&
+        expandedPriceCell.tab === 'sale' &&
+        expandedPriceCell.source === 'sub';
+      const isSubPurchaseOpen =
+        expandedPriceCell?.rowKey === row.key &&
+        expandedPriceCell?.unitId === u.unitId &&
+        expandedPriceCell.tab === 'purchase' &&
+        expandedPriceCell.source === 'sub';
+      return (
+        <div
+          key={u.unitId}
+          style={{
+            ...LIST_ROW_STYLE,
+            display: 'grid',
+            gridTemplateColumns: grid,
+            padding: '4px 8px',
+            background: active ? PANEL_ROW_HOVER_BG : 'transparent',
+          }}
+          onMouseEnter={(e) => {
+            if (!active) e.currentTarget.style.background = PANEL_ROW_HOVER_BG;
+          }}
+          onMouseLeave={(e) => {
+            if (!active) e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          {!hideUnitCol && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              overflow: 'hidden',
+              padding: '0 2px',
+              color: active ? 'var(--text-brand)' : 'var(--text-default)',
+              fontWeight: 500,
+              fontSize: 'var(--body-xs-font-size)',
+            }}
+          >
+            <Checkbox
+              checked={u.isDisplay}
+              disabled={isUnitToggling}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                void handleToggleUnitDisplay(row.key, u, e.target.checked, row.sku.specId);
+              }}
+              style={{
+                flexShrink: 0,
+                transform: 'scale(0.8)',
+                transformOrigin: 'center',
+              }}
+            />
+            <PickerNameCell
+              value={u.unitName}
+              disabled={!canEdit}
+              kind="unit"
+              scope={catalogScope([row.sku.productName, row.sku.brandName, row.sku.specModel])}
+              fromId={u.unitId}
+              onApply={async (name) => {
+                try {
+                  await runSave(async () => {
+                    await rebindSpecUnit(row.sku.specId, u.unitId, name);
+                    await loadUnits(row.key, row.sku.specBrandId);
+                  });
+                } catch (e) {
+                  message.error(errMsg(e));
+                  throw e;
+                }
+              }}
+              onApplyGlobal={async (name) => {
+                try {
+                  await runSave(async () => {
+                    await applyDictChange({ kind: 'unit', fromId: u.unitId, toName: name });
+                    await loadUnits(row.key, row.sku.specBrandId);
+                    await refreshPickerCatalog();
+                  });
+                } catch (e) {
+                  message.error(errMsg(e));
+                  throw e;
+                }
+              }}
+            />
+          </span>
+          )}
+          {!hideUnitCol && renderConversionCell(row, u)}
+          <span style={{ display: 'flex', justifyContent: 'center' }}>
+            <span
+              onClick={(e) => toggleSubSalePanel(row, u, e)}
+              style={priceBtnStyle(
+                isSubSaleOpen,
+                defaultSalePrice != null
+                  ? 'var(--text-default)'
+                  : 'var(--text-placeholder-accent)',
+              )}
+            >
+              {defaultSalePrice != null
+                ? formatPrice(defaultSalePrice)
+                : u.derivedSalePrice != null
+                  ? formatPrice(u.derivedSalePrice)
+                  : '—'}
+              <DownOutlined style={{ fontSize: 8, opacity: 0.5 }} />
+            </span>
+            {isSubSaleOpen && (
+              <FloatPanel
+                open
+                anchorRef={subSaleAnchorRef}
+                onClose={() => {
+                  setExpandedPriceCell(null);
+                  subSaleAnchorRef.current = null;
+                }}
+                placement="auto"
+                title={`售价明细 · ${u.unitName}`}
+                minWidth={SALE_PANEL_WIDTH}
+                parentId={parentId}
+              >
+                {renderSalePriceList(
+                  uSalePrices,
+                  row.unitsLoading ? '加载中…' : '未设售价',
+                  (sp) => handlePickSalePrice(row, u, sp),
+                  (sp, next) => handleToggleSalePriceDefault(row.key, u.unitId, sp, next),
+                  togglingPriceId,
+                  saleEditFor(row, u),
+                )}
+              </FloatPanel>
+            )}
+          </span>
+          <span style={{ display: 'flex', justifyContent: 'center' }}>
+            {isStaff ? (
+              <>
+                <span
+                  onClick={(e) => toggleSubPurchasePanel(row, u, e)}
+                  style={priceBtnStyle(
+                    isSubPurchaseOpen,
+                    defaultPurchasePrice != null
+                      ? PURCHASE_PRICE_COLOR
+                      : 'var(--text-placeholder-accent)',
+                  )}
+                >
+                  {defaultPurchasePrice != null
+                    ? formatPrice(defaultPurchasePrice)
+                    : u.derivedPurchasePrice != null
+                      ? formatPrice(u.derivedPurchasePrice)
+                      : '—'}
+                  <DownOutlined style={{ fontSize: 8, opacity: 0.5 }} />
+                </span>
+                {isSubPurchaseOpen && (
+                  <FloatPanel
+                    open
+                    anchorRef={subPurchaseAnchorRef}
+                    onClose={() => {
+                      setExpandedPriceCell(null);
+                      subPurchaseAnchorRef.current = null;
+                    }}
+                    placement="auto"
+                    title={`进价明细 · ${u.unitName}`}
+                    minWidth={PURCHASE_PANEL_WIDTH}
+                    parentId={parentId}
+                  >
+                    {renderPurchasePriceList(
+                      uPurchasePrices,
+                      row.unitsLoading ? '加载中…' : '未设进价',
+                      (p) => handlePickPurchasePrice(row, u, p),
+                      (p, next) => handleTogglePurchasePriceDefault(row.key, u.unitId, p, next),
+                      togglingPriceId,
+                      purchaseEditFor(row, u),
+                      supplierCtxFromSku(row.sku.categoryId, row.sku.brandId, u.unitId),
+                      row.sku.hitSupplierId,
+                    )}
+                  </FloatPanel>
+                )}
+              </>
+            ) : (
+              <span style={{ color: 'var(--text-quaternary)' }}>—</span>
+            )}
+          </span>
+          <span style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                confirmPick(row, u);
+              }}
+              style={INSERT_BTN_STYLE}
+              onMouseEnter={(e) => (e.currentTarget.style.background = INSERT_BTN_HOVER_BG)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-overlay-l1)')}
+              title={hideUnitCol ? '插入此价格' : '插入此单位'}
+            >
+              <ArrowRightOutlined style={{ fontSize: 10 }} />
+            </button>
+          </span>
+        </div>
+      );
+    })}
+        {canEdit && !hideUnitCol && (
+          <div
+            style={{
+              ...LIST_ROW_STYLE,
+              display: 'grid',
+              gridTemplateColumns: grid,
+              padding: '4px 8px',
+            }}
+          >
+            <PickerEmptyName
+              placeholder="加单位…"
+              kind="addUnit"
+              scope={catalogScope([row.sku.productName, row.sku.brandName, row.sku.specModel])}
+              leadCheck
+              onApply={async (name) => {
+                try {
+                  await runSave(async () => {
+                    await createUnit({ specId: row.sku.specId, unitName: name, specBrandId: row.sku.specBrandId });
+                    await loadUnits(row.key, row.sku.specBrandId);
+                  });
+                } catch (e) {
+                  message.error(errMsg(e));
+                }
+              }}
+            />
+          </div>
+        )}
+      </>
+    );
+  };
+
+  /** 价格层：单位层去掉单位列，仍是售价|进价下拉再展开，不上下铺完整表 */
+  const renderPriceLayer = (row: SkuRow) => {
+    const unitId = lockedUnitId || row.sku.defaultUnitId || '';
+    if (!unitId) {
+      return (
+        <div style={{ padding: 8, color: 'var(--text-quaternary)', textAlign: 'center' }}>
+          先选定产品和单位
+        </div>
+      );
+    }
+    return renderUnitList(row, resolvedMainPanelId, { hideUnitCol: true, onlyUnitId: unitId });
+  };
+
   // ============================================================
   // v10.7 渲染：4 列表格行（产品全名 | 单位 | 售价 | 进价）
   // 三个列（单位/售价/进价）均为"下拉按钮"样式（带下拉箭头），各自独立展开浮动面板
   // v10.26 浮动面板统一为 FloatPanel（替代原 antd Popover）：
-  //   - portal 到 body，不受一级面板 overflow 限制
+  //   - portal 到舞台叠加层，不受一级面板 overflow 限制
   //   - placement="auto" 左对齐锚点 + 垂直智能定位（下方不够换上方）
-  //   - parentId=mainPanelId 声明父子关系，PanelTree 管理同级互斥与级联关闭
+  //   - parentId=resolvedMainPanelId 声明父子关系，PanelTree 管理同级互斥与级联关闭
   //   - anchorRef 在按钮 onClick 时通过 e.currentTarget 捕获
   // 不再插入式展开（不破坏检索列表布局）
   // ============================================================
-  const renderRow = (row: SkuRow) => {
-    const defaultUnit = deriveDefaultUnit(row.sku, isStaff);
+  const renderRow = (row: SkuRow, opts?: { identity?: boolean }) => {
     const curUnitName = row.sku.defaultUnitName ?? '—';
     const curSalePrice = row.sku.retailPrice;
     const curPurchasePrice = isStaff ? row.sku.purchasePriceDefault : null;
-    const fullName = [row.sku.brandName, row.sku.productName, row.sku.specModel]
-      .filter((s) => s && s.trim())
-      .join(' · ');
+    const displayName = row.sku.specModel || '—';
+    const leafLayout = opts?.identity ? pickerRowLayout(entryView) : null;
 
-    // v10.8 三个按钮统一的下拉样式
-    // width:100% 撑满列宽，让 placement="bottomLeft" 面板精确对齐列左侧
-    const dropdownBtnStyle = (isActive: boolean, color = 'var(--text-default)'): React.CSSProperties => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 2,
-      padding: '1px 4px',
-      width: '100%',
-      border: '1px solid var(--border-neutral-l2)',
-      borderRadius: 3,
-      background: isActive ? 'var(--bg-overlay-l2)' : 'var(--bg-overlay-l1)',
-      color,
-      fontSize: 'var(--body-xs-font-size)',
-      cursor: 'pointer',
-      lineHeight: '16px',
-    });
+    const specNameCell = (
+      <PickerNameCell
+        value={displayName}
+        disabled={!canEdit}
+        kind="spec"
+        scope={catalogScope([row.sku.productName, row.sku.brandName])}
+        onApply={async (name) => {
+          try {
+            await runSave(async () => {
+              await updateSpec(row.sku.specId, { specModel: name });
+              commitRows((prev) =>
+                prev.map((r) =>
+                  r.sku.specId === row.sku.specId
+                    ? { ...r, sku: { ...r.sku, specModel: name } }
+                    : r,
+                ),
+              );
+            });
+          } catch (e) {
+            message.error(errMsg(e));
+            throw e;
+          }
+        }}
+      />
+    );
 
-    const priceBtnStyle = (isActive: boolean, color = 'var(--text-default)'): React.CSSProperties => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 2,
-      padding: '1px 4px',
-      width: '100%',
-      border: '1px solid var(--border-neutral-l2)',
-      borderRadius: 3,
-      background: isActive ? 'var(--bg-overlay-l2)' : 'var(--bg-overlay-l1)',
-      color,
-      fontSize: 'var(--body-xs-font-size)',
-      cursor: 'pointer',
-      lineHeight: '16px',
-      fontFamily: 'var(--font-family-mono)',
-      fontVariantNumeric: 'tabular-nums',
-    });
+    const leafFrontCells = opts?.identity
+      ? pickerTreeFront(entryView).map((col) => {
+          if (col === 'remark') {
+            return (
+              <ArchiveFieldCell
+                key="remark"
+                value={row.sku.remark || ''}
+                disabled={!canEdit}
+                placeholder="执行标准"
+                title="修改执行标准"
+                bullets={[
+                  '只改这一条规格的备注（企标/国标/标准号/层数）。',
+                  '已开单据行保持当时抄下来的内容，再插入才换成新内容。',
+                ]}
+                onApply={async (next) => {
+                  try {
+                    await runSave(async () => {
+                      await updateSpecBrandRemark(row.sku.specBrandId, next);
+                      commitRows((prev) =>
+                        prev.map((r) =>
+                          r.sku.specBrandId === row.sku.specBrandId
+                            ? { ...r, sku: { ...r.sku, remark: next } }
+                            : r,
+                        ),
+                      );
+                    });
+                  } catch (e) {
+                    message.error(errMsg(e));
+                    throw e;
+                  }
+                }}
+              />
+            );
+          }
+          if (col === 'supplier') {
+            return (
+              <span
+                key="supplier"
+                title={row.sku.hitSupplierName || ''}
+                style={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  background: row.sku.hitSupplierName ? 'var(--bg-brand-disabled)' : undefined,
+                  padding: '0 2px',
+                }}
+              >
+                {row.sku.hitSupplierName || '—'}
+                {row.sku.hitChannelTier === 'scoped' ? ' ·范围' : ''}
+              </span>
+            );
+          }
+          if (col === 'spec') {
+            return (
+              <span key="spec" style={{ minWidth: 0 }}>
+                {specNameCell}
+              </span>
+            );
+          }
+          if (col === 'product') {
+            return (
+              <PickerNameCell
+                key="product"
+                value={row.sku.productName}
+                disabled={!canEdit}
+                kind="product"
+                onApply={async (name) => {
+                  try {
+                    await runSave(async () => {
+                      await updateProduct(row.sku.productId, { name });
+                      commitRows((prev) =>
+                        prev.map((r) =>
+                          r.sku.productId === row.sku.productId
+                            ? { ...r, sku: { ...r.sku, productName: name } }
+                            : r,
+                        ),
+                      );
+                    });
+                  } catch (e) {
+                    message.error(errMsg(e));
+                    throw e;
+                  }
+                }}
+              />
+            );
+          }
+          if (col === 'brand') {
+            return (
+              <PickerNameCell
+                key="brand"
+                value={row.sku.brandName}
+                disabled={!canEdit}
+                kind="brand"
+                scope={row.sku.productName}
+                fromId={row.sku.brandId}
+                onApply={async (name) => {
+                  try {
+                    await runSave(async () => {
+                      const hit = await rebindSpecBrand(row.sku.specBrandId, name);
+                      commitRows((prev) =>
+                        prev.map((r) =>
+                          r.sku.specBrandId === row.sku.specBrandId
+                            ? { ...r, sku: { ...r.sku, brandId: hit.brandId, brandName: hit.brandName } }
+                            : r,
+                        ),
+                      );
+                    });
+                  } catch (e) {
+                    message.error(errMsg(e));
+                    throw e;
+                  }
+                }}
+              />
+            );
+          }
+          return <span key={col} />;
+        })
+      : null;
 
     // 判断各按钮是否处于展开态（v10.11: 加 source==='main' 区分一级/二级，避免重叠）
     const isUnitOpen = expandedKey === row.key;
@@ -1137,32 +2713,16 @@ export default function ProductPicker({
         style={{ borderBottom: '1px solid var(--border-neutral-l1)' }}
       >
         <div
-          role="button"
-          tabIndex={0}
-          onClick={(e) => {
-            const target = e.target as HTMLElement;
-            if (target.closest('button')) return;
-            confirmPick(row);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              confirmPick(row);
-            }
-          }}
           style={{
             display: 'grid',
-            // v10.25 固定列宽防收缩（不用 1fr，避免横向元素堆叠）
-            // 总宽度 200+56+72+72+12(gap)=412px，超出面板宽度时横向滚动
-            gridTemplateColumns: '200px 56px 72px 72px',
+            gridTemplateColumns: leafLayout?.grid ?? SPEC_ROW_GRID,
             alignItems: 'center',
             gap: 4,
             width: '100%',
-            minWidth: 412,
+            minWidth: leafLayout?.minWidth ?? COL_SPEC + COL_UNIT + COL_RATE + COL_PRICE + COL_PRICE + COL_INSERT + 16,
             padding: '4px 8px',
             background: 'transparent',
             color: 'var(--text-default)',
-            cursor: 'pointer',
             textAlign: 'left',
             fontSize: 'var(--body-xs-font-size)',
             lineHeight: 1.4,
@@ -1170,19 +2730,11 @@ export default function ProductPicker({
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-overlay-l2)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
-          {/* 1. 产品全名列 */}
-          <span
-            style={{
-              fontWeight: 500,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-            }}
-            title={fullName}
-          >
-            {fullName || '—'}
-          </span>
+          {leafFrontCells ?? (
+            <span style={{ minWidth: 0 }}>
+              {specNameCell}
+            </span>
+          )}
 
           {/* 2. 单位列：下拉按钮 → 展开单位列表 FloatPanel
               v10.26 改为 FloatPanel：placement="auto" 左对齐锚点，垂直智能定位
@@ -1222,221 +2774,24 @@ export default function ProductPicker({
                   subPurchaseAnchorRef.current = null;
                 }}
                 placement="auto"
-                title={`单位列表 · ${fullName || ''}`}
-                width={UNIT_PANEL_WIDTH}
-                parentId={mainPanelId}
+                title={`单位列表 · ${row.sku.brandName} · ${displayName}`}
+                minWidth={UNIT_PANEL_WIDTH}
+                parentId={specPanelId ?? resolvedMainPanelId}
               >
-                {row.unitsLoading ? (
-                  <div style={{ padding: 12, textAlign: 'center' }}>
-                    <Spin size="small" />
-                  </div>
-                ) : row.unitsError ? (
-                  <div style={{ padding: 8, color: 'var(--status-error-default)', textAlign: 'center' }}>
-                    {row.unitsError}
-                  </div>
-                ) : !row.units || row.units.length === 0 ? (
-                  <div style={{ padding: 8, color: 'var(--text-quaternary)', textAlign: 'center' }}>
-                    该 SKU 暂无单位数据
-                  </div>
-                ) : (
-                  row.units.map((u) => {
-                    const active = u.unitId === defaultUnit.unitId;
-                    const uSalePrices = u.salePrices ?? [];
-                    const uPurchasePrices = isStaff ? (u.purchasePrices ?? []) : [];
-                    const defaultSalePrice = u.defaultSalePrice;
-                    const defaultPurchasePrice = isStaff ? u.defaultPurchasePrice : null;
-                    const isUnitToggling = togglingUnitId === u.unitId;
-                    const isSubSaleOpen =
-                      expandedPriceCell?.rowKey === row.key &&
-                      expandedPriceCell?.unitId === u.unitId &&
-                      expandedPriceCell.tab === 'sale' &&
-                      expandedPriceCell.source === 'sub';
-                    const isSubPurchaseOpen =
-                      expandedPriceCell?.rowKey === row.key &&
-                      expandedPriceCell?.unitId === u.unitId &&
-                      expandedPriceCell.tab === 'purchase' &&
-                      expandedPriceCell.source === 'sub';
-                    return (
-                      <div
-                        key={u.unitId}
-                        style={{
-                          ...LIST_ROW_STYLE,
-                          display: 'grid',
-                          gridTemplateColumns: UNIT_PANEL_GRID_COLS,
-                          background: active ? PANEL_ROW_HOVER_BG : 'transparent',
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!active) e.currentTarget.style.background = PANEL_ROW_HOVER_BG;
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!active) e.currentTarget.style.background = 'transparent';
-                        }}
-                      >
-                        {/* v10.14 单位名 + 默认显示标记复选框（isDisplay）
-                            复选框可点击修改（调用 setUnitDisplay，不关闭弹窗）
-                            active（当前选中单位）用品牌色高亮单位名作额外反馈 */}
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: 4,
-                            overflow: 'hidden',
-                            padding: '0 2px',
-                            color: active ? 'var(--text-brand)' : 'var(--text-default)',
-                            fontWeight: 500,
-                            fontSize: 'var(--body-xs-font-size)',
-                          }}
-                        >
-                          <Checkbox
-                            checked={u.isDisplay}
-                            disabled={isUnitToggling}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              void handleToggleUnitDisplay(row.key, u, e.target.checked);
-                            }}
-                            style={{
-                              flexShrink: 0,
-                              transform: 'scale(0.8)',
-                              transformOrigin: 'center',
-                            }}
-                          />
-                          <span
-                            style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              minWidth: 0,
-                            }}
-                          >
-                            {u.unitName}
-                          </span>
-                        </span>
-
-                        {/* 该单位的默认售价 → 二级展开售价明细 FloatPanel */}
-                        <span style={{ display: 'flex', justifyContent: 'center' }}>
-                          <span
-                            onClick={(e) => toggleSubSalePanel(row, u, e)}
-                            // v1.8：推算价/未录价占位统一系统补全语义色（醒目，禁止暗色）
-                            style={priceBtnStyle(
-                              isSubSaleOpen,
-                              defaultSalePrice != null
-                                ? 'var(--text-default)'
-                                : 'var(--text-placeholder-accent)',
-                            )}
-                          >
-                            {defaultSalePrice != null
-                              ? formatPrice(defaultSalePrice)
-                              : // v1.5.6.3：未录价时展示推算价（基准单位价 × 换算率），排版一致
-                                u.derivedSalePrice != null
-                                ? formatPrice(u.derivedSalePrice)
-                                : '—'}
-                            <DownOutlined style={{ fontSize: 8, opacity: 0.5 }} />
-                          </span>
-                          {isSubSaleOpen && (
-                            <FloatPanel
-                              open
-                              anchorRef={subSaleAnchorRef}
-                              onClose={() => {
-                                setExpandedPriceCell(null);
-                                subSaleAnchorRef.current = null;
-                              }}
-                              placement="auto"
-                              title={`售价明细 · ${u.unitName}`}
-                              width={SALE_PANEL_WIDTH}
-                              parentId={mainPanelId}
-                            >
-                              {renderSalePriceList(
-                                uSalePrices,
-                                row.unitsLoading ? '加载中…' : '未设售价',
-                                (sp) => handlePickSalePrice(row, u, sp),
-                                (sp, next) => handleToggleSalePriceDefault(row.key, u.unitId, sp, next),
-                                togglingPriceId,
-                              )}
-                            </FloatPanel>
-                          )}
-                        </span>
-
-                        {/* 该单位的默认进价 → 二级展开进价明细 FloatPanel */}
-                        <span style={{ display: 'flex', justifyContent: 'center' }}>
-                          {isStaff ? (
-                            <>
-                              <span
-                                onClick={(e) => toggleSubPurchasePanel(row, u, e)}
-                                // v1.8：推算进价/未录占位统一系统补全语义色（醒目）
-                                style={priceBtnStyle(
-                                  isSubPurchaseOpen,
-                                  defaultPurchasePrice != null
-                                    ? PURCHASE_PRICE_COLOR
-                                    : 'var(--text-placeholder-accent)',
-                                )}
-                              >
-                                {defaultPurchasePrice != null
-                                  ? formatPrice(defaultPurchasePrice)
-                                  : // v1.5.6.3：未录进价时展示推算价，排版一致
-                                    u.derivedPurchasePrice != null
-                                    ? formatPrice(u.derivedPurchasePrice)
-                                    : '—'}
-                                <DownOutlined style={{ fontSize: 8, opacity: 0.5 }} />
-                              </span>
-                              {isSubPurchaseOpen && (
-                                <FloatPanel
-                                  open
-                                  anchorRef={subPurchaseAnchorRef}
-                                  onClose={() => {
-                                    setExpandedPriceCell(null);
-                                    subPurchaseAnchorRef.current = null;
-                                  }}
-                                  placement="auto"
-                                  title={`进价明细 · ${u.unitName}`}
-                                  width={PURCHASE_PANEL_WIDTH}
-                                  parentId={mainPanelId}
-                                >
-                                  {renderPurchasePriceList(
-                                    uPurchasePrices,
-                                    row.unitsLoading ? '加载中…' : '未设进价',
-                                    (p) => handlePickPurchasePrice(row, u, p),
-                                    (p, next) => handleTogglePurchasePriceDefault(row.key, u.unitId, p, next),
-                                    togglingPriceId,
-                                  )}
-                                </FloatPanel>
-                              )}
-                            </>
-                          ) : (
-                            <span style={{ color: 'var(--text-quaternary)' }}>—</span>
-                          )}
-                        </span>
-
-                        {/* v10.14 插入按钮：点击选中该单位 + 默认价格 → 填入并关闭 */}
-                        <span style={{ display: 'flex', justifyContent: 'center' }}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              confirmPick(row, u);
-                            }}
-                            style={INSERT_BTN_STYLE}
-                            onMouseEnter={(e) => (e.currentTarget.style.background = INSERT_BTN_HOVER_BG)}
-                            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-overlay-l1)')}
-                            title="插入此单位"
-                          >
-                            <ArrowRightOutlined style={{ fontSize: 10 }} />
-                          </button>
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
+                {renderUnitList(row, specPanelId ?? resolvedMainPanelId)}
               </FloatPanel>
             )}
           </span>
 
-          {/* 3. 售价列：下拉按钮 → 展开售价明细 FloatPanel
+          {/* 3. 换算率：当前显示单位的值。点开确认层改这一条规格×品牌×单位 */}
+          {renderConversionCell(row, mainUnitOf(row))}
+
+          {/* 4. 售价列：下拉按钮 → 展开售价明细 FloatPanel
               v10.26 改为 FloatPanel：placement="auto" 左对齐锚点，垂直智能定位 */}
           <span style={{ display: 'flex', justifyContent: 'center' }}>
             <button
               type="button"
-              onClick={(e) => openMainSalePanel(row, e)}
+              onClick={(e) => toggleMainSalePanel(row, e)}
               // v1.8：未录价占位统一系统补全语义色（醒目）
               style={priceBtnStyle(
                 isSaleOpen,
@@ -1456,8 +2811,8 @@ export default function ProductPicker({
                 }}
                 placement="auto"
                 title={`售价明细 · ${row.sku.defaultUnitName ?? '—'}`}
-                width={SALE_PANEL_WIDTH}
-                parentId={mainPanelId}
+                minWidth={SALE_PANEL_WIDTH}
+                parentId={specPanelId ?? resolvedMainPanelId}
               >
                 {renderSalePriceList(
                   row.units?.find((uu) => uu.unitId === row.sku.defaultUnitId)?.salePrices ?? [],
@@ -1473,19 +2828,20 @@ export default function ProductPicker({
                     next,
                   ),
                   togglingPriceId,
+                  mainUnitOf(row) ? saleEditFor(row, mainUnitOf(row)!) : undefined,
                 )}
               </FloatPanel>
             )}
           </span>
 
-          {/* 4. 进价列：下拉按钮 → 展开进价明细 FloatPanel（红色区分）
+          {/* 5. 进价列：下拉按钮 → 展开进价明细 FloatPanel（红色区分）
               v10.26 改为 FloatPanel：placement="auto" 左对齐锚点，垂直智能定位 */}
           <span style={{ display: 'flex', justifyContent: 'center' }}>
             {isStaff ? (
               <>
                 <button
                   type="button"
-                  onClick={(e) => openMainPurchasePanel(row, e)}
+                  onClick={(e) => toggleMainPurchasePanel(row, e)}
                   // v1.8：未录进价占位统一系统补全语义色（醒目）
                   style={priceBtnStyle(
                     isPurchaseOpen,
@@ -1507,8 +2863,8 @@ export default function ProductPicker({
                     }}
                     placement="auto"
                     title={`进价明细 · ${row.sku.defaultUnitName ?? '—'}`}
-                    width={PURCHASE_PANEL_WIDTH}
-                    parentId={mainPanelId}
+                    minWidth={PURCHASE_PANEL_WIDTH}
+                    parentId={specPanelId ?? resolvedMainPanelId}
                   >
                     {renderPurchasePriceList(
                       row.units?.find((uu) => uu.unitId === row.sku.defaultUnitId)?.purchasePrices ?? [],
@@ -1524,6 +2880,13 @@ export default function ProductPicker({
                         next,
                       ),
                       togglingPriceId,
+                      mainUnitOf(row) ? purchaseEditFor(row, mainUnitOf(row)!) : undefined,
+                      supplierCtxFromSku(
+                        row.sku.categoryId,
+                        row.sku.brandId,
+                        row.sku.defaultUnitId,
+                      ),
+                      row.sku.hitSupplierId,
                     )}
                   </FloatPanel>
                 )}
@@ -1532,25 +2895,371 @@ export default function ProductPicker({
               <span style={{ color: 'var(--text-quaternary)' }}>—</span>
             )}
           </span>
+          <span style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                confirmPick(row);
+              }}
+              style={INSERT_BTN_STYLE}
+              onMouseEnter={(e) => (e.currentTarget.style.background = INSERT_BTN_HOVER_BG)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--bg-overlay-l1)')}
+              title="插入此规格"
+            >
+              <ArrowRightOutlined style={{ fontSize: 10 }} />
+            </button>
+          </span>
         </div>
       </div>
     );
   };
 
   // ============================================================
-  // 表头（4 列，与行对齐：产品全名 | 单位 | 售价 | 进价）
+  // 表头（规格 | 单位 | 换算率 | 售价 | 进价 | 插入）
   // v10.7：紧凑化列宽，对齐 renderRow
   // ============================================================
-  const renderHeader = () => (
+  const productGroups = useMemo(
+    () => (pickerTreeGrain(entryView) === 'pair' ? groupByProductBrand(rows) : groupByProduct(rows)),
+    [rows, entryView],
+  );
+
+  const openBrandSlot = (productId: string, brand: ProductBrandSlot) => {
+    const bid = `${productId}:${brand.brandId}`;
+    if (openBrand === bid) {
+      setOpenBrand(null);
+      setExpandedKey(null);
+      setExpandedPriceCell(null);
+      return;
+    }
+    setOpenBrand(bid);
+    setExpandedKey(null);
+    setExpandedPriceCell(null);
+    for (const r of brand.rows) {
+      if (!r.units && !r.unitsLoading) void loadUnits(r.key, r.sku.specBrandId);
+    }
+  };
+
+  const renderSpecPanel = (brand: ProductBrandSlot, parentId: string | null) => (
+    <FloatPanel
+      open
+      anchorRef={brandAnchorRef}
+      onClose={() => {
+        setOpenBrand(null);
+        setExpandedKey(null);
+        setExpandedPriceCell(null);
+        brandAnchorRef.current = null;
+      }}
+      placement="auto"
+      title={`规格 · ${brand.brandName}`}
+      minWidth={SPEC_PANEL_WIDTH}
+      parentId={parentId}
+      className={SPEC_PANEL_CLASS}
+    >
+      {renderPanelHead(['规格', '单位', '换算率', '售价', '进价', ''], SPEC_ROW_GRID)}
+      {brand.rows.map((r) => renderRow(r))}
+      {canEdit && (
+        <div style={{ padding: '4px 8px' }}>
+          <PickerEmptyName
+            placeholder="加规格…"
+            kind="addSpec"
+            scope={catalogScope([brand.rows[0]?.sku.productName, brand.brandName])}
+            onApply={async (name) => {
+              const productId = brand.rows[0]?.sku.productId;
+              if (!productId) return;
+              try {
+                await runSave(async () => {
+                  const created = await ensureSpecOnProductBrand(productId, name, brand.brandName);
+                  appendCreated(created);
+                });
+              } catch (e) {
+                message.error(errMsg(e));
+              }
+            }}
+          />
+        </div>
+      )}
+    </FloatPanel>
+  );
+
+  const renderProductRow = (group: ProductGroup) => {
+    const brandQ = keyword.trim() && group.brands.some((b) =>
+      b.brandName.toLowerCase().includes(keyword.trim().toLowerCase()),
+    )
+      ? keyword.trim()
+      : '';
+    const cap = fitBrandCap(group.brands.map((b) => b.brandName));
+    const split = nSlotSplit(group.brands, cap, brandQ, (b) => b.brandName, (b) => b.isDefault);
+    const moreOpen = openMore === group.productId
+      || (!!openBrand && split.rest.some((b) => `${group.productId}:${b.brandId}` === openBrand));
+    const brandBtn = (b: ProductBrandSlot, nested: boolean) => {
+      const bid = `${group.productId}:${b.brandId}`;
+      const open = openBrand === bid;
+      return (
+        <span key={b.brandId} style={{ position: 'relative', display: 'inline-flex', flex: '0 0 auto', alignItems: 'center', border: '1px solid var(--border-neutral-l2)', borderRadius: 3, background: open ? 'var(--bg-overlay-l2)' : 'var(--bg-overlay-l1)', padding: '0 2px 0 4px' }}>
+          <span style={{ maxWidth: 72 }}>
+            <PickerNameCell
+              value={b.brandName}
+              disabled={!canEdit}
+              kind="brand"
+              scope={group.productName}
+              fromId={b.brandId}
+              onApply={async (name) => {
+                try {
+                  await runSave(async () => {
+                    const updated: PickerSkuCreated[] = [];
+                    for (const r of b.rows) {
+                      updated.push(await rebindSpecBrand(r.sku.specBrandId, name));
+                    }
+                    const byId = new Map(updated.map((u) => [u.specBrandId, u]));
+                    commitRows((prev) =>
+                      prev.map((r) => {
+                        const hit = byId.get(r.sku.specBrandId);
+                        return hit
+                          ? { ...r, sku: { ...r.sku, brandId: hit.brandId, brandName: hit.brandName } }
+                          : r;
+                      }),
+                    );
+                  });
+                } catch (e) {
+                  message.error(errMsg(e));
+                  throw e;
+                }
+              }}
+              onApplyGlobal={async (name) => {
+                try {
+                  await runSave(async () => {
+                    await applyDictChange({ kind: 'brand', fromId: b.brandId, toName: name });
+                    await refreshPickerCatalog();
+                  });
+                } catch (e) {
+                  message.error(errMsg(e));
+                  throw e;
+                }
+              }}
+            />
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              brandAnchorRef.current = e.currentTarget;
+              syncMainPanelId(e.currentTarget);
+              if (!nested) setOpenMore(null);
+              openBrandSlot(group.productId, b);
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: '1px 4px',
+              color: 'var(--text-tertiary)',
+            }}
+            title="展开规格"
+          >
+            {open ? <UpOutlined style={{ fontSize: 9, opacity: 0.6 }} /> : <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />}
+          </button>
+          {open && !nested && renderSpecPanel(b, resolvedMainPanelId)}
+          {open && nested && renderSpecPanel(b, morePanelId)}
+        </span>
+      );
+    };
+
+    return (
+      <div key={group.key} style={{ borderBottom: '1px solid var(--border-neutral-l1)' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: pickerRowLayout(entryView).grid,
+            alignItems: 'center',
+            gap: 4,
+            width: '100%',
+            minWidth: pickerRowLayout(entryView).minWidth,
+            padding: '4px 8px',
+            fontSize: 'var(--body-xs-font-size)',
+            lineHeight: 1.4,
+          }}
+        >
+          {(() => {
+            const catCell = (
+          <PickerNameCell
+            key="cat"
+            value={group.categoryName || ''}
+            disabled={!canEdit}
+            placeholder="分类"
+            kind="category"
+            scope={group.productName}
+            fromId={group.categoryId && group.categoryId !== '0' ? group.categoryId : undefined}
+            onApply={async (name) => {
+              try {
+                await runSave(async () => {
+                  const cat = await quickAddCategory(name);
+                  await updateProduct(group.productId, { categoryId: cat.id });
+                  commitRows((prev) =>
+                    prev.map((r) =>
+                      r.sku.productId === group.productId
+                        ? { ...r, sku: { ...r.sku, categoryId: String(cat.id), categoryName: cat.name } }
+                        : r,
+                    ),
+                  );
+                });
+              } catch (e) {
+                message.error(errMsg(e));
+                throw e;
+              }
+            }}
+            onApplyGlobal={
+              group.categoryId && group.categoryId !== '0'
+                ? async (name) => {
+                    try {
+                      await runSave(async () => {
+                        await applyDictChange({ kind: 'category', fromId: group.categoryId, toName: name });
+                        await refreshPickerCatalog();
+                      });
+                    } catch (e) {
+                      message.error(errMsg(e));
+                      throw e;
+                    }
+                  }
+                : undefined
+            }
+          />
+            );
+            const nameCell = (
+          <PickerNameCell
+            key="name"
+            value={group.productName}
+            disabled={!canEdit}
+            kind="product"
+            onApply={async (name) => {
+              try {
+                await runSave(async () => {
+                  await updateProduct(group.productId, { name });
+                  commitRows((prev) =>
+                    prev.map((r) =>
+                      r.sku.productId === group.productId
+                        ? { ...r, sku: { ...r.sku, productName: name } }
+                        : r,
+                    ),
+                  );
+                });
+              } catch (e) {
+                message.error(errMsg(e));
+                throw e;
+              }
+            }}
+          />
+            );
+            const brandCell = (
+          <span key="brands" style={{ display: 'flex', flexWrap: 'nowrap', gap: 4, alignItems: 'center', minWidth: 0 }}>
+            {split.visible.map((b) => brandBtn(b, false))}
+            {split.rest.length > 0 && (
+              <span style={{ position: 'relative', display: 'inline-block', flex: '0 0 auto' }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    moreAnchorRef.current = e.currentTarget;
+                    if (moreOpen) {
+                      setOpenMore(null);
+                      if (openBrand && split.rest.some((b) => `${group.productId}:${b.brandId}` === openBrand)) {
+                        setOpenBrand(null);
+                        setExpandedKey(null);
+                        setExpandedPriceCell(null);
+                      }
+                    } else {
+                      setOpenMore(group.productId);
+                      if (openBrand && split.visible.some((b) => `${group.productId}:${b.brandId}` === openBrand)) {
+                        setOpenBrand(null);
+                        setExpandedKey(null);
+                        setExpandedPriceCell(null);
+                      }
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    padding: '1px 6px',
+                    border: '1px solid var(--border-neutral-l2)',
+                    borderRadius: 3,
+                    background: moreOpen ? 'var(--bg-overlay-l2)' : 'var(--bg-base-tertiary)',
+                    color: 'var(--text-tertiary)',
+                    cursor: 'pointer',
+                    fontSize: 'var(--body-xs-font-size)',
+                    lineHeight: '16px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  还有 {split.rest.length}
+                  {moreOpen ? <UpOutlined style={{ fontSize: 9, opacity: 0.6 }} /> : <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />}
+                </button>
+                {moreOpen && (
+                  <FloatPanel
+                    open
+                    anchorRef={moreAnchorRef}
+                    onClose={() => {
+                      setOpenMore(null);
+                      moreAnchorRef.current = null;
+                    }}
+                    placement="auto"
+                    title={`还有 ${split.rest.length} · 点开后规格贴在这一项下面`}
+                    minWidth={180}
+                    parentId={resolvedMainPanelId}
+                    className={MORE_PANEL_CLASS}
+                  >
+                    {split.rest.map((b) => (
+                      <div key={b.brandId} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border-neutral-l1)' }}>
+                        {brandBtn(b, true)}
+                      </div>
+                    ))}
+                  </FloatPanel>
+                )}
+              </span>
+            )}
+            {canEdit && (
+              <span style={{ flex: '0 0 auto', minWidth: 56 }}>
+                <PickerEmptyName
+                  placeholder="加品牌…"
+                  kind="addBrand"
+                  scope={group.productName}
+                  onApply={async (name) => {
+                    try {
+                      await runSave(async () => {
+                        const created = await attachBrandToProduct(group.productId, name);
+                        appendCreated(created);
+                      });
+                    } catch (e) {
+                      message.error(errMsg(e));
+                    }
+                  }}
+                />
+              </span>
+            )}
+          </span>
+            );
+            return entryView === 'brand'
+              ? [brandCell, nameCell, catCell]
+              : [catCell, nameCell, brandCell];
+          })()}
+        </div>
+      </div>
+    );
+  };
+
+  const renderHeader = () => {
+    const cols = pickerRowLayout(entryView);
+    return (
     <div
       style={{
         display: 'grid',
-        // v10.25 固定列宽防收缩，与 renderRow 一致
-        gridTemplateColumns: '200px 56px 72px 72px',
+        gridTemplateColumns: cols.grid,
         alignItems: 'center',
         gap: 4,
         width: '100%',
-        minWidth: 412,
+        minWidth: cols.minWidth,
         padding: '4px 8px',
         background: 'var(--bg-base-tertiary)',
         borderBottom: '1px solid var(--border-neutral-l1)',
@@ -1560,27 +3269,54 @@ export default function ProductPicker({
         flexShrink: 0,
       }}
     >
-      <span>产品全名</span>
-      <span style={{ textAlign: 'center' }}>单位</span>
-      <span style={{ textAlign: 'center' }}>售价</span>
-      <span style={{ textAlign: 'center' }}>进价</span>
+      {cols.labels.map((label, i) => (
+        <span key={`${label}-${i}`}>{label}</span>
+      ))}
     </div>
-  );
+    );
+  };
 
-  const hasAnyResult = rows.length > 0;
+  const onEntryViewChange = (id: string) => {
+    const next = parseProductPickerEntryView(id);
+    setEntryView(next);
+    entryViewRef.current = next;
+    setExpandedKey(null);
+    setOpenBrand(null);
+    setOpenMore(null);
+    const kw = keyword.trim();
+    if (kw) void doSearch(kw, next);
+  };
+
+  const hasAnyResult = pickerTreeGrain(entryView) === 'leaf' ? rows.length > 0 : productGroups.length > 0;
   const trimmedKw = keyword.trim();
+  const lockedRow = rows[0] ?? null;
+  // hostedInGate 时列表显隐由确认层托管（展开/收起钮）；且等确认层定位稳定再开，避免跳动。
+  const hostedListOpen = hostReady && (hostedListExpanded ?? true);
+  const showList = hostedInGate ? hostedListOpen : (!hideHostInput || listExpanded);
+  const overlayInput = hideHostInput && !hostedInGate ? (
+    <PickerOverlayInput
+      value={keyword}
+      placeholder={
+        isLayerSlot ? (entrySlot === 'unit' ? '单位' : '单价') : '搜索产品…'
+      }
+      listExpanded={listExpanded}
+      onToggleList={() => setListExpanded((v) => !v)}
+      onChange={onKwChange}
+      onEnter={() => {
+        if (!isLayerSlot && rows.length > 0) confirmPick(rows[0]);
+      }}
+      onCancel={() => {
+        skipDraftRef.current = true;
+        handlePanelClose();
+      }}
+    />
+  ) : null;
 
-  // v10.19：统筹重构 — 单元格内输入框 + 下方纯列表浮动面板
-  //   设计原则（对齐用户需求）：
-  //   1. 单元格本身就是输入框（和 text/number 模式一致的 DsInput embedded 变体 + 光晕）
-  //   2. 下方弹出纯列表浮动面板（不含输入框），高度 5-6 条（约 160px）
-  //   3. 电脑端移动端布局结构完全一致（放大版/缩小版原则）
-  //   4. 编辑态光晕由 UnifiedTable 的 unified-table-cell-editing 类提供（四周 brand 色边框 + 内阴影）
+  // 点格进确认层：输入+下拉挂在弹层；表格格只展示。hideHostInput=false 仍是纸面格那套外置输入。
   return (
+    <PickerEditGateProvider>
     <>
-      {/* 单元格内输入框（FloatPanel 外部，直接渲染在单元格 div 内）
-          和 text/number 模式完全一致的 DsInput embedded 变体
-          配合 td.unified-table-cell-editing 的四周边框光晕，视觉上就是单元格变成输入框 */}
+      {!hostedInGate && !hideHostInput && !isLayerSlot && (
       <DsInput
         ref={inputRef}
         variant="embedded"
@@ -1591,60 +3327,124 @@ export default function ProductPicker({
         onChange={(e) => onKwChange(e.target.value)}
         style={{ width: '100%', height: '100%' }}
         autoFocus
-        // v11.18：allowClear 由 DsInput embedded 变体统一禁用（单点控制，
-        //   清除图标占位挤压宽度问题一处解决，见 DsInput 默认值）
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
             onClose();
           } else if (e.key === 'Enter') {
             e.preventDefault();
-            // 模式 B：选中第一条匹配项（若存在）
             if (rows.length > 0) {
               confirmPick(rows[0]);
             }
           }
         }}
       />
+      )}
 
       {/* 下方纯列表浮动面板（无输入框，只有 header + 列表）
           v10.26 主面板：注册到 PanelTree（parentId=null），二级面板通过 data-panel-id
           获取本面板 id 作为 parentId，实现父子关系与级联关闭
           className=MAIN_PANEL_CLASS 供二级面板 DOM 查询获取 panelId
           dropdown 模式：open 直接跟随 open prop（用户点下拉箭头即展开面板，即使 keyword 为空）
-          cell 模式：open 需要 keyword 非空（避免空查询弹空面板） */}
+          cell 模式：open 需要 keyword 非空（避免空查询弹空面板）
+          单位/单价列：同一套框架，检索主行换成已锁定的规格单位层 / 价格叶子 */}
+      {isLayerSlot ? (
+        <FloatPanel
+          open={open && hostedListOpen}
+          anchorRef={anchorRef}
+          parentId={hostedInGate ? parentPanelId ?? null : null}
+          onClose={handlePanelClose}
+          maxHeight={280}
+          offset={0}
+          className={MAIN_PANEL_CLASS}
+          title={
+            entrySlot === 'unit'
+              ? `单位 · ${lockedBrandName || lockedRow?.sku.brandName || ''} · ${lockedSpecModel || lockedRow?.sku.specModel || ''}`
+              : `价格 · ${lockedUnitName || lockedRow?.sku.defaultUnitName || ''}`
+          }
+          minWidth={entrySlot === 'unit' ? UNIT_PANEL_WIDTH : PRICE_SLOT_WIDTH}
+          style={{ padding: 0 }}
+        >
+          {overlayInput}
+          {showList ? (
+            searching && !lockedRow ? (
+              <div style={{ padding: 12, textAlign: 'center' }}>
+                <Spin size="small" />
+              </div>
+            ) : !lockedRow ? (
+              <div style={{ padding: 8, color: 'var(--text-quaternary)', textAlign: 'center' }}>
+                先选定产品
+              </div>
+            ) : entrySlot === 'unit' ? (
+              renderUnitList(lockedRow, resolvedMainPanelId)
+            ) : (
+              renderPriceLayer(lockedRow)
+            )
+          ) : null}
+        </FloatPanel>
+      ) : (
       <FloatPanel
-        open={open && (dropdownMode || trimmedKw !== '' || searching || hasAnyResult)}
+        open={open && hostedListOpen && (hostedInGate || hideHostInput || dropdownMode || trimmedKw !== '' || searching || hasAnyResult)}
         anchorRef={anchorRef}
-        onClose={onClose}
+        parentId={hostedInGate ? parentPanelId ?? null : null}
+        onClose={handlePanelClose}
         maxHeight={280}
         offset={0}
+        minWidth={pickerRowLayout(entryView).minWidth}
         className={MAIN_PANEL_CLASS}
         style={{ padding: 0 }}
       >
         <div style={{ position: 'relative' }}>
+          {overlayInput}
+          {isStaff && (
+            <PickerTreeViewBar
+              views={PRODUCT_PICKER_TREE_VIEWS}
+              value={entryView}
+              onChange={onEntryViewChange}
+            />
+          )}
+          {showList ? (
+            <>
           {renderHeader()}
-
-          {/* v9.5：列表区域统一改用 SuggestList（与 SuggestInput 共用同一列表实现）
-              新建项/loading/无匹配/列表容器/滚动 全部由 SuggestList 统一处理
-              rowRender=renderRow 保留 ProductPicker 的多列行渲染和行内交互（单位/售价/进价按钮） */}
+          {pickerTreeGrain(entryView) === 'leaf' ? (
           <SuggestList
             options={rows}
             loading={searching}
             keyword={keyword}
             allowCreate={true}
             onSelect={() => {
-              /* rowRender 模式下行选中由 renderRow 内 confirmPick 处理 */
+              /* 行选中由规格插入处理 */
             }}
             onCreate={(name) => void handleQuickCreate(name)}
             emptyText="未找到匹配的商品"
             rowKey={(row) => row.key}
-            rowRender={renderRow}
+            rowRender={(row) => renderRow(row, { identity: true })}
             maxHeight={228}
-            style={{ minHeight: 75, display: 'flex', flexDirection: 'column' }}
+            style={{ minHeight: 75, display: 'flex', flexDirection: 'column', minWidth: pickerRowLayout(entryView).minWidth }}
           />
+          ) : (
+          <SuggestList
+            options={productGroups}
+            loading={searching}
+            keyword={keyword}
+            allowCreate={true}
+            onSelect={() => {
+              /* 行选中由品牌下规格插入处理 */
+            }}
+            onCreate={(name) => void handleQuickCreate(name)}
+            emptyText="未找到匹配的商品"
+            rowKey={(row) => row.key}
+            rowRender={renderProductRow}
+            maxHeight={228}
+            style={{ minHeight: 75, display: 'flex', flexDirection: 'column', minWidth: pickerRowLayout(entryView).minWidth }}
+          />
+          )}
+            </>
+          ) : null}
         </div>
       </FloatPanel>
+      )}
     </>
+    </PickerEditGateProvider>
   );
 }

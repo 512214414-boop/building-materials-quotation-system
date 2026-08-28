@@ -14,89 +14,440 @@
  */
 
 /* ── SuggestInput（检索辅助输入框）─────────────────────────
- * 内部用 antd AutoComplete（rc-select），无法通过 props 控制 .ant-select-selector 样式
- * 通过 CSS 类统一视觉：暗色背景 + 边框 + brand 色 focus
- * 关键：allowClear 清除叉号 hover 显示（rc-select 默认 hover 也显示，此处强制确保）
+ * antd 6 AutoComplete：边框在 .ant-select 根上（.ant-select-content > input.ant-select-input）
+ * 旧版还有 .ant-select-selector，两套选择器都写，避免版本切换再裂开
+ * 表单/弹窗 sm = 20px，跟 DsInput sm 同一套；embedded 仍 24px 贴表格行
  */
 .ds-suggest-input {
   width: 100%;
 }
 
-/* SuggestInput 下拉面板
- * v11.2：z-index 由全局 smartPopupContainer 统一管理，无需在此设
- *   面板挂载到 .ant-modal-wrap 后自然在 Modal 内容之上 */
-
-/* v9.5：与 DsInput size="sm" 视觉统一（高度 20px / 字号 body-sm / padding 0 2px）
- *   antd AutoComplete small 默认 24px/14px，与 DsInput sm 20px/12px 不一致
- *   同一行混用时视觉割裂，此处强制对齐
- */
-.ds-suggest-input .ant-select-selector {
-  background: var(--bg-base-tertiary) !important;
-  border-color: var(--border-neutral-l2) !important;
-  color: var(--text-default) !important;
-  border-radius: var(--radius-4) !important;
+.ds-suggest-input.ant-select-sm:not(.ds-suggest-input-embedded) {
+  height: 20px !important;
   min-height: 20px !important;
   padding: 0 2px !important;
   font-size: var(--body-sm-font-size) !important;
+  line-height: 18px !important;
+  border-radius: var(--radius-4) !important;
+  background: var(--bg-base-secondary) !important;
+  border-color: var(--border-neutral-l2) !important;
+  color: var(--text-default) !important;
 }
-
-.ds-suggest-input .ant-select-selector:hover {
+.ds-suggest-input.ant-select-sm:not(.ds-suggest-input-embedded):hover {
   border-color: var(--border-brand) !important;
 }
-
-.ds-suggest-input.ant-select-focused .ant-select-selector,
-.ds-suggest-input:focus-within .ant-select-selector {
+.ds-suggest-input.ant-select-sm:not(.ds-suggest-input-embedded).ant-select-focused,
+.ds-suggest-input.ant-select-sm:not(.ds-suggest-input-embedded):focus-within {
   border-color: var(--border-brand) !important;
   background: var(--bg-base-secondary) !important;
 }
+.ds-suggest-input:not(.ds-suggest-input-embedded) .ant-select-content {
+  height: 18px !important;
+  min-height: 18px !important;
+  line-height: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.ds-suggest-input:not(.ds-suggest-input-embedded) .ant-select-input,
+.ds-suggest-input:not(.ds-suggest-input-embedded) input.ant-select-input {
+  height: 18px !important;
+  min-height: 18px !important;
+  line-height: 18px !important;
+  font-size: var(--body-sm-font-size) !important;
+  color: var(--text-default) !important;
+  padding: 0 !important;
+}
+.ds-suggest-input:not(.ds-suggest-input-embedded) .ant-select-placeholder {
+  font-size: var(--body-sm-font-size) !important;
+  line-height: 18px !important;
+}
 
-/* 输入框文字颜色与字号（与 DsInput body-sm 一致） */
-.ds-suggest-input .ant-select-selection-search-input {
+/* 旧 DOM 兜底（antd 5 / 有 .ant-select-selector 时） */
+.ds-suggest-input:not(.ds-suggest-input-embedded) .ant-select-selector {
+  background: var(--bg-base-secondary) !important;
+  border-color: var(--border-neutral-l2) !important;
+  color: var(--text-default) !important;
+  border-radius: var(--radius-4) !important;
+  height: 20px !important;
+  min-height: 20px !important;
+  padding: 0 2px !important;
+  font-size: var(--body-sm-font-size) !important;
+  line-height: 18px !important;
+}
+.ds-suggest-input .ant-select-selection-wrap,
+.ds-suggest-input .ant-select-selection-search,
+.ds-suggest-input .ant-select-selection-item,
+.ds-suggest-input .ant-select-selection-placeholder {
+  line-height: 18px !important;
+}
+.ds-suggest-input .ant-select-arrow {
+  display: none !important;
+}
+.ds-suggest-input .ant-select-clear {
+  inset-inline-end: 4px !important;
+  margin-top: 0 !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+.ds-suggest-input:not(.ds-suggest-input-embedded) .ant-select-selector:hover {
+  border-color: var(--border-brand) !important;
+}
+.ds-suggest-input:not(.ds-suggest-input-embedded).ant-select-focused .ant-select-selector,
+.ds-suggest-input:not(.ds-suggest-input-embedded):focus-within .ant-select-selector {
+  border-color: var(--border-brand) !important;
+  background: var(--bg-base-secondary) !important;
+}
+.ds-suggest-input:not(.ds-suggest-input-embedded) .ant-select-selection-search-input {
   color: var(--text-default) !important;
   font-size: var(--body-sm-font-size) !important;
+  height: 18px !important;
+  line-height: 18px !important;
+}
+
+/* DsInput sm：带清除的是 affix 外壳。高度/字号/边距与 SuggestInput 同一套，弹窗里才不会有的 20、有的 24 */
+.ds-input.ant-input-sm,
+.ds-input.ant-input-affix-wrapper-sm {
   height: 20px !important;
+  min-height: 20px !important;
+  padding: 0 2px !important;
+  font-size: var(--body-sm-font-size) !important;
+  line-height: 20px !important;
+  border-radius: var(--radius-4) !important;
+}
+.ds-input.ant-input-affix-wrapper-sm .ant-input {
+  height: 18px !important;
+  min-height: 18px !important;
+  padding: 0 !important;
+  font-size: var(--body-sm-font-size) !important;
+  line-height: 18px !important;
+  background: transparent !important;
+}
+.ds-input.ant-input-affix-wrapper-sm .ant-input-prefix,
+.ds-input.ant-input-affix-wrapper-sm .ant-input-suffix {
+  margin-inline: 0 2px;
+  line-height: 18px;
+  align-self: center;
+}
+.ds-input.ant-input-affix-wrapper-sm .ant-input-prefix .anticon {
+  font-size: var(--body-sm-font-size);
 }
 
-/* 清除叉号颜色 */
-.ds-suggest-input .ant-select-clear {
-  background: var(--bg-base-tertiary);
+/* DsButton sm / 图标钮：跟输入框同一行高，分类/规格管理面板才不会有的 20、有的 24 */
+.ds-btn.ant-btn-sm {
+  height: 20px !important;
+  min-height: 20px !important;
+  font-size: var(--body-sm-font-size) !important;
+  line-height: 18px !important;
+  padding-block: 0 !important;
+  border-radius: var(--radius-4) !important;
+}
+.ds-btn.ant-btn-sm.ant-btn-icon-only {
+  width: 20px !important;
+  min-width: 20px !important;
+  padding: 0 !important;
+}
+.ds-addon-btn.ant-btn {
+  flex-shrink: 0;
+  height: 20px !important;
+  min-height: 20px !important;
+  width: 18px !important;
+  min-width: 18px !important;
+  padding: 0 2px !important;
+  font-size: 10px !important;
+}
+
+/* 嵌入表头/单元格：与 DsInput embedded、格内常驻输入同一套度量（无额外边框、不撑高） */
+.ds-suggest-input-embedded.ds-suggest-input.ant-select {
+  background: transparent !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  min-height: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input.ant-select:hover {
+  border-color: transparent !important;
+  background: var(--bg-overlay-l1) !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input.ant-select-focused,
+.ds-suggest-input-embedded.ds-suggest-input:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: inset 0 -1px 0 var(--border-brand) !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-content,
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-input,
+.ds-suggest-input-embedded.ds-suggest-input input.ant-select-input {
+  height: 24px !important;
+  min-height: 24px !important;
+  line-height: 24px !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-selector {
+  background: transparent !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  min-height: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-selector:hover {
+  border-color: transparent !important;
+  background: var(--bg-overlay-l1) !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input.ant-select-focused .ant-select-selector,
+.ds-suggest-input-embedded.ds-suggest-input:focus-within .ant-select-selector {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: inset 0 -1px 0 var(--border-brand) !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-selection-search-input {
+  height: 24px !important;
+}
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-placeholder,
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-selection-placeholder {
+  color: var(--text-tertiary) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ds-suggest-input-embedded.ds-suggest-input .ant-select-arrow {
+  display: none !important;
+}
+
+/* 档案列表表头级联输入：筛在列头里 */
+.ant-table-thead .ds-col-filter {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  font-weight: 400;
+}
+.ant-table-thead .ds-col-filter .ds-suggest-input {
+  width: 100%;
+  height: 24px;
+}
+.ant-table-thead .ds-col-filter.is-locked .ant-select-selection-search-input {
+  color: var(--text-default) !important;
+}
+
+/* 一列两个表头筛（如经营范围：分类 + 品牌），高度仍跟单列表头筛对齐 */
+.ant-table-thead .ds-col-filter-pair {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+}
+.ant-table-thead .ds-col-filter-pair .ds-col-filter {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-cascade-brand {
+  color: var(--text-brand);
+}
+.ds-cascade-spec-empty {
+  color: var(--text-placeholder-accent);
+}
+
+/* 检索栏条件词：独立控件，跟关键词、状态下拉同一行高，不塞进输入框 */
+.ds-filter-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+}
+.ds-filter-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 16px 0 6px;
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  background: var(--bg-base-secondary);
+  color: var(--text-default);
+  font-size: var(--body-sm-font-size);
+  line-height: 18px;
+  flex-shrink: 0;
+  max-width: 180px;
+  white-space: nowrap;
+}
+.ds-filter-chip-k {
   color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.ds-filter-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.ds-filter-chip.is-static {
+  padding-right: 6px;
 }
 
-.ds-suggest-input .ant-select-clear:hover {
+/* ── 原值/新值对比卡片（C70）────────────────────────────
+ * 确认层、批量匹配：原=弱灰，新=品牌绿，中间 →。
+ * 纯 CSS，无阴影、无状态。禁止「」包一对值。
+ */
+.ds-change-pair {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-4);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.ds-change-pair.is-replace .ds-value-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: calc(50% - var(--spacer-8));
+}
+.ds-change-pair.is-add .ds-value-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+.ds-change-pair-arrow {
+  flex-shrink: 0;
+  color: var(--text-quaternary);
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+}
+.ds-change-pair-verb {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+}
+.ds-change-pair-scope {
+  color: var(--text-tertiary);
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+  font-weight: var(--font-weight-default);
+}
+.ds-value-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacer-4);
+  min-width: 0;
+  padding: 0 var(--overlay-pad-x);
+  min-height: var(--body-sm-line-height);
+  border-radius: var(--radius-4);
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+  font-weight: var(--font-weight-medium);
+  box-sizing: border-box;
+  border-width: 1px;
+  border-style: solid;
+}
+.ds-value-chip-k {
+  flex-shrink: 0;
+  font-size: var(--body-xs-font-size);
+  font-weight: var(--font-weight-default);
+  line-height: var(--body-xs-line-height);
+}
+.ds-value-chip-v {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ds-value-chip.is-from {
+  background: var(--bg-overlay-l2);
+  color: var(--text-tertiary);
+  border-color: var(--border-neutral-l1);
+}
+.ds-value-chip.is-to {
+  background: var(--bg-brand-popup);
+  color: var(--text-brand);
+  border-color: transparent;
+}
+.ds-value-chip.is-on-brand {
+  background: var(--bg-base-secondary);
+  color: var(--text-brand);
+  border-color: var(--border-brand);
+}
+
+/* ── 单输入框清除 ×（与采购报价客户输入框同一套）─────────
+ * 纯文本 ×，无圆形底。antd 自带叉与自绘 .ds-clear-x 同一套字号/颜色。
+ */
+.ds-clear-x {
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.ds-clear-x:hover {
   color: var(--text-default);
 }
+.ds-clear-x::before {
+  content: '×';
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+}
 
-/* ── 统一输入框清除按钮样式（v10.33）─────────────────────
- * 所有 antd Input / Select 的清除叉号统一为纯文本×样式
- * 视觉效果：无圆形背景，hover 变深色，与 CustomerPicker 自定义×一致
- */
 .ant-input-clear-icon,
-.ant-select-clear {
+.ant-select-clear,
+.ant-picker-clear {
   background: transparent !important;
   color: var(--text-tertiary) !important;
   font-size: 14px !important;
+  font-weight: 400 !important;
   line-height: 1 !important;
   opacity: 1 !important;
-  transition: color 0.15s ease !important;
+  width: 14px !important;
+  height: 14px !important;
+  margin: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
+  transition: color 0.15s ease !important;
 }
-
 .ant-input-clear-icon:hover,
-.ant-select-clear:hover {
+.ant-select-clear:hover,
+.ant-picker-clear:hover {
   color: var(--text-default) !important;
   background: transparent !important;
 }
-
-/* 去除 antd 清除按钮的 SVG 图标，用纯文本×替代 */
-.ant-input-clear-icon::before {
+.ant-input-clear-icon::before,
+.ant-select-clear::before,
+.ant-picker-clear::before {
   content: '×' !important;
   font-size: 14px !important;
   font-weight: 400 !important;
+  line-height: 1 !important;
 }
-.ant-input-clear-icon svg {
+.ant-input-clear-icon svg,
+.ant-select-clear svg,
+.ant-select-clear .anticon,
+.ant-picker-clear svg,
+.ant-picker-clear .anticon {
   display: none !important;
 }
 
@@ -108,8 +459,10 @@
   display: grid;
   align-items: center;
   gap: 4px;
-  padding: 2px 4px;
+  padding: 1px 4px;
+  min-height: var(--shell-row-h);
   font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
   border-bottom: 1px solid var(--border-neutral-l1);
 }
 
@@ -117,11 +470,36 @@
   display: grid;
   align-items: center;
   gap: 4px;
-  padding: 4px 4px;
+  padding: 1px 4px;
+  min-height: var(--shell-row-h);
   font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
   color: var(--text-tertiary);
   font-weight: 500;
   border-bottom: 1px solid var(--border-neutral-l2);
+}
+
+/* 浮层表勾选位：和选品单位/价格行同一套。有或没有勾上都占位，空行也要有，才不会错位 */
+.ds-grid-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.ds-grid-check .ant-checkbox {
+  transform: scale(0.8);
+  transform-origin: center;
+}
+.ds-grid-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  padding: 0 2px;
 }
 
 /* ── 链接样式单元格（可点击弹窗型字段）──────────────────────
@@ -162,6 +540,158 @@
   background: var(--bg-base-tertiary);
 }
 
+/* 选品/档案改值格子：不再是常驻输入，划过仍要看得出能点（原输入框 hover + 手型） */
+.ds-picker-edit-trigger {
+  cursor: pointer;
+  box-sizing: border-box;
+  border-radius: var(--radius-2);
+  border-width: 1px;
+  border-style: solid;
+  border-color: transparent;
+  background: transparent;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.ds-picker-edit-trigger:hover,
+.ds-picker-edit-trigger:focus-visible {
+  border-color: var(--border-neutral-l1);
+  background: var(--bg-overlay-l2);
+  outline: none;
+}
+
+.ds-picker-edit-trigger.is-disabled {
+  cursor: default;
+}
+
+.ds-picker-edit-trigger.is-disabled:hover,
+.ds-picker-edit-trigger.is-disabled:focus-visible {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* 标签栏检索芯片：外壳已经是 20px 虚线框，格子不再叠第二层边框/最小高度 */
+.ds-shell-search-chip {
+  overflow: hidden;
+}
+.ds-shell-search-chip .ds-picker-edit-trigger {
+  min-height: 0;
+  height: 100%;
+  line-height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.ds-shell-search-chip .ds-picker-edit-trigger:hover,
+.ds-shell-search-chip .ds-picker-edit-trigger:focus-visible {
+  border: none;
+  background: transparent;
+}
+
+/* 工作台快录行：收款/交付/售后同一套 20px 控件行 */
+.ds-workbench-quick-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacer-8);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-height: var(--shell-row-h);
+}
+.ds-workbench-quick-row .ant-picker,
+.ds-compact-picker.ant-picker {
+  height: 20px !important;
+  min-height: 20px !important;
+  padding: 0 4px !important;
+  font-size: var(--body-sm-font-size) !important;
+}
+.ds-workbench-quick-row .ant-picker .ant-picker-input > input,
+.ds-compact-picker.ant-picker .ant-picker-input > input {
+  font-size: var(--body-sm-font-size) !important;
+  line-height: 18px !important;
+}
+.ds-workbench-quick-row .ant-select {
+  height: 20px !important;
+}
+
+/* 配货来源两枝：一框检索 + 两列，行高跟骨架走 */
+.ds-alloc-src-trigger-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.ds-alloc-src-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--overlay-gap);
+}
+.ds-alloc-src-col-title {
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+  font-weight: 600;
+  color: var(--text-brand);
+}
+.ds-alloc-src-col-list {
+  min-height: calc(6 * var(--shell-row-h));
+  max-height: calc(6 * var(--shell-row-h));
+  overflow-y: auto;
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  background: var(--bg-base-secondary);
+}
+.ds-alloc-src-item {
+  display: flex;
+  align-items: center;
+  gap: var(--overlay-gap);
+  width: 100%;
+  height: var(--shell-row-h);
+  padding: 0 var(--overlay-pad-x);
+  border: none;
+  border-bottom: 1px solid var(--border-neutral-l1);
+  background: transparent;
+  color: var(--text-default);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--body-xs-font-size);
+}
+.ds-alloc-src-item:last-child {
+  border-bottom: none;
+}
+.ds-alloc-src-item.is-active,
+.ds-alloc-src-item:hover {
+  background: var(--bg-brand-popup);
+  color: var(--text-brand);
+}
+.ds-alloc-src-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+.ds-alloc-src-item-badge {
+  flex-shrink: 0;
+  font-size: var(--body-xs-font-size);
+  color: var(--text-brand);
+}
+.ds-alloc-src-empty {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+  color: var(--text-tertiary);
+  font-size: var(--body-xs-font-size);
+}
+.ds-alloc-src-create {
+  display: block;
+  width: 100%;
+  height: var(--shell-row-h);
+  padding: 0 var(--overlay-pad-x);
+  border: none;
+  background: var(--bg-brand-popup);
+  color: var(--text-brand);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--body-xs-font-size);
+}
+
 .ds-cell-price-empty {
   color: var(--text-quaternary);
 }
@@ -174,7 +704,7 @@
  * 替代散落的 SECTION_BOX_STYLE 常量
  */
 .ds-section-box {
-  padding: 8px;
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
   background: var(--bg-base-tertiary);
   border-radius: var(--radius-4);
   border: 1px solid var(--border-neutral-l1);
@@ -221,35 +751,97 @@
  * 唯一逻辑轴心：用户最新指令「固定1200px画布 + 通用行div类 + 行高24px + 字号11px」
  *
  * 设计原理：
- *   1. .ds-app-shell 作为最外层大 div，固定 1200px 画布宽度
+ *   1. 舞台 .ds-canvas-stage 固定 1200 + zoom
  *   2. 任意设备视觉一致：小于视口居中可滚，大于视口居中展示
  *   3. 除内容区外所有行div使用 .ds-shell-row 通用基础类
  *   4. 通用行：高度24px、字号11px、width auto自适应、超出可滚动
  *   5. 一套代码两端通用（员工端/客户端）
  *
  * 层级结构（从上到下）：
- *   <div class="ds-app-shell">
- *     <header class="ds-shell-row ds-shell-header">...</header>
- *     <nav class="ds-shell-row ds-shell-subnav">...</nav>
- *     <div class="ds-shell-row ...">其他行</div>
- *     <main class="ds-shell-main">内容区（高度不确定）</main>
- *     <footer class="ds-shell-row ds-shell-bottom">...</footer>
+ *   <div class="ds-canvas-stage">           ← 1200 + zoom 唯一作用点
+ *     <div class="ds-app-shell">骨架文档流</div>
+ *     <div class="ds-overlay-root">叠加层</div>
  *   </div>
  */
 
-/* 大 div 包裹画布：固定1200px画布宽度，任意设备视觉一致
- * 主容器自身居中（margin:0 auto），内边距2px+浅灰细边框确认边界
- * 内部盒子最小宽度撑满主容器内容区，超出滚动，保证布局一致性 */
+/* 舞台：固定 1200、水平居中、查看层 zoom 只打这里一次 */
+.ds-canvas-stage {
+  position: relative;
+  width: var(--shell-canvas-width);
+  margin: 0 auto;
+  zoom: var(--shell-zoom);
+}
+
+/* 骨架文档流：铺满舞台。边框/内边距仍在壳上，确认画布边界 */
 .ds-app-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  width: var(--shell-canvas-width);
-  margin: 0 auto;
+  width: 100%;
   padding: var(--shell-canvas-pad);
-  border: var(--shell-canvas-border) solid var(--border-neutral-l2);
+  border: var(--shell-canvas-border) solid var(--border-neutral-l1);
   box-sizing: border-box;
   background: var(--bg-base-default);
+}
+
+/* 叠加层：铺满舞台。空时不挡点击；浮层/弹窗 portal 到对应子层 */
+.ds-overlay-root {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  overflow: visible;
+}
+.ds-overlay-float,
+.ds-overlay-modal {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  isolation: isolate;
+  overflow: visible;
+}
+.ds-overlay-float > *,
+.ds-overlay-modal > * {
+  pointer-events: auto;
+}
+
+/* 弹窗挂进 modal 层后，fixed 必须改 absolute，否则仍相对视口居中。
+ * antd 默认 root/wrap 是 fixed + !important 级规则，这里全部盖掉。 */
+.ds-overlay-modal .ant-modal-root,
+.ds-overlay-modal .ant-drawer-root {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+.ds-overlay-modal .ant-modal-mask,
+.ds-overlay-modal .ant-drawer-mask {
+  position: absolute !important;
+  inset: 0 !important;
+}
+.ds-overlay-modal .ant-modal-wrap {
+  position: absolute !important;
+  inset: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.ds-overlay-modal .ant-drawer-wrap {
+  position: absolute !important;
+  inset: 0 !important;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* antd 默认 top:100px，会把已 flex 居中的弹窗再往下挪一截 */
+.ds-overlay-modal .ant-modal {
+  top: 0 !important;
+  margin: auto !important;
+}
+/* modal 层内的 FloatPanel 必须盖过 ant-modal-wrap（≈1000），否则弹窗内检索▾面板可见不可点 */
+.ds-overlay-modal > .float-panel {
+  z-index: 1050;
 }
 
 /* ── .ds-shell-row 通用行盒子（两层嵌套）──────────────────────
@@ -422,7 +1014,7 @@
   transition: color .15s ease, border-color .15s ease;
 }
 .ds-nav-btn-primary.ds-nav-btn-active {
-  font-weight: 500;
+  font-weight: var(--font-weight-strong);
   color: var(--text-default);
   border-bottom-color: var(--bg-brand);
 }
@@ -436,7 +1028,7 @@
   border-radius: var(--radius-6);
 }
 .ds-nav-btn-sub.ds-nav-btn-active {
-  font-weight: 500;
+  font-weight: var(--font-weight-strong);
   color: var(--text-brand);
   background: var(--bg-brand-popup);
   border-color: var(--border-brand);
@@ -451,7 +1043,7 @@
   border-radius: var(--radius-6);
 }
 .ds-nav-btn-view-tab.ds-nav-btn-active {
-  font-weight: 500;
+  font-weight: var(--font-weight-strong);
   color: var(--text-brand);
   background: var(--bg-brand-popup);
   border-color: var(--border-brand);
@@ -493,10 +1085,10 @@
  *   3. 全链路组件规范强制统一（行高24px、字号、按钮、输入框光晕、边距）
  *
  * 纸张本体保留白底黑字（打印所见即所得），编辑态 UI 元素全部使用设计令牌
- * 工作区背景使用暗色令牌，与 AppShell 视觉一致
+ * 工作区背景使用纸面令牌，与 AppShell 视觉一致
  */
 
-/* 工作区：暗色背景，承载白纸 */
+/* 工作区：纸面背景，承载白纸 */
 .ds-paper-workspace {
   background: var(--bg-base-default);
   min-height: 100%;
@@ -509,7 +1101,7 @@
   gap: var(--spacer-12);
 }
 
-/* 悬浮工具栏：圆角+弱投影+暗色面板 */
+/* 悬浮工具栏：圆角 + 纸面面板 */
 .ds-paper-hover-toolbar {
   position: fixed;
   top: 80px;
@@ -826,11 +1418,11 @@
 }
 .ds-doc-cell-input:focus {
   outline: 1px solid var(--bg-brand);
-  background: rgba(50, 240, 140, 0.18);
+  background: var(--bg-brand-popup);
 }
 
 /* ── 识别订单弹窗──
- * 暗色面板 + 圆角 + 弱投影 + 淡入动效
+ * 纸面面板 + 圆角 + 淡入动效
  */
 @keyframes ds-recognize-fade-in {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -839,7 +1431,7 @@
 .ds-recognize-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--bg-overlay-modal);
   z-index: 2000;
   display: flex;
   align-items: center;
@@ -887,130 +1479,380 @@
   gap: var(--spacer-8);
 }
 
-/* ── Ant Design 浮动面板：边框/箭头统一品牌色（v11.0.9）──────────
- * 唯一逻辑轴心：用户「浮动面板下拉面板的边框颜色和指向箭头统一为品牌色，
- *   灰黑的边框看不出边界」指令
- *
- * v11.2 修复【关键】：浮动面板背景色从 --bg-overlay-l1（4%透明度，穿透可见）
- *   改为 --bg-base-tertiary（#2A2D31 实色不透明，遮盖下方内容）。
- *   --bg-overlay-l1 是 hover/激活叠加层用的极淡色，不适用于浮动面板。
- *   浮动面板必须实色不透明，否则用户看到面板"透明穿透"后方内容。
- *
- * v11.0.10 修复：
- *   - 箭头变方框：原 `.ant-popover-arrow { border: 1px solid }` 让 Antd 5 的 SVG/伪元素
- *     箭头容器整体带上边框，视觉上看像方框；改为只给 `.ant-popover-arrow-content`
- *     设背景色（旋转 45° 的方块即箭头），移除 border
- *   - SuggestInput 下拉被遮挡：移除 `.ant-select-dropdown { overflow: hidden }`，
- *     让 SuggestList 内部自然展开（dropdown 圆角由 border-radius 配合外层即可）
- *
- * 覆盖范围：
- *   1. Popover（分类管理面板等嵌入式 Popover）
- *   2. Tooltip（标题提示）
- *   3. AutoComplete/Select Dropdown（SuggestInput 下拉项）
- *   4. Dropdown 菜单
+/* ── Ant Design 浮动面板：纸面实色 + 墨色描边 ──────────
+ * 纸面只打在内容盒（container/inner），不要打在带箭头偏移的定位外壳上——
+ * 否则箭头那 8–12px 会变成一块不跟 zoom 等比的白边，50% 时看起来像面板飘走。
  */
-.ant-popover,
-.ant-popover-inner {
-  background: var(--bg-base-tertiary) !important;
-  border: 1px solid var(--border-brand) !important;
-  border-radius: var(--radius-4) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24), 0 0 0 1px rgba(0, 0, 0, 0.08) !important;
-}
-
-.ant-popover-inner {
-  padding: 0 !important;
-  /* overflow: hidden 配合 border-radius 让圆角生效，内部 Popover content 单独 padding */
-  overflow: hidden;
-}
-
-/* Popover 箭头（Antd 6：.ant-popover-arrow 是 SVG 元素，颜色通过 color 控制 fill）
- *   v11.0.12：用户「所有下拉的指向箭头颜色要和边框线一样，默认色看着像缺了一个口子」
- *   修复：用 color: var(--border-brand) 让 SVG path 的 fill 与边框同色 */
-.ant-popover-arrow {
+.ant-popover {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  color: var(--border-brand) !important;
+  padding: 0 !important;
 }
 
-.ant-popover-arrow svg,
-.ant-popover-arrow path,
-.ant-popover-arrow::before,
-.ant-popover-arrow::after {
-  fill: var(--border-brand) !important;
-  color: var(--border-brand) !important;
+.ant-popover-container,
+.ant-popover-inner,
+.ant-popover-content {
+  background: var(--bg-base-secondary) !important;
+  border: 1px solid var(--border-neutral-l2) !important;
+  border-radius: var(--radius-4) !important;
+  box-shadow: var(--shadow-float) !important;
+  padding: 0 !important;
+  overflow: hidden;
 }
 
-/* Popover 内容区 padding 还原（被 inner padding:0 覆盖后需补回） */
-.ant-popover-inner-content {
-  padding: 8px !important;
+.ant-popover-inner-content,
+.ant-popover-container > .ant-popover-content {
+  padding: 0 !important;
 }
 
-/* Tooltip 内部容器 */
-.ant-tooltip-inner {
+.ant-popover-arrow {
+  display: none;
+}
+
+/* 展开面板外壳：有 Tab/切换才垫 overlay 令牌；单页（单位维护）贴边吃内容 */
+.ds-expand-panel {
+  background: var(--bg-overlay-l1);
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+  border-bottom: 1px solid var(--border-neutral-l1);
+  box-sizing: border-box;
+}
+.ds-expand-panel.is-flush {
+  background: transparent;
+  padding: 0;
+  border-bottom: none;
+}
+
+/* 多记录列触发：默认单行；is-wrap 时占满格子、里面按钮组合往下折 */
+.ds-record-field-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  color: var(--text-default);
+}
+.ds-record-field-trigger.is-wrap {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-items: flex-start;
+  box-sizing: border-box;
+}
+.ds-record-field-trigger-body {
+  min-width: 0;
+}
+.ds-record-field-trigger.is-wrap .ds-record-field-trigger-body {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+.ds-record-field-trigger-caret {
+  flex-shrink: 0;
+}
+
+/* 经营范围：列表格 + 浮层已选 = 同一套 ArchiveFilterChip 换行，不拆分类/品牌组 */
+.ds-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.ds-scope-popover {
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ds-scope-popover.is-fill {
+  width: 100%;
+  max-width: 100%;
+}
+/* 弹窗内矩阵/经营范围：吃满 DsDialog 内容区，chip 少换行、少撑高 */
+.ds-record-panel-fill {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ds-record-panel-fill > .ds-expand-panel {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ds-scope-compact {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ds-scope-compact.is-fill {
+  max-width: 100%;
+}
+.ds-scope-compact-search {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--shell-row-h);
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  background: var(--bg-base-tertiary);
+  box-sizing: border-box;
+}
+.ds-scope-compact-chips {
+  padding: 2px 0 0;
+}
+.ds-scope-compact-trigger {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+}
+.ds-scope-compact-trigger.has-chips {
+  border-top: 1px solid var(--border-neutral-l2);
+}
+.ds-scope-unified-search {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+  border-bottom: 1px solid var(--border-neutral-l2);
+}
+.ds-scope-panel-pick.is-unified-search {
+  border-top: none;
+  padding-top: var(--overlay-pad-y);
+}
+.ds-scope-float-pick .ds-scope-panel-pick.is-unified-search {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+}
+/* 弹窗表单：单字段标签与控件同一行，压缩纵向空白 */
+.ds-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ds-dialog-form-hint {
+  font-size: var(--body-xs-font-size);
+  color: var(--text-tertiary);
+  line-height: var(--body-xs-line-height);
+}
+.ds-dialog-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--shell-row-h);
+}
+.ds-dialog-field-row--top {
+  align-items: flex-start;
+}
+.ds-dialog-field-row--top .ds-dialog-field-label {
+  padding-top: 2px;
+}
+.ds-dialog-field-label {
+  flex: 0 0 64px;
+  font-size: var(--body-xs-font-size);
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: var(--shell-row-h);
+  white-space: nowrap;
+}
+.ds-dialog-field-body {
+  flex: 1;
+  min-width: 0;
+}
+.ds-dialog-field-control {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
   background: var(--bg-base-tertiary) !important;
-  border: 1px solid var(--border-brand) !important;
+  border-color: var(--border-neutral-l2) !important;
+}
+/* 弹窗标量字段：点值确认层外观对齐输入框 */
+.ds-dialog-field-point {
+  min-height: var(--shell-row-h);
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  background: var(--bg-base-tertiary);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+.ds-dialog-field-point .ds-picker-edit-trigger {
+  width: 100%;
+  min-height: var(--shell-row-h);
+  line-height: var(--shell-row-h);
+  box-sizing: border-box;
+}
+/* 产品弹窗 SPU 行：标签在上、点值格在下 */
+.ds-dialog-field-stack {
+  min-width: 0;
+}
+.ds-dialog-field-stack > .ds-dialog-field-label {
+  flex: none;
+  line-height: var(--body-xs-line-height);
+}
+.ds-dialog-field-block-label {
+  font-size: var(--body-xs-font-size);
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+  line-height: var(--body-xs-line-height);
+}
+/* 矩阵 / 浮层 / 弹窗：控件行高统一 shell-row-h（24px） */
+.ds-matrix-cell-input {
+  width: 100%;
+}
+.ds-expand-panel .ds-grid-row .ant-input-affix-wrapper,
+.ds-expand-panel .ds-grid-row .ant-input,
+.ds-expand-panel .ds-grid-row textarea,
+.ds-scope-compact-search,
+.ds-scope-compact-search textarea {
+  min-height: var(--shell-row-h) !important;
+  height: var(--shell-row-h);
+  line-height: calc(var(--shell-row-h) - 2px);
+  font-size: var(--body-xs-font-size);
+  box-sizing: border-box;
+}
+.ds-expand-panel [data-shared-badge="C16"] {
+  min-height: var(--shell-row-h);
+  height: var(--shell-row-h);
+}
+.ds-dialog-field-control {
+  min-height: var(--shell-row-h) !important;
+  height: var(--shell-row-h);
+}
+.ds-scope-float-pick {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.ds-scope-float-pick .ds-scope-panel-pick {
+  border-top: none;
+}
+.ds-record-panel-fill .ds-scope-popover.is-fill > .ds-expand-panel {
+  width: 100%;
+}
+.ds-scope-panel {
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-4);
+  background: var(--bg-base);
+  overflow: hidden;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ds-scope-selected {
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+}
+.ds-scope-selected-empty {
+  color: var(--text-tertiary);
+  font-size: var(--body-sm-font-size);
+  line-height: var(--body-sm-line-height);
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+}
+.ds-scope-panel-pick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--overlay-gap);
+  padding: var(--overlay-pad-y) var(--overlay-pad-x);
+  border-top: 1px solid var(--border-neutral-l2);
+}
+
+.ds-quick-options {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  gap: var(--overlay-gap);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: var(--overlay-pad-y) 0 0;
+  margin-top: 0;
+  border-top: 1px dashed var(--border-neutral-l1);
+}
+.ds-quick-options-label {
+  font-size: var(--body-xs-font-size);
+  line-height: var(--body-xs-line-height);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.ds-quick-options-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: var(--shell-row-h);
+  padding: 0 var(--overlay-pad-x);
+  font-size: var(--body-xs-font-size);
+  line-height: 1;
+  border: 1px solid var(--border-neutral-l2);
+  border-radius: var(--radius-2);
+  background: var(--bg-base-tertiary);
+  color: var(--text-default);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ds-quick-options-chip:disabled {
+  cursor: not-allowed;
+  color: var(--text-quaternary);
+}
+
+.ant-tooltip-inner {
+  background: var(--bg-base-secondary) !important;
+  border: 1px solid var(--border-neutral-l2) !important;
   border-radius: var(--radius-4) !important;
   color: var(--text-default) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24) !important;
+  box-shadow: var(--shadow-float) !important;
 }
 
-/* Tooltip 箭头（Antd 6：SVG，color 控制 fill） */
 .ant-tooltip-arrow {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  color: var(--border-brand) !important;
+  color: var(--border-neutral-l2) !important;
 }
 
 .ant-tooltip-arrow svg,
 .ant-tooltip-arrow path,
 .ant-tooltip-arrow-content::before,
 .ant-tooltip-arrow-content::after {
-  fill: var(--border-brand) !important;
-  color: var(--border-brand) !important;
+  fill: var(--border-neutral-l2) !important;
+  color: var(--border-neutral-l2) !important;
 }
 
-/* AutoComplete / Select Dropdown（SuggestInput 下拉项）
- *   v11.0.10：移除 overflow: hidden，避免 SuggestList 内部滚动/溢出元素被截断 */
 .ant-select-dropdown,
 .ant-auto-complete-dropdown {
-  background: var(--bg-base-tertiary) !important;
-  border: 1px solid var(--border-brand) !important;
+  background: var(--bg-base-secondary) !important;
+  border: 1px solid var(--border-neutral-l2) !important;
   border-radius: var(--radius-4) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24) !important;
+  box-shadow: var(--shadow-float) !important;
 }
 
-/* v11.0.12：Select / AutoComplete 后缀箭头（点击展开下拉的箭头图标）
- *   原 bug：默认灰色，与品牌色边框不一致，看着像「缺了一个口子」
- *   修复：箭头图标 color 与边框同色 */
 .ant-select-arrow,
 .ant-select-suffix,
 .ant-picker-suffix,
 .ant-cascader-picker-label:hover .ant-cascader-picker-arrow,
 .ant-select-arrow .anticon,
 .ant-select-suffix .anticon {
-  color: var(--border-brand) !important;
+  color: var(--icon-secondary) !important;
 }
 
 .ant-select-arrow svg,
 .ant-select-suffix svg {
-  fill: var(--border-brand) !important;
+  fill: var(--icon-secondary) !important;
 }
 
-/* Dropdown 菜单（如表格操作列展开菜单） */
 .ant-dropdown-menu {
-  background: var(--bg-base-tertiary) !important;
-  border: 1px solid var(--border-brand) !important;
+  background: var(--bg-base-secondary) !important;
+  border: 1px solid var(--border-neutral-l2) !important;
   border-radius: var(--radius-4) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24) !important;
+  box-shadow: var(--shadow-float) !important;
   padding: 4px !important;
 }
 
-/* Dropdown 菜单展开按钮的箭头（Antd 6 dropdown trigger 的箭头） */
 .ant-dropdown-trigger .anticon-down,
 .ant-dropdown-link .anticon-down {
-  color: var(--border-brand) !important;
+  color: var(--icon-secondary) !important;
 }
 
 .ant-dropdown-menu-item {
@@ -1023,11 +1865,11 @@
   color: var(--text-brand) !important;
 }
 
-/* 选中项（AutoComplete 选中 / Select 选中） */
 .ant-select-item-option-active,
 .ant-select-item-option-selected {
-  background: var(--bg-overlay-l2) !important;
+  background: var(--bg-brand-popup) !important;
   color: var(--text-brand) !important;
-  font-weight: 500;
+  font-weight: var(--font-weight-strong);
 }
+
 

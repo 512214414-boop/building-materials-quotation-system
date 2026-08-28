@@ -21,6 +21,7 @@ export interface DeliveryView {
   /** JSON 字段，serialize 后为 unknown（不假定结构） */
   attachmentUrls: unknown;
   note: string | null;
+  freight: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -32,6 +33,7 @@ export interface DeliveryCreateInput {
   receiverPhone?: string;
   note?: string;
   attachmentUrls?: unknown;
+  freight?: number;
 }
 
 export interface DeliveryUpdateInput {
@@ -41,6 +43,7 @@ export interface DeliveryUpdateInput {
   status?: DeliveryStatus;
   note?: string;
   attachmentUrls?: unknown;
+  freight?: number;
 }
 
 export interface DeliverySignResult {

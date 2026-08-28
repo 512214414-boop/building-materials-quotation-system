@@ -17,7 +17,7 @@
 // 使用：QuickCreateConfirmDialog / ProductEditDialog / ProductManage 列表价格保存 统一走
 //   confirmFillsBeforeSave（单一实现）
 
-import { App as AntdApp } from 'antd';
+import type { CanvasModalInstance } from '../hooks/useCanvasApp';
 
 export interface DefaultFillsPreviewField {
   /** 字段名（如 产品名称 / 分类 / 品牌 / 规格型号 / 单位） */
@@ -156,7 +156,7 @@ export interface ConfirmFillsBeforeSaveOptions {
  * 无论保存是手动触发、失焦触发还是静默保存，只要涉及自动补充都必须先提示并确认。
  */
 export async function confirmFillsBeforeSave(
-  modal: ReturnType<typeof AntdApp.useApp>['modal'],
+  modal: CanvasModalInstance,
   options: ConfirmFillsBeforeSaveOptions,
 ): Promise<boolean> {
   const hasFills =

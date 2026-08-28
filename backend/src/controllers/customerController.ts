@@ -10,12 +10,26 @@ export async function listCustomersHandler(req: Request, res: Response) {
   return ok(res, result);
 }
 
+export async function listCustomerFacetsHandler(req: Request, res: Response) {
+  const field = String((req.query as Record<string, unknown>).field ?? '');
+  if (!['name', 'phone'].includes(field)) {
+    return fail(res, 422, 42201, '参数错误', [{ path: ['field'], message: 'field 必须为 name/phone' }]);
+  }
+  const options = await customerSvc.listCustomerFacets(req.query as Record<string, unknown>);
+  return ok(res, { options });
+}
+
 /** v2.6 关键词检索客户（匹配检索，前 N 条） */
 export async function searchCustomersHandler(req: Request, res: Response) {
   const q = req.query as Record<string, string>;
   const keyword = q.keyword ?? q.q ?? '';
   const limit = q.limit ? Number(q.limit) : 10;
-  const list = await customerSvc.searchCustomers(keyword, limit);
+  const ALLOWED = ['loose', 'name', 'contact', 'address', 'invoice'] as const;
+  const rawView = q.entryView ?? '';
+  const entryView = (ALLOWED as readonly string[]).includes(rawView)
+    ? (rawView as (typeof ALLOWED)[number])
+    : 'loose';
+  const list = await customerSvc.searchCustomers(keyword, limit, entryView);
   return ok(res, list);
 }
 
@@ -166,4 +180,39 @@ export async function deleteMyAddressHandler(req: Request, res: Response) {
   const addrId = BigInt(req.params.id);
   const result = await customerSvc.deleteAddress(addrId, req.customer.customerId);
   return ok(res, result);
+}
+
+const customerTypeSchema = z.object({
+  name: z.string().min(1).max(50),
+  sortOrder: z.number().int().optional(),
+  status: z.number().int().min(0).max(1).optional(),
+});
+
+export async function listCustomerTypesHandler(_req: Request, res: Response) {
+  const list = await customerSvc.listCustomerTypes();
+  return ok(res, list);
+}
+
+export async function createCustomerTypeHandler(req: Request, res: Response) {
+  const parsed = customerTypeSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const created = await customerSvc.createCustomerType(parsed.data);
+  await req.audit?.('customer_type_create', 'customer_type', created.id);
+  return ok(res, created, '创建成功', 201);
+}
+
+export async function updateCustomerTypeHandler(req: Request, res: Response) {
+  const id = BigInt(req.params.id);
+  const parsed = customerTypeSchema.partial().safeParse(req.body);
+  if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
+  const updated = await customerSvc.updateCustomerType(id, parsed.data);
+  await req.audit?.('customer_type_update', 'customer_type', id);
+  return ok(res, updated);
+}
+
+export async function deleteCustomerTypeHandler(req: Request, res: Response) {
+  const id = BigInt(req.params.id);
+  await customerSvc.deleteCustomerType(id);
+  await req.audit?.('customer_type_delete', 'customer_type', id);
+  return ok(res, { id: String(id) });
 }

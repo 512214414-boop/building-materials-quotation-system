@@ -77,8 +77,7 @@ export async function syncInboundForLineTx(
 
     for (const row of excessRows) {
       const targetWarehouseId =
-        row.excess_target_warehouse_id ?? mainWarehouse?.id ?? 0n;
-      if (targetWarehouseId === 0n) continue;
+        row.excess_target_warehouse_id ?? BigInt(mainWarehouse.id);
 
       // 找到/创建待入库单（document + supplier 唯一）
       let task = await tx.inbound_tasks.findFirst({
@@ -416,7 +415,7 @@ export async function listBackorders(query: Record<string, unknown>) {
   }
   if (typeof query.keyword === 'string' && query.keyword) {
     // v15.2：复用 SKU 宽表关键词召回唯一实现（FULLTEXT 索引驱动，禁止 contains 全表扫 + 重复实现）
-    const { rows: matched } = await recallSkuRowsByKeyword(query.keyword);
+    const { rows: matched } = await recallSkuRowsByKeyword(query.keyword, '', [], 500, true);
     if (matched.length === 0) return paginate([], 0, page, pageSize);
     // v14.0：SKU = 规格×品牌×单位，按 (spec_id, brand_id) 组合过滤
     where.OR = matched.map((m) => ({ spec_id: BigInt(m.specId), brand_id: BigInt(m.brandId) }));

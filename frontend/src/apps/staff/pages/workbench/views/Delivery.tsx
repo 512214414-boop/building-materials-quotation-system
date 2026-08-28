@@ -10,15 +10,18 @@
 //     次要字段：tracking_no + receiver + receiver_phone + note（4个）
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { App as AntdApp, Spin, Empty, Menu } from 'antd';
-import { LockOutlined, UnlockOutlined, PlusOutlined } from '@ant-design/icons';
+import { Spin, Empty, Menu } from 'antd';
+import { LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import { UnifiedTable, type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
 import { DsButton } from '../../../../../shared/components/DsButton.js';
 import { DsInput } from '../../../../../shared/components/DsInput.js';
 import { DsSelect } from '../../../../../shared/components/DsSelect.js';
 import { DsTag } from '../../../../../shared/components/DsTag.js';
+import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
+import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
+import { WORKBENCH_TEXT } from '../../../../../shared/styles/shell-constants.js';
 import {
   listDeliveries,
   createDelivery,
@@ -32,6 +35,7 @@ import { getDocument } from '../../../../../shared/services/api/documentApi.js';
 import { useSaveStatus } from '../../../../../shared/components/common/SaveStatusProvider.js';
 import type { DeliveryMethod, DeliveryStatus } from '../../../../../shared/types/index.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
+import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
 
 // ============================================================
 // 常量映射
@@ -87,20 +91,12 @@ interface QuickAddBuffer {
   trackingNo: string;
 }
 
-// 行内编辑缓冲（次要字段）
-interface EditBuffer {
-  trackingNo: string;
-  receiver: string;
-  receiverPhone: string;
-  note: string;
-}
-
 // ============================================================
 // 主组件
 // ============================================================
 
 export default function Delivery({ documentId }: { documentId: string }) {
-  const { message, modal } = AntdApp.useApp();
+  const { message, modal } = useCanvasApp();
   const { trackSave } = useSaveStatus();
 
   const [loading, setLoading] = useState(true);
@@ -112,9 +108,6 @@ export default function Delivery({ documentId }: { documentId: string }) {
     trackingNo: '',
   });
   const [addingDelivery, setAddingDelivery] = useState(false);
-
-  // 行内编辑缓冲
-  const [editBuffer, setEditBuffer] = useState<Record<string, EditBuffer>>({});
   const submittingRef = useRef<Set<string>>(new Set());
 
   // 视图锁定
@@ -134,17 +127,6 @@ export default function Delivery({ documentId }: { documentId: string }) {
       setDeliveries(list);
       const locks = docDetail?.viewLocks ?? {};
       setViewLocked(!!locks['delivery']);
-      // 初始化编辑缓冲
-      const buf: Record<string, EditBuffer> = {};
-      for (const d of list) {
-        buf[d.id] = {
-          trackingNo: d.trackingNo ?? '',
-          receiver: d.receiver ?? '',
-          receiverPhone: d.receiverPhone ?? '',
-          note: d.note ?? '',
-        };
-      }
-      setEditBuffer(buf);
     } catch (e) {
       message.error((e as Error).message || '加载交付记录失败');
     } finally {
@@ -182,15 +164,6 @@ export default function Delivery({ documentId }: { documentId: string }) {
         trackingNo: quickBuffer.trackingNo.trim() || undefined,
       });
       setDeliveries((prev) => [...prev, created]);
-      setEditBuffer((prev) => ({
-        ...prev,
-        [created.id]: {
-          trackingNo: created.trackingNo ?? '',
-          receiver: created.receiver ?? '',
-          receiverPhone: created.receiverPhone ?? '',
-          note: created.note ?? '',
-        },
-      }));
       // 重置快录行（保留方式，清空运单号）
       setQuickBuffer((prev) => ({ ...prev, trackingNo: '' }));
       message.success('已添加', 0.8);
@@ -204,60 +177,54 @@ export default function Delivery({ documentId }: { documentId: string }) {
   // ----------------------------------------------------------
   // 行内编辑：提交次要字段
   // ----------------------------------------------------------
-  const commitEditLine = useCallback(
-    async (deliveryId: string) => {
-      if (submittingRef.current.has(deliveryId)) return;
-      const buf = editBuffer[deliveryId];
-      if (!buf) return;
-      const original = deliveries.find((d) => d.id === deliveryId);
-      if (!original) return;
-      // 检查是否有变化
+  const commitDeliveryFields = useCallback(
+    async (
+      delivery: DeliveryView,
+      patch: {
+        trackingNo?: string;
+        receiver?: string;
+        receiverPhone?: string;
+        note?: string;
+        freight?: number;
+      },
+    ) => {
+      if (viewLocked) return;
+      if (submittingRef.current.has(delivery.id)) return;
+      const next = {
+        trackingNo: patch.trackingNo ?? delivery.trackingNo ?? '',
+        receiver: patch.receiver ?? delivery.receiver ?? '',
+        receiverPhone: patch.receiverPhone ?? delivery.receiverPhone ?? '',
+        note: patch.note ?? delivery.note ?? '',
+        freight: patch.freight ?? Number(delivery.freight ?? 0),
+      };
       const changed =
-        buf.trackingNo !== (original.trackingNo ?? '') ||
-        buf.receiver !== (original.receiver ?? '') ||
-        buf.receiverPhone !== (original.receiverPhone ?? '') ||
-        buf.note !== (original.note ?? '');
+        next.trackingNo !== (delivery.trackingNo ?? '') ||
+        next.receiver !== (delivery.receiver ?? '') ||
+        next.receiverPhone !== (delivery.receiverPhone ?? '') ||
+        next.note !== (delivery.note ?? '') ||
+        next.freight !== Number(delivery.freight ?? 0);
       if (!changed) return;
 
-      submittingRef.current.add(deliveryId);
+      submittingRef.current.add(delivery.id);
       try {
-        const updated = await trackSave(
-          deliveryId,
-          updateDelivery(deliveryId, {
-            trackingNo: buf.trackingNo || undefined,
-            receiver: buf.receiver || undefined,
-            receiverPhone: buf.receiverPhone || undefined,
-            note: buf.note || undefined,
+        const updated = (await trackSave(
+          delivery.id,
+          updateDelivery(delivery.id, {
+            trackingNo: next.trackingNo || undefined,
+            receiver: next.receiver || undefined,
+            receiverPhone: next.receiverPhone || undefined,
+            note: next.note || undefined,
+            freight: Number.isFinite(next.freight) && next.freight >= 0 ? next.freight : 0,
           }),
-        ) as DeliveryView;
+        )) as DeliveryView;
         setDeliveries((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
-        setEditBuffer((prev) => ({
-          ...prev,
-          [updated.id]: {
-            trackingNo: updated.trackingNo ?? '',
-            receiver: updated.receiver ?? '',
-            receiverPhone: updated.receiverPhone ?? '',
-            note: updated.note ?? '',
-          },
-        }));
-        // trackSave 静默处理保存反馈（行级状态点+全局状态栏），无需 message.success
       } catch (e) {
-        // trackSave 内部已弹 message.error，这里仅回滚到原值
         void e;
-        setEditBuffer((prev) => ({
-          ...prev,
-          [deliveryId]: {
-            trackingNo: original.trackingNo ?? '',
-            receiver: original.receiver ?? '',
-            receiverPhone: original.receiverPhone ?? '',
-            note: original.note ?? '',
-          },
-        }));
       } finally {
-        submittingRef.current.delete(deliveryId);
+        submittingRef.current.delete(delivery.id);
       }
     },
-    [editBuffer, deliveries, trackSave],
+    [viewLocked, trackSave],
   );
 
   // ----------------------------------------------------------
@@ -373,7 +340,7 @@ export default function Delivery({ documentId }: { documentId: string }) {
         title: '配送方式',
         key: 'deliveryMethod',
         dataIndex: 'deliveryMethod',
-        minWidth: 100,
+        minWidth: COL_WIDTHS.TAG_L,
         renderMode: 'custom',
         align: 'center',
         render: (_v: any, record: DeliveryView) => (
@@ -386,94 +353,84 @@ export default function Delivery({ documentId }: { documentId: string }) {
         title: '物流单号',
         key: 'trackingNo',
         dataIndex: 'trackingNo',
-        minWidth: 140,
+        minWidth: COL_WIDTHS.NAME_S,
         renderMode: 'custom',
         align: 'center',
-        render: (_v: any, record: DeliveryView) => {
-          if (viewLocked) return record.trackingNo || '—';
-          const buf = editBuffer[record.id];
-          return (
-            <DsInput
-              variant="embedded"
-              size="sm"
-              value={buf?.trackingNo ?? record.trackingNo ?? ''}
-              placeholder="运单号"
-              onChange={(e) =>
-                setEditBuffer((prev) => ({
-                  ...prev,
-                  [record.id]: { ...prev[record.id], trackingNo: e.target.value },
-                }))
-              }
-              onBlur={() => commitEditLine(record.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitEditLine(record.id); }}
-              style={{ width: '100%', height: '100%', padding: '0 4px', textAlign: 'center' }}
-            />
-          );
-        },
+        render: (_v: any, record: DeliveryView) => (
+          <WorkbenchFieldCell
+            text={record.trackingNo || ''}
+            placeholder="运单号"
+            align="center"
+            allowEmpty
+            disabled={viewLocked}
+            title="物流单号"
+            onApply={(next) => void commitDeliveryFields(record, { trackingNo: next })}
+          />
+        ),
       },
       {
         title: '收货人',
         key: 'receiver',
         dataIndex: 'receiver',
-        minWidth: 100,
+        minWidth: COL_WIDTHS.TAG_L,
         renderMode: 'custom',
         align: 'center',
-        render: (_v: any, record: DeliveryView) => {
-          if (viewLocked) return record.receiver || '—';
-          const buf = editBuffer[record.id];
-          return (
-            <DsInput
-              variant="embedded"
-              size="sm"
-              value={buf?.receiver ?? record.receiver ?? ''}
-              placeholder="收货人"
-              onChange={(e) =>
-                setEditBuffer((prev) => ({
-                  ...prev,
-                  [record.id]: { ...prev[record.id], receiver: e.target.value },
-                }))
-              }
-              onBlur={() => commitEditLine(record.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitEditLine(record.id); }}
-              style={{ width: '100%', height: '100%', padding: '0 4px', textAlign: 'center' }}
-            />
-          );
-        },
+        render: (_v: any, record: DeliveryView) => (
+          <WorkbenchFieldCell
+            text={record.receiver || ''}
+            placeholder="收货人"
+            align="center"
+            allowEmpty
+            disabled={viewLocked}
+            title="收货人"
+            onApply={(next) => void commitDeliveryFields(record, { receiver: next })}
+          />
+        ),
       },
       {
         title: '联系电话',
         key: 'receiverPhone',
         dataIndex: 'receiverPhone',
-        minWidth: 130,
+        minWidth: COL_WIDTHS.NAME_S,
         renderMode: 'custom',
         align: 'center',
-        render: (_v: any, record: DeliveryView) => {
-          if (viewLocked) return record.receiverPhone || '—';
-          const buf = editBuffer[record.id];
-          return (
-            <DsInput
-              variant="embedded"
-              size="sm"
-              value={buf?.receiverPhone ?? record.receiverPhone ?? ''}
-              placeholder="电话"
-              onChange={(e) =>
-                setEditBuffer((prev) => ({
-                  ...prev,
-                  [record.id]: { ...prev[record.id], receiverPhone: e.target.value },
-                }))
-              }
-              onBlur={() => commitEditLine(record.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitEditLine(record.id); }}
-              style={{ width: '100%', height: '100%', padding: '0 4px', textAlign: 'center' }}
-            />
-          );
-        },
+        render: (_v: any, record: DeliveryView) => (
+          <WorkbenchFieldCell
+            text={record.receiverPhone || ''}
+            placeholder="电话"
+            align="center"
+            allowEmpty
+            disabled={viewLocked}
+            title="联系电话"
+            onApply={(next) => void commitDeliveryFields(record, { receiverPhone: next })}
+          />
+        ),
+      },
+      {
+        title: '运费',
+        key: 'freight',
+        dataIndex: 'freight',
+        minWidth: COL_WIDTHS.AMOUNT,
+        renderMode: 'custom',
+        align: 'center',
+        render: (_v: unknown, record: DeliveryView) => (
+          <WorkbenchFieldCell
+            text={String(record.freight ?? 0)}
+            placeholder="0"
+            align="center"
+            mono
+            input="number"
+            disabled={viewLocked}
+            title="运费"
+            onApply={(next) => void commitDeliveryFields(record, { freight: parseFloat(next) || 0 })}
+          />
+        ),
       },
       {
         title: '状态',
         key: 'status',
         dataIndex: 'status',
-        minWidth: 90,
+        minWidth: COL_WIDTHS.TAG_L,
         renderMode: 'custom',
         align: 'center',
         render: (_v: any, record: DeliveryView) => (
@@ -484,7 +441,7 @@ export default function Delivery({ documentId }: { documentId: string }) {
         title: '发货时间',
         key: 'shippedAt',
         dataIndex: 'shippedAt',
-        minWidth: 140,
+        minWidth: COL_WIDTHS.DATETIME,
         renderMode: 'custom',
         align: 'center',
         render: (_v: any, record: DeliveryView) => (
@@ -497,7 +454,7 @@ export default function Delivery({ documentId }: { documentId: string }) {
         title: '签收时间',
         key: 'signedAt',
         dataIndex: 'signedAt',
-        minWidth: 140,
+        minWidth: COL_WIDTHS.DATETIME,
         renderMode: 'custom',
         render: (_v: any, record: DeliveryView) => (
           <span style={{ color: record.signedAt ? 'var(--text-secondary)' : 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--body-sm-font-size)' }}>
@@ -509,33 +466,23 @@ export default function Delivery({ documentId }: { documentId: string }) {
         title: '备注',
         key: 'note',
         dataIndex: 'note',
-        minWidth: 120,
+        minWidth: COL_WIDTHS.NAME_S,
         renderMode: 'custom',
         align: 'center',
-        render: (_v: any, record: DeliveryView) => {
-          if (viewLocked) return record.note || '—';
-          const buf = editBuffer[record.id];
-          return (
-            <DsInput
-              variant="embedded"
-              size="sm"
-              value={buf?.note ?? record.note ?? ''}
-              placeholder="备注"
-              onChange={(e) =>
-                setEditBuffer((prev) => ({
-                  ...prev,
-                  [record.id]: { ...prev[record.id], note: e.target.value },
-                }))
-              }
-              onBlur={() => commitEditLine(record.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') commitEditLine(record.id); }}
-              style={{ width: '100%', height: '100%', padding: '0 4px', textAlign: 'center' }}
-            />
-          );
-        },
+        render: (_v: any, record: DeliveryView) => (
+          <WorkbenchFieldCell
+            text={record.note || ''}
+            placeholder="备注"
+            align="center"
+            allowEmpty
+            disabled={viewLocked}
+            title="备注"
+            onApply={(next) => void commitDeliveryFields(record, { note: next })}
+          />
+        ),
       },
     ],
-    [viewLocked, editBuffer, commitEditLine],
+    [viewLocked, commitDeliveryFields],
   );
 
   // ----------------------------------------------------------
@@ -597,49 +544,41 @@ export default function Delivery({ documentId }: { documentId: string }) {
       {!viewLocked && (
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--spacer-8)',
             padding: 'var(--spacer-8) var(--spacer-12)',
             marginBottom: 'var(--spacer-8)',
-            background: 'var(--bg-brand-popup)',
-            border: '1px dashed var(--border-brand)',
+            background: 'var(--bg-base-secondary)',
+            border: '1px solid var(--border-neutral-l1)',
             borderRadius: 'var(--radius-6)',
           }}
         >
-          <PlusOutlined style={{ color: 'var(--text-tertiary)' }} />
-          <DsSelect
-            size="sm"
-            value={quickBuffer.deliveryMethod}
-            options={DELIVERY_METHOD_OPTIONS}
-            style={{ width: 120 }}
-            disabled={addingDelivery}
-            onChange={(val) =>
-              setQuickBuffer((prev) => ({ ...prev, deliveryMethod: val as DeliveryMethod }))
-            }
-          />
-          <DsInput
-            size="sm"
-            value={quickBuffer.trackingNo}
-            placeholder="物流单号（可选）"
-            style={{ width: 180 }}
-            disabled={addingDelivery}
-            onChange={(e) =>
-              setQuickBuffer((prev) => ({ ...prev, trackingNo: e.target.value }))
-            }
-            onPressEnter={commitQuickAdd}
-          />
-          <DsButton
-            variant="primary"
-            size="sm"
-            loading={addingDelivery}
-            onClick={commitQuickAdd}
-          >
-            添加
-          </DsButton>
-          <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)' }}>
-            回车快速添加
-          </span>
+          <div className="ds-workbench-quick-row">
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>方式:</span>
+            <DsSelect
+              size="sm"
+              value={quickBuffer.deliveryMethod}
+              options={DELIVERY_METHOD_OPTIONS}
+              style={{ width: COL_WIDTHS.NAME_S }}
+              disabled={addingDelivery}
+              onChange={(val) =>
+                setQuickBuffer((prev) => ({ ...prev, deliveryMethod: val as DeliveryMethod }))
+              }
+            />
+            <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>单号:</span>
+            <DsInput
+              size="sm"
+              value={quickBuffer.trackingNo}
+              placeholder="选填"
+              style={{ width: COL_WIDTHS.NAME_M }}
+              disabled={addingDelivery}
+              onChange={(e) =>
+                setQuickBuffer((prev) => ({ ...prev, trackingNo: e.target.value }))
+              }
+              onPressEnter={commitQuickAdd}
+            />
+            <DsButton variant="primary" size="sm" loading={addingDelivery} onClick={commitQuickAdd}>
+              添加
+            </DsButton>
+          </div>
         </div>
       )}
 
@@ -655,16 +594,6 @@ export default function Delivery({ documentId }: { documentId: string }) {
           rowKey="id"
           selectable={false}
           moreMenuRenderer={moreMenuRenderer}
-          onCellCommit={(rowIndex, columnKey, value) => {
-            const record = deliveries[rowIndex];
-            if (!record) return;
-            setEditBuffer((prev) => ({
-              ...prev,
-              [record.id]: { ...prev[record.id], [columnKey]: String(value) },
-            }));
-            // 延迟提交让缓冲更新后触发保存
-            setTimeout(() => commitEditLine(record.id), 0);
-          }}
           emptyText="暂无交付记录"
         />
       )}

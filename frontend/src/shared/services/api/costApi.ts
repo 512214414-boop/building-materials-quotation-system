@@ -84,6 +84,8 @@ export interface CostDocumentLineView {
   productId: string | null;
   /** 商品全名快照 */
   productRef: string;
+  productName?: string | null;
+  brandName?: string | null;
   /** v8.0：规格型号快照（来自 SPU.specModel） */
   spec: string | null;
   unit: string;

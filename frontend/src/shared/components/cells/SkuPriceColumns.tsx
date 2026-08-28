@@ -39,6 +39,12 @@ export interface SkuPriceRowData {
   specId: string;
   /** 产品 ID（价格持久化 / 弹窗定位用） */
   productId: string;
+  brandName: string;
+  categoryName: string;
+  /** 分类 ID（进价选渠道推荐用） */
+  categoryId?: number | null;
+  /** 品牌 ID（进价选渠道推荐用） */
+  brandId?: string;
   defaultUnitId: string | null;
   /** 宽表默认单位名（未加载选项时兜底显示） */
   defaultUnitName?: string | null;
@@ -102,8 +108,8 @@ export interface SkuPriceColumnsOptions<T = any> {
   priceTypes: PriceTypeView[];
   /** 价格类型字典变更回调 */
   onPriceTypesChange: (priceTypes: PriceTypeView[]) => void;
-  /** 行内「点位」点击 → 批量调整进价（业务回调） */
-  onEditPoint?: (row: SkuPriceRowData, pp: PurchasePriceItem) => void;
+  /** 点位写库后刷新列表/该行（宽表默认价会变） */
+  onPointPersisted?: (row: SkuPriceRowData) => void | Promise<void>;
   /** 售价/进价面板标题（默认 售价明细/进价明细） */
   saleTitle?: string;
   purchaseTitle?: string;
@@ -113,8 +119,10 @@ export interface SkuPriceColumnsOptions<T = any> {
    * 与产品编辑弹窗单位区同构；不提供则保留纯切换下拉（兼容旧场景）。
    */
   unitManage?: {
-    /** 单位改名持久化 */
+    /** 单位改名持久化（当前：这条规格换绑） */
     onRename: (row: SkuPriceRowData, unitId: string, name: string) => Promise<void> | void;
+    /** 单位改全局（字典改名/并档） */
+    onRenameGlobal?: (row: SkuPriceRowData, unitId: string, name: string) => Promise<void> | void;
     /** 换算率变更持久化 */
     onRateChange: (row: SkuPriceRowData, unitId: string, rate: string) => Promise<void> | void;
     /** 设默认单位（isDisplay 落库） */
@@ -291,7 +299,7 @@ function createUnitColumn<T>(
           return (
             <div
               style={{
-                padding: '12px 6px',
+                padding: 'var(--overlay-pad-y) var(--overlay-pad-x)',
                 textAlign: 'center',
                 color: 'var(--text-tertiary)',
               }}
@@ -311,14 +319,18 @@ function createUnitColumn<T>(
           isDisplay: u.isDisplay,
         }));
         return (
-          // v1.9：单功能编辑面板紧凑（minWidth 190）
-          <RecordExpandPanel minWidth={190}>
+          <RecordExpandPanel>
             <UnitManagePanel
               units={unitItems}
               conversions={conversionsMap}
               selectedUnitKey={selectedRowKey ?? undefined}
               onSwitch={(unitId) => onSelect(unitId)}
               onRename={(unitId, name) => void unitManage.onRename(row, unitId, name)}
+              onRenameGlobal={
+                unitManage.onRenameGlobal
+                  ? (unitId, name) => void unitManage.onRenameGlobal?.(row, unitId, name)
+                  : undefined
+              }
               onRateChange={(unitId, rate) => void unitManage.onRateChange(row, unitId, rate)}
               onSetDisplay={(unitId) => void unitManage.onSetDisplay(row, unitId)}
               onDelete={(unitId) => void unitManage.onDelete(row, unitId)}
@@ -341,7 +353,7 @@ function createPriceColumn<T>(
   opts: SkuPriceColumnsOptions<T>,
   kind: 'sale' | 'purchase',
 ): UnifiedTableColumn<T> {
-  const { rowStates, actions, getRowData, priceTypes, onPriceTypesChange, onEditPoint } = opts;
+  const { rowStates, actions, getRowData, priceTypes, onPriceTypesChange, onPointPersisted } = opts;
   const isSale = kind === 'sale';
   const title = isSale ? '售价' : '进价';
   const defaultTab = isSale ? 'sale' : 'purchase';
@@ -369,6 +381,8 @@ function createPriceColumn<T>(
                 priceTypeName: (p as SalePriceItem).priceTypeName,
                 price: p.price,
                 isDefault: p.isDefault,
+                point: (p as SalePriceItem).point,
+                effectivePrice: (p as SalePriceItem).effectivePrice,
               }
             : {
                 supplierId: (p as PurchasePriceItem).supplierId,
@@ -399,9 +413,7 @@ function createPriceColumn<T>(
 
         // ① 当前显示记录（选中→默认）已录价 → 直接显示
         if (record && record.price != null && String(record.price).trim()) {
-          const eff = isSale
-            ? parseFloat(String(record.price))
-            : calcEffectivePrice(record as unknown as PurchasePriceItem);
+          const eff = calcEffectivePrice(record as unknown as PurchasePriceItem);
           if (!isNaN(eff)) {
             return (
               <span style={{ fontWeight: 500, color: priceColor }}>{`¥${eff}`}</span>
@@ -420,7 +432,7 @@ function createPriceColumn<T>(
                 (p) => p.unitIdx === idx && p.isDefault && p.price.trim(),
               );
               if (!item) return null;
-              const eff = isSale ? parseFloat(item.price) : calcEffectivePrice(item);
+              const eff = calcEffectivePrice(item);
               return isNaN(eff) ? null : eff;
             },
           });
@@ -530,7 +542,17 @@ function createPriceColumn<T>(
             priceTypes={priceTypes}
             onPriceTypesChange={onPriceTypesChange}
             defaultTab={defaultTab}
-            onEditPoint={(pp) => onEditPoint?.(row, pp)}
+            pointCtx={{
+              specBrandId: row.specBrandId,
+              brandName: row.brandName,
+              categoryName: row.categoryName,
+              onPersisted: () => onPointPersisted?.(row),
+            }}
+            supplierCandidateCtx={{
+              categoryId: row.categoryId ?? undefined,
+              brandId: row.brandId || undefined,
+              unitId: rowState?.selectedUnitId ?? undefined,
+            }}
             // v2.0：切换选中接线（selectKey 即业务 key，无需解析）
             selectedSalePriceTypeId={isSale ? (selectedRowKey ?? undefined) : undefined}
             onSaleSelect={isSale ? onSelect : undefined}
