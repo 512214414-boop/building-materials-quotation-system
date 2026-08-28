@@ -15,7 +15,7 @@
 //   </div>
 //   缩放控件在舞台外，不随画面缩放
 
-import { useCallback, useEffect, useLayoutEffect, useState, memo } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, memo } from 'react';
 import type { ReactNode } from 'react';
 import DsShellRow from './DsShellRow.js';
 import SharedBadgeOverlay from './badge/SharedBadgeOverlay.js';
@@ -70,6 +70,8 @@ export default function AppShell({
   flush = false,
 }: AppShellProps) {
   const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
   const clampZoom = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10)), []);
 
   useEffect(() => {
@@ -102,6 +104,51 @@ export default function AppShell({
     };
     window.addEventListener('wheel', onWheel, { passive: false });
     return () => window.removeEventListener('wheel', onWheel);
+  }, [clampZoom]);
+
+  // 双指缩放（移动端）：两指捏合/张开 → 等比缩放画布
+  useEffect(() => {
+    let pinchDist = 0;
+    let pinchZoom = 1;
+    let pinching = false;
+
+    const dist2 = (t: TouchList) => {
+      const dx = t[0].clientX - t[1].clientX;
+      const dy = t[0].clientY - t[1].clientY;
+      return Math.hypot(dx, dy);
+    };
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchDist = dist2(e.touches);
+        pinchZoom = zoomRef.current;
+        pinching = true;
+      }
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (!pinching || e.touches.length !== 2) return;
+      e.preventDefault();
+      const d = dist2(e.touches);
+      if (pinchDist > 0) {
+        setZoom(clampZoom(pinchZoom * (d / pinchDist)));
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinching = false;
+    };
+
+    window.addEventListener('touchstart', onStart, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+    return () => {
+      window.removeEventListener('touchstart', onStart);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
+    };
   }, [clampZoom]);
 
   return (
