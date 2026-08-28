@@ -764,12 +764,19 @@
  *   </div>
  */
 
-/* 舞台：固定 1200、水平居中、查看层 zoom 只打这里一次 */
+/* 舞台 wrapper：占布局宽度 = 1200*zoom，让 body overflow-x 滚动正确 */
+.ds-canvas-stage-wrap {
+  width: calc(var(--shell-canvas-width) * var(--shell-zoom));
+  margin: 0 auto;
+  position: relative;
+}
+
+/* 舞台：固定 1200、transform:scale 等比缩放（字号/间距/padding/border 全缩） */
 .ds-canvas-stage {
   position: relative;
   width: var(--shell-canvas-width);
-  margin: 0 auto;
-  zoom: var(--shell-zoom);
+  transform: scale(var(--shell-zoom));
+  transform-origin: top left;
 }
 
 /* 骨架文档流：铺满舞台。边框/内边距仍在壳上，确认画布边界 */

@@ -133,18 +133,6 @@ a:hover {
   line-height: var(--shell-row-h);
 }
 
-/* 远程桌面式整体缩放：zoom 只打在 .ds-canvas-stage（见 elements.css）。
- * 浮层/弹窗住在舞台叠加层里一起缩。缩放控件在舞台外。
- * 禁止 zoom 打在 html/body，禁止再给 portal 节点列清单打 zoom。 */
-html.ds-zoom-text-compensate .ds-canvas-stage {
-  -webkit-text-size-adjust: calc(100% * var(--shell-zoom));
-  text-size-adjust: calc(100% * var(--shell-zoom));
-}
-html.ds-zoom-text-compensate .ds-canvas-stage :is(input, textarea, select, button) {
-  -webkit-text-size-adjust: calc(100% * var(--shell-zoom));
-  text-size-adjust: calc(100% * var(--shell-zoom));
-}
-
 /* v11.17：Drawer 保持固定宽度（DsDrawer 1200/1000/800 层级递减），不随设备全屏化；
    视口容不下时由 wrap 横向滚动查看——设备大小不干预，滚动交由用户 */
 .ant-drawer-wrap {

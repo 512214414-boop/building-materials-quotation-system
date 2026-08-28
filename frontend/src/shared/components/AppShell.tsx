@@ -19,7 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, memo } from 
 import type { ReactNode } from 'react';
 import DsShellRow from './DsShellRow.js';
 import SharedBadgeOverlay from './badge/SharedBadgeOverlay.js';
-import { setShellZoom, syncZoomTextCompensate } from '../utils/shellZoom.js';
+import { setShellZoom } from '../utils/shellZoom.js';
 import { bindCanvasStage, unbindCanvasStage } from '../utils/canvasStage.js';
 
 export interface AppShellProps {
@@ -73,10 +73,6 @@ export default function AppShell({
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
   const clampZoom = useCallback((z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 10) / 10)), []);
-
-  useEffect(() => {
-    syncZoomTextCompensate();
-  }, []);
 
   useLayoutEffect(() => {
     setShellZoom(zoom, false);
@@ -153,11 +149,11 @@ export default function AppShell({
 
   return (
     <>
+      <div className="ds-canvas-stage-wrap">
       <div
         ref={bindStage}
         className="ds-canvas-stage"
         data-shell-zoom={zoom}
-        style={{ zoom }}
       >
         <div className="ds-app-shell" data-shared-badge="C44">
           <DsShellRow className="ds-shell-header" style={{ position: 'sticky', top: 0, zIndex: 'var(--shell-z-header)' }}>
@@ -187,6 +183,7 @@ export default function AppShell({
         </div>
 
         <OverlayLayers />
+      </div>
       </div>
 
       <div
