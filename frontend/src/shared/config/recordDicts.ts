@@ -57,6 +57,7 @@ export const brandDict: DictRecordConfig<GlobalBrandView> = {
   editPlaceholder: '输入新品牌名称',
   emptyText: '暂无品牌，请在上方输入框新增',
   entityName: '品牌',
+  suggestField: 'brand',
 };
 
 // ============================================================
@@ -117,6 +118,7 @@ export const priceTypeDict: DictRecordConfig<PriceTypeView> = {
   editPlaceholder: '输入新价格类型名称',
   emptyText: '暂无价格类型，请在上方输入框新增',
   entityName: '价格类型',
+  suggestField: 'priceType',
 };
 
 // ============================================================

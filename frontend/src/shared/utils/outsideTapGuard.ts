@@ -17,8 +17,9 @@ export interface OutsideTapGuardOptions {
   onTapOutside: () => void;
 }
 
-/** down→up 位移超过该值视为滑动/拖动，不算点按（px） */
-const TAP_MAX_MOVE_PX = 10;
+/** down→up 位移超过该值视为滑动/拖动，不算点按（px）。touch 用更大阈值（手指精度低） */
+const TAP_MAX_MOVE_PX_MOUSE = 10;
+const TAP_MAX_MOVE_PX_TOUCH = 16;
 /** 按压超过该值视为长按，不算点按（ms） */
 const TAP_MAX_MS = 800;
 
@@ -31,6 +32,10 @@ export function attachOutsideTapGuard({
   let downAt = 0;
   let downTarget: EventTarget | null = null;
   let downEvent: PointerEvent | null = null;
+  let downPointerType = 'mouse';
+
+  const tapMaxMove = (pt: string) =>
+    pt === 'touch' ? TAP_MAX_MOVE_PX_TOUCH : TAP_MAX_MOVE_PX_MOUSE;
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) {
@@ -43,12 +48,22 @@ export function attachOutsideTapGuard({
     downAt = Date.now();
     downTarget = e.target;
     downEvent = e;
+    downPointerType = e.pointerType || 'mouse';
+  };
+
+  // 移动中实时判定：一旦超阈值立即清除 down 状态，不等 pointercancel
+  // （移动端 overflow-x 滚动不一定及时发 pointercancel，靠 pointermove 兜底）
+  const onPointerMove = (e: PointerEvent) => {
+    if (!downEvent) return;
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) > tapMaxMove(downPointerType)) {
+      downTarget = null;
+      downEvent = null;
+    }
   };
 
   const onPointerUp = (e: PointerEvent) => {
-    // 没有配对的 down（含打开浮层那次交互的尾巴）不算点按
     if (!downEvent) return;
-    const moved = Math.hypot(e.clientX - downX, e.clientY - downY) > TAP_MAX_MOVE_PX;
+    const moved = Math.hypot(e.clientX - downX, e.clientY - downY) > tapMaxMove(downPointerType);
     const held = Date.now() - downAt > TAP_MAX_MS;
     const target = downTarget;
     const event = downEvent;
@@ -64,9 +79,9 @@ export function attachOutsideTapGuard({
   };
 
   // rAF 延迟挂载：打开浮层的那次交互本身不得触发关闭
-  // （沿袭旧版 mousedown/focusin 的 rAF 注册模式）
   const raf = requestAnimationFrame(() => {
     document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('pointermove', onPointerMove, true);
     document.addEventListener('pointerup', onPointerUp, true);
     document.addEventListener('pointercancel', onPointerCancel, true);
   });
@@ -74,6 +89,7 @@ export function attachOutsideTapGuard({
   return () => {
     cancelAnimationFrame(raf);
     document.removeEventListener('pointerdown', onPointerDown, true);
+    document.removeEventListener('pointermove', onPointerMove, true);
     document.removeEventListener('pointerup', onPointerUp, true);
     document.removeEventListener('pointercancel', onPointerCancel, true);
   };

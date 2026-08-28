@@ -18,6 +18,7 @@ import { useDebounce } from '../../hooks/useDebounce.js';
 import { useSuggest } from '../../hooks/useSuggest.js';
 import { allocPanelId, isClickOnRelatedPanel } from '../PanelTree.js';
 import { armNativeInput } from '../../utils/armNativeInput.js';
+import { attachOutsideTapGuard } from '../../utils/outsideTapGuard.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
 import { useCanvasApp } from '../../hooks/useCanvasApp.js';
 import type { SuggestField } from '../../services/api/baseDataApi.js';
@@ -332,12 +333,11 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
       }
       return true;
     };
-    const onPointerDown = (e: PointerEvent) => {
-      if (!isOutside(e.target)) return;
-      close();
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+    // 统一走 outsideTapGuard：点按才关，滑动/拖动画布不关（移动端友好）
+    return attachOutsideTapGuard({
+      isOutside: (t) => isOutside(t),
+      onTapOutside: () => close(),
+    });
   }, [req, busy, close]);
 
   useLayoutEffect(() => {
@@ -354,7 +354,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   const dictQuickCreate = !!(dictCfg?.create && (dictCfg.quickCreate ?? true));
   const suggestKw = useDebounce(dictSearch ? draft : '', 250);
   const { options: dictOptions, loading: dictLoading } = useSuggest({
-    field: req?.suggestField ?? req?.dictField ?? 'category',
+    field: req?.suggestField ?? dictCfg?.suggestField ?? req?.dictField ?? 'category',
     keyword: suggestKw,
     allowEmptyKeyword: true,
     enabled: dictSearch && suggestOpen,

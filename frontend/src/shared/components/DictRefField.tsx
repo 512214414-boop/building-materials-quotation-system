@@ -78,6 +78,8 @@ export interface DictRecordConfig<T extends { id: string | number; name: string 
    * 槽位自动不出快建行，只能走管理面板。列表列筛恒为 allowCreate=false。
    */
   quickCreate?: boolean;
+  /** 检索字段名（用于 suggest API 调用，如 'brand'/'supplier'/'category'；不传则需调用方传 suggestField） */
+  suggestField?: SuggestField;
 }
 
 // ============================================================
