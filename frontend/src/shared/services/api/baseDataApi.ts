@@ -1218,6 +1218,8 @@ export function getProduct(id: string, specId?: string, brandId?: string): Promi
 export interface SiblingSpec {
   id: string;
   specModel: string;
+  /** 规格备注（执行标准/企标/国标等，跟规格走） */
+  remark?: string;
   status: number;
   brandCount: number;
   /** 该 specModel 下的品牌（brandId 过滤时通常仅一条） */

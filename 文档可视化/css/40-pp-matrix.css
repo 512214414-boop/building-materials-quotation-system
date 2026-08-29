@@ -1,0 +1,173 @@
+/**
+ * 样式层 · pp
+ * 切片自：css/app.css 原 1539-1704 行
+ *
+ * 约定：样式按层叠顺序加载（见 index.html 的 <link> 顺序），顺序即优先级。
+ * 改一块样式，只读/只改对应文件；@media 块整块保留，不跨文件切断。
+ */
+.pp-matrix { grid-template-columns: 88px 72px 1fr; min-width: 280px; }
+.pp-matrix.pp-add-row { color: var(--muted); font-style: italic; cursor: default; }
+
+.dd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 100%;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 16px;
+}
+.dd.is-open { background: var(--accent-soft); }
+.dd-brand {
+  width: auto;
+  margin-right: 0;
+  padding: 0 6px;
+  flex: 0 0 auto;
+}
+.dd-more {
+  color: var(--muted);
+  background: #f7f3ea;
+}
+.pp-more { grid-template-columns: 1fr; min-width: 168px; }
+.pp-more-panel { overflow: visible; }
+.pp-row.pp-more {
+  cursor: default;
+  overflow: visible;
+}
+.pp-more .dd-brand { width: 100%; }
+.pp-more-q {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+.pp-more-input {
+  width: 100%;
+  height: 22px;
+  border: 1px solid var(--line-strong);
+  padding: 0 6px;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+.nslot-note { color: var(--ink-2); }
+.ins {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  border: 1px solid #1f4d3a;
+  color: #1f4d3a;
+  background: #fff;
+  cursor: pointer;
+  font-size: 10px;
+}
+.price { font-variant-numeric: tabular-nums; }
+.empty-note {
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.modal[hidden] { display: none; }
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 28, 28, 0.35);
+}
+.modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(860px, calc(100% - 48px));
+  max-height: calc(100% - 48px);
+  overflow: auto;
+  margin: 24px auto;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+}
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h3 { font-size: 16px; }
+.modal-sub { margin-top: 4px; font-size: var(--fs-sm); color: var(--muted); }
+.modal-close {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  cursor: pointer;
+}
+.modal-dep {
+  padding: 10px 16px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  background: #f7f3ea;
+}
+.modal-code {
+  padding: 8px 16px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--line);
+}
+.align-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+}
+.align-table td {
+  border-top: 1px solid var(--line);
+  padding: 7px 14px;
+  font-size: var(--fs-sm);
+  vertical-align: top;
+}
+.align-table .col-db {
+  width: 28%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.picker-use .why-beats {
+  padding: 8px 14px 4px 32px;
+}
+.picker-use .snap {
+  padding: 0 14px 10px;
+}
+.modal-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.modal-table th, .modal-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 12px;
+  text-align: left;
+  vertical-align: top;
+  font-size: var(--fs-sm);
+}
+.modal-table th { background: #f0ece3; font-weight: 650; }
+.modal-table td.col-db {
+  width: 26%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.modal-table td.col-fk {
+  width: 28%;
+  color: var(--ink-2);
+}
+.modal-table tr:last-child td { border-bottom: 0; }
+

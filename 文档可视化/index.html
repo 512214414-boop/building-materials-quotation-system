@@ -4,7 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>文档可视化 · 业务指导思想与基础数据</title>
-  <link rel="stylesheet" href="css/app.css" />
+  <!-- 样式层：加载顺序即层叠顺序，@media 整块在 20-guest 内，不要跨文件拆 -->
+  <link rel="stylesheet" href="css/00-base.css" />
+  <link rel="stylesheet" href="css/10-chapter.css" />
+  <link rel="stylesheet" href="css/20-guest.css" />
+  <link rel="stylesheet" href="css/30-pp.css" />
+  <link rel="stylesheet" href="css/40-pp-matrix.css" />
 </head>
 <body>
   <aside class="nav">
@@ -114,7 +119,121 @@
     </div>
   </div>
 
-  <script src="js/data.js"></script>
-  <script src="js/app.js"></script>
+  <!-- ============================================================
+       加载清单 = 唯一装配处。顺序即依赖顺序。
+       分层：内容层 js/data/** → 渲染层 js/app/**
+       加一章：建 js/data/ 下文件 → 05-nav-groups 登记 → 此处加一行
+       详见侧栏「知识沉淀 · 文档项目怎么分层」
+       ============================================================ -->
+
+  <!-- 内容层 · 命名空间（必须最先） -->
+  <script src="js/data/00-namespace.js"></script>
+
+  <!-- 内容层 · 治理 / 章节 / 交付树 -->
+  <script src="js/data/00-governance.js"></script>
+  <script src="js/data/01-chapters.js"></script>
+  <script src="js/data/02-delivery-map.js"></script>
+  <script src="js/data/03-manage-modules.js"></script>
+
+  <!-- 内容层 · 指导思想 11 章 + 知识沉淀 5 章（一章一文件） -->
+  <script src="js/data/04-why/01-scope.js"></script>
+  <script src="js/data/04-why/02-sales.js"></script>
+  <script src="js/data/04-why/03-fulfill.js"></script>
+  <script src="js/data/04-why/04-money.js"></script>
+  <script src="js/data/04-why/05-after.js"></script>
+  <script src="js/data/04-why/06-shared.js"></script>
+  <script src="js/data/04-why/07-canon.js"></script>
+  <script src="js/data/04-why/08-inbound.js"></script>
+  <script src="js/data/04-why/09-objects.js"></script>
+  <script src="js/data/04-why/10-flow.js"></script>
+  <script src="js/data/04-why/11-habit.js"></script>
+  <script src="js/data/04-why/12-know-method.js"></script>
+  <script src="js/data/04-why/13-know-cause.js"></script>
+  <script src="js/data/04-why/14-know-brief.js"></script>
+  <script src="js/data/04-why/15-know-loop.js"></script>
+  <script src="js/data/04-why/16-know-layout.js"></script>
+
+  <!-- 内容层 · 侧栏导航注册表（加章时改这里） -->
+  <script src="js/data/05-nav-groups.js"></script>
+  <script src="js/data/06-modules.js"></script>
+
+  <!-- 内容层 · 基础数据管理 -->
+  <script src="js/data/07-archive-framework/01-kicker.js"></script>
+  <script src="js/data/07-archive-framework/02-pointEdit.js"></script>
+  <script src="js/data/07-archive-framework/03-privateGate.js"></script>
+  <script src="js/data/07-archive-framework/04-pagePrivate.js"></script>
+  <script src="js/data/07-archive-framework/05-pagesList.js"></script>
+  <script src="js/data/08-method.js"></script>
+  <script src="js/data/09-why.js"></script>
+  <script src="js/data/10-point-model.js"></script>
+  <script src="js/data/11-product-intent.js"></script>
+  <script src="js/data/12-product-need.js"></script>
+  <script src="js/data/13-table-scene.js"></script>
+  <script src="js/data/14-tables/01-category.js"></script>
+  <script src="js/data/14-tables/02-product_brand.js"></script>
+  <script src="js/data/14-tables/03-sale_price.js"></script>
+  <script src="js/data/14-tables/04-supplier_candidates_query.js"></script>
+  <script src="js/data/15-kinds.js"></script>
+  <script src="js/data/16-fill.js"></script>
+  <script src="js/data/17-inventory.js"></script>
+  <script src="js/data/18-tree.js"></script>
+  <script src="js/data/19-law.js"></script>
+  <script src="js/data/20-n-slot.js"></script>
+  <script src="js/data/21-layers.js"></script>
+  <script src="js/data/22-picker.js"></script>
+  <script src="js/data/23-archive-layers.js"></script>
+  <script src="js/data/24-archive.js"></script>
+  <script src="js/data/25-sale-spec-points.js"></script>
+  <script src="js/data/26-purchase-spec-points.js"></script>
+  <script src="js/data/27-sale-point-rules.js"></script>
+  <script src="js/data/28-point-rules.js"></script>
+  <script src="js/data/29-supplier-candidates.js"></script>
+  <script src="js/data/30-supplier-model/01-kicker.js"></script>
+  <script src="js/data/30-supplier-model/02-displaySplit.js"></script>
+  <script src="js/data/30-supplier-model/03-demoRows.js"></script>
+  <script src="js/data/30-supplier-model/04-tables.js"></script>
+  <script src="js/data/30-supplier-model/05-tree.js"></script>
+  <script src="js/data/31-warehouse-model/01-kicker.js"></script>
+  <script src="js/data/31-warehouse-model/02-tables.js"></script>
+  <script src="js/data/31-warehouse-model/03-ui.js"></script>
+  <script src="js/data/32-customer-model/01-kicker.js"></script>
+  <script src="js/data/32-customer-model/02-tables.js"></script>
+  <script src="js/data/32-customer-model/03-demoRows.js"></script>
+
+  <!-- 内容层 · 界面基座 / 订单中心（八视图一视图一文件） -->
+  <script src="js/data/33-canvas-ui.js"></script>
+  <script src="js/data/34-order-framework.js"></script>
+  <script src="js/data/35-order-tables.js"></script>
+  <script src="js/data/36-order-views/01-purchase-quote.js"></script>
+  <script src="js/data/36-order-views/02-payment.js"></script>
+  <script src="js/data/36-order-views/03-allocation.js"></script>
+  <script src="js/data/36-order-views/04-delivery.js"></script>
+  <script src="js/data/36-order-views/05-cost.js"></script>
+  <script src="js/data/36-order-views/06-refund.js"></script>
+  <script src="js/data/36-order-views/07-summary.js"></script>
+  <script src="js/data/36-order-views/08-archive.js"></script>
+
+  <!-- 内容层 · 实体关系槽位 / 注册表 / 演示数据 -->
+  <script src="js/data/37-entity-slot-model.js"></script>
+  <script src="js/data/38-get-module-meta.js"></script>
+  <script src="js/data/39-get-module-tables.js"></script>
+  <script src="js/data/40-demo-scopes.js"></script>
+  <script src="js/data/41-demo-products.js"></script>
+
+  <!-- 渲染层：跨文件共享全局作用域，最后一块负责启动（DOMContentLoaded） -->
+  <script src="js/app/000-core.js"></script>
+  <script src="js/app/010-render-why-beats.js"></script>
+  <script src="js/app/020-render-map-node.js"></script>
+  <script src="js/app/030-fallback-copy-text.js"></script>
+  <script src="js/app/040-append-ui-layer.js"></script>
+  <script src="js/app/050-append-picker-surface-demo.js"></script>
+  <script src="js/app/060-append-archive-layers-block.js"></script>
+  <script src="js/app/070-render-scope-panel-demo.js"></script>
+  <script src="js/app/080-open-modal.js"></script>
+  <script src="js/app/090-render-slot-layer.js"></script>
+  <script src="js/app/100-dd.js"></script>
+  <script src="js/app/110-render-unit-panel.js"></script>
+  <script src="js/app/120-demo-channel-names.js"></script>
+  <script src="js/app/130-render-demo.js"></script>
 </body>
 </html>

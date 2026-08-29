@@ -1,0 +1,347 @@
+/**
+ * 渲染层 · renderScopePanelDemo
+ * 切片自：js/app.js 原 1845-2180 行
+ *
+ * 约定：渲染层跨 <script> 共享全局作用域（原外层 IIFE 已移除）。
+ *   - 顶层 function / var 都是全局的，按 index.html 的顺序加载；
+ *   - 真正的调用发生在 DOMContentLoaded（最后一个文件），故跨文件引用安全；
+ *   - 改一个渲染块，只读/只改对应文件，不必读全量。
+ *
+ * 含 336 行渲染逻辑。
+ */
+  function renderScopePanelDemo(row) {
+    var box = el("div", "pp pp-scope");
+    box.appendChild(el("div", "pp-title", "经营范围 · " + row.name));
+    var chips = renderScopeChipsDemo(row.categories, row.brands, true);
+    if (!chips) {
+      box.appendChild(el("div", "empty-note", "尚未勾选 · 下方字典勾选添加"));
+    } else {
+      var selected = el("div", "scope-selected");
+      selected.appendChild(chips);
+      box.appendChild(selected);
+    }
+    var body = el("div", "scope-dual");
+    var left = el("div", "scope-col");
+    left.appendChild(el("div", "scope-col-k", "经营分类 · 勾选添加"));
+    ["给水管", "PPR管", "排水管", "线管", "阀门"].forEach(function (name) {
+      var on = (row.categories || []).indexOf(name) >= 0;
+      left.appendChild(el("label", "scope-check" + (on ? " is-on" : ""), (on ? "☑ " : "☐ ") + name));
+    });
+    var right = el("div", "scope-col");
+    right.appendChild(el("div", "scope-col-k", "经营品牌 · 勾选添加"));
+    ["伟星", "日丰", "得亿", "金牛"].forEach(function (name) {
+      var on = (row.brands || []).indexOf(name) >= 0;
+      right.appendChild(el("label", "scope-check" + (on ? " is-on" : ""), (on ? "☑ " : "☐ ") + name));
+    });
+    body.appendChild(left);
+    body.appendChild(right);
+    box.appendChild(body);
+    return box;
+  }
+
+  function renderMatrixPanelDemo(title, rows, headCols) {
+    headCols = headCols || ["联系人", "方式", "联系方式"];
+    var box = panel(title, "pp-matrix", headCols);
+    if (!rows || !rows.length) box.appendChild(el("div", "empty-note", "暂无记录 · 浮层末尾空行可新增"));
+    (rows || []).forEach(function (r) {
+      var line = el("div", "pp-row pp-matrix");
+      line.appendChild(el("span", "", r.name || "—"));
+      if (headCols.length > 2) {
+        line.appendChild(el("span", "", r.method || "—"));
+        line.appendChild(el("span", "", r.value || "—"));
+      } else {
+        line.appendChild(el("span", "", r.value || r.name || "—"));
+      }
+      box.appendChild(line);
+    });
+    box.appendChild(el("div", "pp-row pp-matrix pp-add-row", "+ 空行新增…"));
+    return box;
+  }
+
+  function renderAddressPanelDemo(rows) {
+    var box = panel("地址", "pp-matrix", ["类型", "地址"]);
+    if (!rows || !rows.length) box.appendChild(el("div", "empty-note", "暂无地址"));
+    (rows || []).forEach(function (r) {
+      var line = el("div", "pp-row pp-matrix");
+      line.appendChild(el("span", "", r.type || "—"));
+      line.appendChild(el("span", "", r.text || "—"));
+      box.appendChild(line);
+    });
+    return box;
+  }
+
+  function renderCanvasContent(parent, meta, nextFlow) {
+    var stackSec = el("section", "layer");
+    var st = meta.stackTitle || { kicker: "组件栈", title: "层级" };
+    stackSec.appendChild(layerHead(st.kicker, st.title));
+    stackSec.appendChild(renderFormulaSteps(meta.layers));
+    parent.appendChild(stackSec);
+    nextFlow();
+    var rb = meta.rulesBlock || { kicker: "铁律", title: "交互约束" };
+    appendRuleLayer(parent, {
+      kicker: rb.kicker,
+      title: rb.title,
+      hint: rb.hint,
+      rules: meta.rules
+    });
+  }
+
+  function tblCard(id, extra) {
+    var t = resolveTable(id);
+    if (!t) {
+      var miss = el("span", "inv-tag inv-tag-miss", id);
+      return miss;
+    }
+    var card = el("button", "tbl-card" + (extra ? " " + extra : "") + (t.shared ? " is-shared" : ""));
+    card.type = "button";
+    card.appendChild(el("span", "cn", t.cn));
+    card.appendChild(el("span", "en", t.db));
+    var sc = tableSceneOf(id);
+    if (sc && sc.from) card.appendChild(el("span", "from-scene", "推出自 " + sc.from));
+    if (t.shared) card.appendChild(el("span", "code is-shared", "全店复用"));
+    else if (t.code) card.appendChild(el("span", "code", "现网有落点"));
+    card.addEventListener("click", function () { openModal(id); });
+    return card;
+  }
+
+  function initOpenGroups() {
+    (D.navGroups || []).forEach(function (g) {
+      if (state.openGroups[g.id] == null) state.openGroups[g.id] = g.defaultOpen !== false;
+    });
+  }
+
+  function findModule(id) {
+    var found = null;
+    (D.navGroups || []).some(function (g) {
+      return g.items.some(function (m) {
+        if (m.id === id && m.enabled) {
+          found = m;
+          return true;
+        }
+        return false;
+      });
+    });
+    return found;
+  }
+
+  function applyGovernanceHead() {
+    var p = document.querySelector(".nav-head p");
+    var g = D.governance;
+    if (p && g && g.navHint) p.textContent = g.navHint;
+  }
+
+  function renderNav() {
+    initOpenGroups();
+    var list = $(".nav-list");
+    list.innerHTML = "";
+    (D.navGroups || []).forEach(function (group) {
+      var gWrap = el("div", "nav-group");
+      var open = !!state.openGroups[group.id];
+      var gBtn = el(
+        "button",
+        "nav-group-head" + (open ? " is-open" : "") + (groupHasActive(group) ? " has-active" : "")
+      );
+      gBtn.type = "button";
+      gBtn.innerHTML =
+        '<span class="nav-group-title">' +
+        group.title +
+        '</span><span class="nav-group-caret">' +
+        (open ? "▾" : "▸") +
+        "</span>" +
+        (group.hint ? "<small>" + group.hint + "</small>" : "");
+      gBtn.addEventListener("click", function () {
+        state.openGroups[group.id] = !state.openGroups[group.id];
+        persistNavState();
+        renderNav();
+      });
+      gWrap.appendChild(gBtn);
+      var children = el("div", "nav-group-body" + (open ? "" : " is-collapsed"));
+      group.items.forEach(function (m) {
+        if (!m.enabled) return;
+        var b = el("button", "nav-item nav-item-child" + (state.module === m.id ? " is-active" : ""));
+        b.type = "button";
+        b.dataset.module = m.id;
+        b.innerHTML = m.title + (m.subtitle ? "<small>" + m.subtitle + "</small>" : "");
+        b.addEventListener("click", function () {
+          state.module = m.id;
+          state.openGroups[group.id] = true;
+          state.archiveDemo = { rowId: null, panel: null };
+          renderNav();
+          renderModuleShell();
+        });
+        children.appendChild(b);
+      });
+      gWrap.appendChild(children);
+      list.appendChild(gWrap);
+    });
+  }
+
+  function groupHasActive(group) {
+    return group.items.some(function (m) {
+      return m.enabled && m.id === state.module;
+    });
+  }
+
+  function renderChapterNav() {
+    var bar = $("#chapter-nav");
+    if (!bar) return;
+    if (state.chapter === "why") state.chapter = "need";
+    if (state.chapter === "deliver" || state.chapter === "use") state.chapter = "manage";
+    var isManage = !!(D.manageModules && D.manageModules[state.module]);
+    if (!isManage) {
+      bar.hidden = true;
+      bar.innerHTML = "";
+      return;
+    }
+    bar.hidden = false;
+    bar.innerHTML = "";
+    var tabs = el("div", "chapter-tabs");
+    (D.chapters || []).forEach(function (ch) {
+      var b = el("button", "chapter-tab" + (state.chapter === ch.id ? " is-active" : ""));
+      b.type = "button";
+      b.textContent = ch.label;
+      b.title = ch.hint || "";
+      b.addEventListener("click", function () {
+        state.chapter = ch.id;
+        renderModuleShell();
+      });
+      tabs.appendChild(b);
+    });
+    bar.appendChild(tabs);
+    var cur = (D.chapters || []).filter(function (c) { return c.id === state.chapter; })[0];
+    bar.appendChild(el("p", "chapter-hint", (cur && cur.hint) || "同一套段落 · 换模块对照同一段"));
+  }
+
+  function setProductHosts(chapter) {
+    var map = {
+      model: [],
+      manage: [],
+      picker: []
+    };
+    var show = map[chapter] || [];
+    ["why", "point-model", "inventory", "tree", "fill", "law", "nslot", "layers", "picker-use", "archive-layers", "archive-use"].forEach(function (id) {
+      var node = document.getElementById(id);
+      if (node) node.style.display = show.indexOf(id) >= 0 ? "" : "none";
+    });
+    document.querySelectorAll("main > .boundary").forEach(function (n) {
+      n.style.display = "none";
+    });
+    document.querySelectorAll("main > section.demo:not(.archive-demo)").forEach(function (n) {
+      n.style.display = chapter === "picker" ? "" : "none";
+    });
+    document.querySelectorAll("main > .archive-demo").forEach(function (n) {
+      n.style.display = "none";
+    });
+  }
+
+  function renderModuleShell() {
+    try {
+    var title = $(".page-title h2");
+    var sub = $(".page-title p");
+    var mod = findModule(state.module) || D.modules.filter(function (m) { return m.id === state.module; })[0];
+    if (title && mod) title.textContent = mod.title;
+    if (sub && mod) sub.textContent = mod.subtitle;
+    syncWhyExportBtn(!!(D.whyBiz && D.whyBiz[state.module]));
+    renderChapterNav();
+
+    var isProduct = state.module === "product-model";
+    var isManage = !!(D.manageModules && D.manageModules[state.module]);
+
+    ["why", "point-model", "inventory", "tree", "fill", "law", "nslot", "layers", "picker-use", "archive-layers", "archive-use"].forEach(function (id) {
+      var node = document.getElementById(id);
+      if (node) node.style.display = "none";
+    });
+    document.querySelectorAll(".boundary, .demo, .archive-demo").forEach(function (n) {
+      n.style.display = "none";
+    });
+
+    var extra = document.getElementById("module-extra");
+    if (!extra) {
+      extra = document.createElement("div");
+      extra.id = "module-extra";
+      extra.className = "module-extra";
+      var main = document.querySelector(".main");
+      if (main) main.appendChild(extra);
+    }
+    extra.innerHTML = "";
+
+    if (isProduct) {
+      extra.style.display = "";
+      var prodMeta = D.getModuleMeta("product-model");
+      if (state.chapter === "intent") {
+        appendIntentLayer(extra, prodMeta.intent);
+        setProductHosts("need");
+        return;
+      }
+      if (state.chapter === "need") {
+        appendNeedLayer(extra, prodMeta.need);
+        setProductHosts("need");
+        return;
+      }
+      if (state.chapter === "model") {
+        appendPointRel(extra, prodMeta.pointModel);
+        appendInventoryLayer(extra, prodMeta);
+        appendTreeLayer(extra, prodMeta);
+        setProductHosts("model");
+        return;
+      }
+      if (state.chapter === "manage") {
+        var mSurf = prodMeta.manageSurfaces;
+        var mId = getSurfaceId(mSurf);
+        appendSurfaceLayer(extra, mSurf, mId);
+        appendSlotLayers(extra, prodMeta.archiveLayers);
+        appendProductManageDemo(extra, mId);
+        setProductHosts("manage");
+        return;
+      }
+      var pSurf = prodMeta.pickerSurfaces;
+      var pId = getSurfaceId(pSurf);
+      appendSurfaceLayer(extra, pSurf, pId);
+      appendPickerUseSection(extra);
+      appendNSlotCompact(extra, prodMeta.nSlot);
+      appendSlotLayers(extra, prodMeta.pickerLayers);
+      syncProductPicker(pId);
+      setProductHosts("picker");
+      renderDemo();
+      return;
+    }
+
+    extra.style.display = "";
+    var meta = D.getModuleMeta(state.module);
+
+    if (D.whyBiz && D.whyBiz[state.module]) {
+      renderWhyBizContent(extra, meta);
+      return;
+    }
+    if (state.module === "archive-framework") {
+      renderArchiveFrameworkContent(extra, meta, function () {});
+      return;
+    }
+    if (state.module === "order-framework") {
+      renderOrderFrameworkContent(extra, meta);
+      return;
+    }
+    if (state.module === "canvas-ui-hierarchy") {
+      renderCanvasContent(extra, meta, function () {});
+      return;
+    }
+    if (state.module === "entity-slot-model") {
+      renderEntitySlotContent(extra, meta);
+      return;
+    }
+    if (isManage && meta.inventory && meta.tables) {
+      renderDataModelContent(extra, meta);
+    } else if (meta.rules) {
+      renderCanvasContent(extra, meta, function () {});
+    }
+    } finally {
+      if (typeof state._restoreSearchQ === "string") {
+        var restoredSearch = $("#search-input");
+        if (restoredSearch) restoredSearch.value = state._restoreSearchQ;
+        delete state._restoreSearchQ;
+      }
+      restoreScrollPosition();
+      persistNavState();
+    }
+  }
+
