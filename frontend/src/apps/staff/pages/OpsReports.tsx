@@ -253,7 +253,7 @@ export default function OpsReports() {
         wrap: true,
         renderMode: 'custom',
         render: (_v: string, r: TurnoverRow) => (
-          <span>{[r.brandName, r.productName, r.specModel].filter(Boolean).join(' ')}</span>
+          <span>{r.productName || '—'}</span>
         ),
       },
       { key: 'qty', title: '库存', dataIndex: 'qty', minWidth: COL_WIDTHS.AMOUNT, align: 'center', renderMode: 'static' },

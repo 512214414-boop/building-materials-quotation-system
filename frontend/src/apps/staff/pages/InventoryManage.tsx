@@ -102,7 +102,7 @@ function AdjustDialog({
   };
 
   const fullName = record
-    ? [record.brandName, record.productName, record.specModel].filter(Boolean).join(' ')
+    ? record.productName || '—'
     : '';
   return (
     <DsDialog
@@ -287,7 +287,7 @@ function LedgerDialog({
   );
 
   const fullName = record
-    ? [record.brandName, record.productName, record.specModel].filter(Boolean).join(' ')
+    ? record.productName || '—'
     : '';
   return (
     <DsDialog
@@ -337,7 +337,7 @@ function OpeningStrip({
   const handleSelect = (next: SkuSearchRow, u: SkuOptionUnit, price: SelectedPrice | null) => {
     setSku(next);
     setUnit(u);
-    setLabel([next.brandName, next.productName, next.specModel, u.unitName].filter(Boolean).join(' '));
+    setLabel(next.productName || '—');
     const cost = price?.purchase?.price ?? u.defaultPurchasePrice ?? next.purchasePriceDefault;
     if (cost != null) setUnitCost(String(cost));
     setPickerOpen(false);
@@ -553,7 +553,7 @@ export default function InventoryManage() {
               />
             ) : null}
             <span style={{ fontWeight: 500, color: 'var(--text-default)' }}>
-              {[r.brandName, r.productName, r.specModel].filter(Boolean).join(' ')}
+              {r.productName || '—'}
             </span>
           </span>
         ),

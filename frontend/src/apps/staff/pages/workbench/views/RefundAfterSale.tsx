@@ -531,21 +531,34 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
         },
       },
       {
-        key: 'productRef',
-        title: '商品名称',
-        minWidth: 180,
+        key: 'productName',
+        title: '产品名称',
+        minWidth: 120,
         align: 'center',
         renderMode: 'static',
         ellipsis: true,
         render: (_v: any, r: RefundLineView) => (
-          <span style={{ color: 'var(--text-default)' }}>{r.documentLine.productRef}</span>
+          <span style={{ color: 'var(--text-default)' }}>
+            {r.documentLine.productName || r.documentLine.productRef}
+          </span>
         ),
       },
-      // 4. 规格型号
+      // 4. 品牌列
+      {
+        key: 'brandName',
+        title: '品牌',
+        minWidth: 72,
+        align: 'center',
+        renderMode: 'static',
+        ellipsis: true,
+        render: (_v: any, r: RefundLineView) =>
+          r.documentLine.brandName ? r.documentLine.brandName : <span style={{ color: 'var(--text-tertiary)' }}>—</span>,
+      },
+      // 5. 规格型号
       {
         key: 'spec',
         title: '规格型号',
-        minWidth: 110,
+        minWidth: 90,
         align: 'center',
         renderMode: 'static',
         ellipsis: true,
@@ -801,7 +814,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
                     商品（强继承）
                   </div>
                   <div style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-                    {editTarget.documentLine.productRef}
+                    {editTarget.documentLine.productName || editTarget.documentLine.productRef}
                   </div>
                 </div>
                 <div>
@@ -967,7 +980,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
             <div style={{ flex: 1, minWidth: 0, height: 20, display: 'flex', alignItems: 'center' }}>
             <WorkbenchFieldCell
               embed="inline"
-              text={selectedSold?.productRef ?? ''}
+              text={selectedSold?.productName || selectedSold?.productRef || ''}
               placeholder="点此检索已卖行"
               disabled={viewLocked}
               title="检索单据产品"
@@ -1083,7 +1096,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
             }}
           >
             <span>
-              商品：<span style={{ color: 'var(--text-default)' }}>{selectedLine.productRef}</span>
+              商品：<span style={{ color: 'var(--text-default)' }}>{selectedLine.productName || selectedLine.productRef}</span>
             </span>
             {selectedLine.spec && (
               <span>

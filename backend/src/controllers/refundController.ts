@@ -29,7 +29,8 @@ export async function searchSoldLinesHandler(req: Request, res: Response) {
     .slice(0, 30)
     .map((s) => BigInt(s));
   const keyword = String(q.keyword ?? q.q ?? '');
-  const list = await refundSvc.searchSoldLines(keyword, ids);
+  const entryView = String(q.entryView ?? 'loose');
+  const list = await refundSvc.searchSoldLines(keyword, ids, entryView);
   return ok(res, list);
 }
 

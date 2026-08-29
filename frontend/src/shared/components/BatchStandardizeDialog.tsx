@@ -59,11 +59,9 @@ export interface BatchStandardizeDialogProps {
   onDone: () => void;
 }
 
-/** 档案全名拼接（与 ProductPicker 选品回填保持一致：产品名+品牌+规格） */
-function buildFullName(sku: SkuSearchRow): string {
-  return [sku.productName, sku.brandName, sku.specModel]
-    .filter((s) => s && s.trim())
-    .join(' ');
+/** 分列显示产品名（不拼接，避免与品牌/规格列重复） */
+function productDisplayName(sku: SkuSearchRow): string {
+  return (sku.productName || '').trim() || '—';
 }
 
 export default function BatchStandardizeDialog({
@@ -245,7 +243,7 @@ export default function BatchStandardizeDialog({
                   <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-quaternary)', flexShrink: 0 }}>#{idx + 1}</span>
                   {selected ? (
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <ValueChangePair from={l.productRef || '（空行文字）'} to={buildFullName(selected)} />
+                      <ValueChangePair from={l.productName || l.productRef || '（空行文字）'} to={productDisplayName(selected)} />
                     </span>
                   ) : (
                     <span
@@ -257,9 +255,9 @@ export default function BatchStandardizeDialog({
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}
-                      title={l.productRef ?? ''}
+                      title={l.productName || l.productRef || ''}
                     >
-                      {l.productRef || '（空行文字）'}
+                      {l.productName || l.productRef || '（空行文字）'}
                     </span>
                   )}
                   {selected ? (
@@ -348,8 +346,18 @@ export default function BatchStandardizeDialog({
                               onClick={() => handlePick(l.id, sku)}
                             >
                               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {buildFullName(sku)}
+                                {productDisplayName(sku)}
                               </span>
+                              {sku.brandName ? (
+                                <span style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                                  {sku.brandName}
+                                </span>
+                              ) : null}
+                              {sku.specModel ? (
+                                <span style={{ fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                                  {sku.specModel}
+                                </span>
+                              ) : null}
                               {sku.defaultUnitName ? (
                                 <span style={{ fontSize: 11, color: 'var(--text-tertiary)', flexShrink: 0 }}>
                                   {sku.defaultUnitName}

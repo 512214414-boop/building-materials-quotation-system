@@ -34,9 +34,10 @@ function toSource(d: StaffDocumentListItem): RefundSourceDoc {
 }
 
 const GRID_GAP = 4;
-const DOC_ROW_GRID_SOURCE = '18px minmax(84px, 0.9fr) minmax(88px, 1.3fr) minmax(72px, 1fr) 40px 56px 28px';
-const DOC_ROW_GRID_OPEN = 'minmax(84px, 0.9fr) minmax(88px, 1.3fr) minmax(72px, 1fr) 40px 56px 28px';
-const PREVIEW_GRID = 'minmax(72px, 1.5fr) minmax(44px, 0.7fr) minmax(52px, 0.8fr) 40px 28px 48px 52px minmax(44px, 0.7fr)';
+// auto 自适应内容宽度，数字列固定紧凑宽度
+const DOC_ROW_GRID_SOURCE = '18px auto auto auto 40px 56px 28px';
+const DOC_ROW_GRID_OPEN = 'auto auto auto 40px 56px 28px';
+const PREVIEW_GRID = 'auto auto auto 40px 28px 48px 52px auto';
 
 function previewProductName(l: {
   productRef: string;
@@ -270,7 +271,7 @@ export default function DocumentSourcePicker({
           setBrowseOpen(false);
           setPreviewId(null);
         }}
-        width={620}
+        minWidth={360}
         maxHeight={420}
         offset={2}
         style={{ padding: 0 }}
@@ -450,7 +451,7 @@ export default function DocumentSourcePicker({
             </button>
           </div>
         }
-        width={640}
+        minWidth={400}
         maxHeight={260}
         offset={2}
         style={{ padding: 0 }}

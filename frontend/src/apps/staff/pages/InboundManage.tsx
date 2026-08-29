@@ -53,7 +53,7 @@ function TaskDetailDialog({
         renderMode: 'custom',
         render: (_val: string, r: InboundLine) => (
           <span style={{ color: 'var(--text-default)' }}>
-            {[r.brandName, r.productName, r.specModel].filter(Boolean).join(' ')}
+            {r.productName || '—'}
           </span>
         ),
       },

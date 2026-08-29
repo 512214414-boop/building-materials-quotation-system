@@ -22,6 +22,7 @@ import { getMainWarehouse } from './warehouseService.js';
 import {
   searchNeedlesOrRaw,
   entryAnyFieldMatches,
+  entryFieldMatches,
   tokenizeKeyword,
   segmentizeKeyword,
   scoreSkuByCustomWeights,
@@ -418,12 +419,15 @@ const SOLD_LINE_TAKE = 40;
  * 在已勾原单的已卖行上检索。documentIds 必填（P-013，禁止全表扫）。
  * 匹配当时的名称/牌子/规格。空关键词返回这些单里仍可退的行。
  */
-export async function searchSoldLines(keyword: string, documentIds: bigint[]) {
+export async function searchSoldLines(keyword: string, documentIds: bigint[], entryView: string = 'loose') {
   const ids = documentIds.filter((id) => id > 0n).slice(0, SOLD_LINE_MAX_DOCS);
   if (!ids.length) return [];
 
   const kw = keyword.trim();
   if (kw && !searchNeedlesOrRaw(kw).length) return [];
+
+  // entryView 决定精准匹配哪些字段（与产品检索 entryView 同构）
+  const isLoose = entryView === 'loose';
 
   const lines = await prisma.document_lines.findMany({
     where: { documentId: { in: ids } },
@@ -470,8 +474,20 @@ export async function searchSoldLines(keyword: string, documentIds: bigint[]) {
       const refunded = refundedMap.get(l.id) ?? 0;
       const remaining = Math.max(0, qty - refunded);
       if (remaining <= 0) return null;
-      const nameFields = [l.productRef, l.productName, l.brandName, l.spec, l.specModel];
-      if (kw && !entryAnyFieldMatches(nameFields, kw)) return null;
+      // entryView 精准模式：只匹配对应字段；loose：匹配全部字段
+      if (kw) {
+        if (isLoose) {
+          const nameFields = [l.productRef, l.productName, l.brandName, l.spec, l.specModel];
+          if (!entryAnyFieldMatches(nameFields, kw)) return null;
+        } else if (entryView === 'brand') {
+          if (!entryFieldMatches(l.brandName || '', kw)) return null;
+        } else if (entryView === 'spec') {
+          if (!entryFieldMatches(l.spec || l.specModel || '', kw)) return null;
+        } else {
+          // name 精准：只打产品名
+          if (!entryFieldMatches(l.productName || l.productRef || '', kw)) return null;
+        }
+      }
       const score = kw
         ? scoreSkuByCustomWeights(
             {

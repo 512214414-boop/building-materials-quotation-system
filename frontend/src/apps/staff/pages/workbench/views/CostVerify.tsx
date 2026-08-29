@@ -265,7 +265,7 @@ function SourceInfoPanel({
                       }}
                     >
                       <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-                        {dl.productRef}
+                        {dl.productName || dl.productRef}
                       </span>
                       <span style={{ color: 'var(--text-secondary)' }}>
                         {warehouseLines.map((w) => w.sourceName).join(' / ')}
@@ -311,7 +311,7 @@ function SourceInfoPanel({
                       }}
                     >
                       <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-                        {dl.productRef}
+                        {dl.productName || dl.productRef}
                       </span>
                       <span style={{ color: 'var(--text-secondary)' }}>
                         {externalLines.map((s) => s.sourceName ?? '未知供应商').join(' / ')}

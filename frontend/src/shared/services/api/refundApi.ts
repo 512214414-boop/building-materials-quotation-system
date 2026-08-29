@@ -174,9 +174,10 @@ export interface SoldLineHit {
 export function searchSoldLines(params: {
   keyword?: string;
   documentIds: string[];
+  entryView?: string;
 }): Promise<SoldLineHit[]> {
   const documentIds = params.documentIds.filter(Boolean).join(',');
   return request.get<unknown, SoldLineHit[]>('/api/staff/refund/sold-lines', {
-    params: { keyword: params.keyword ?? '', documentIds },
+    params: { keyword: params.keyword ?? '', documentIds, entryView: params.entryView },
   });
 }

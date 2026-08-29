@@ -14,10 +14,11 @@ export interface RefundSourceDoc {
   customerName: string | null;
 }
 
-/** 与 ProductPicker.renderPanelHead 同一套：表头槽 + 行同一条 grid */
+/** 与 ProductPicker.renderPanelHead 同一套：表头槽 + 行同一条 grid
+ *  列宽策略：auto 自适应内容，不多留空白；数字列固定紧凑宽度 */
 const GRID_GAP = 4;
 // 列：勾选 | 单据 | 产品名 | 品牌 | 规格 | 可退 | 单价 | 数量
-const SOLD_ROW_GRID = '18px minmax(64px,0.7fr) minmax(90px,1.2fr) minmax(44px,0.5fr) minmax(52px,0.6fr) 52px 56px 52px';
+const SOLD_ROW_GRID = '18px auto auto auto auto 48px 56px 48px';
 
 function renderPanelHead(cols: string[], grid: string) {
   return (
@@ -101,14 +102,14 @@ export default function SoldLinePicker({
   const sourceIds = sourceDocs.map((d) => d.id);
 
   const doSearch = useCallback(
-    async (kw: string) => {
+    async (kw: string, view?: string) => {
       if (!sourceIds.length) {
         setHits([]);
         return;
       }
       setSearching(true);
       try {
-        const list = await searchSoldLines({ keyword: kw.trim(), documentIds: sourceIds });
+        const list = await searchSoldLines({ keyword: kw.trim(), documentIds: sourceIds, entryView: view ?? entryView });
         setHits(list);
       } catch {
         setHits([]);
@@ -116,7 +117,7 @@ export default function SoldLinePicker({
         setSearching(false);
       }
     },
-    [sourceIds.join(',')],
+    [sourceIds.join(','), entryView],
   );
 
   useEffect(() => {
@@ -206,7 +207,7 @@ export default function SoldLinePicker({
           setPanelOpen(false);
           onClose?.();
         }}
-        width={480}
+        minWidth={320}
         maxHeight={420}
         offset={2}
         style={{ padding: 0 }}
@@ -227,7 +228,7 @@ export default function SoldLinePicker({
             value={entryView}
             onChange={(id) => {
               setEntryView(id);
-              void doSearch(keyword);
+              void doSearch(keyword, id);
             }}
           />
           {showList ? (
@@ -266,7 +267,7 @@ export default function SoldLinePicker({
                 <button
                   type="button"
                   onClick={() => onSelectLine(h)}
-                  title={h.productRef}
+                  title={h.productName || h.productRef}
                   style={{
                     minWidth: 0,
                     border: 'none',
@@ -282,7 +283,7 @@ export default function SoldLinePicker({
                     fontWeight: 500,
                   }}
                 >
-                  {h.productRef}
+                  {h.productName || h.productRef}
                 </button>
                 <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {h.brandName || '—'}

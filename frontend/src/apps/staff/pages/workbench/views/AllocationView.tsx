@@ -277,6 +277,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
     warehouseId: string;
     warehouseName: string;
     productRef: string;
+    productName?: string | null;
     qty: number;
   } | null>(null);
 
@@ -538,6 +539,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
             warehouseId: row.sourceId,
             warehouseName: src?.name ?? row.sourceId,
             productRef: editingLine.productRef,
+            productName: editingLine.productName,
             qty: shortage,
           });
         }
@@ -1140,7 +1142,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
               <span>配货编辑</span>
               {editingLine && (
                 <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--body-xs-font-size)', fontWeight: 400 }}>
-                  · {editingLine.productRef}
+                  · {editingLine.productName || editingLine.productRef}
                 </span>
               )}
             </div>
@@ -1266,7 +1268,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
             {shortageTip && (
               <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ fontSize: 'var(--body-sm-font-size)', lineHeight: 1.6, color: 'var(--text-default)' }}>
-                  「{shortageTip.productRef}」从仓库
+                  「{shortageTip.productName || shortageTip.productRef}」从仓库
                   <b style={{ color: 'var(--text-default)', margin: '0 2px' }}>{shortageTip.warehouseName}</b>
                   出库，现有库存不足，缺口
                   <b style={{ color: 'var(--status-warning-default)', margin: '0 2px', fontFamily: 'var(--font-family-mono)' }}>

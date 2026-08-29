@@ -121,7 +121,7 @@ export default function BackorderManage() {
         renderMode: 'custom',
         render: (_val: string, r: BackorderRow) => (
           <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-            {[r.brandName, r.productName, r.specModel].filter(Boolean).join(' ')}
+            {r.productName || '—'}
           </span>
         ),
       },

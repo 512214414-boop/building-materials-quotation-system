@@ -318,16 +318,38 @@ export const DOCUMENT_PICKER_MODEL: ArchivePickerModel = {
 export const DOCUMENT_PICKER_TREE_VIEWS: PickerTreeView[] = pickerViewsFromModel(DOCUMENT_PICKER_MODEL);
 export const DEFAULT_DOCUMENT_PICKER_VIEW = defaultViewFromModel(DOCUMENT_PICKER_MODEL);
 
-/** 售后已卖行：撞的是快照一行，不按产品树再切。一层 → 不派生宽松。 */
+/** 售后已卖行：多层精准 + 宽松（与产品检索同构，只是数据源是单据快照行） */
 export const SOLD_LINE_PICKER_MODEL: ArchivePickerModel = {
+  defaultViewId: 'loose',
+  subject: {
+    grain: 'leaf',
+    front: ['product', 'brand', 'spec'],
+    hint: '名称+品牌+规格一起模糊。对着卖掉的行打字。插入复用当时的名称和价，数量另填。',
+  },
   layers: [
     {
       id: 'name',
       label: '名称',
-      hit: '单上当时的名称/牌子/规格',
+      hit: 'productName',
       grain: 'leaf',
-      hint: '数据源来自旁边单据格勾上的单。对着卖掉的行打字。插入复用当时的名称和价，数量另填。',
-      front: ['product'],
+      hint: '精准：只打产品名。',
+      front: ['product', 'brand', 'spec'],
+    },
+    {
+      id: 'brand',
+      label: '品牌',
+      hit: 'brandName',
+      grain: 'leaf',
+      hint: '精准：只打品牌。品牌在最左。',
+      front: ['brand', 'product', 'spec'],
+    },
+    {
+      id: 'spec',
+      label: '规格',
+      hit: 'spec',
+      grain: 'leaf',
+      hint: '精准：只打规格型号。',
+      front: ['spec', 'product', 'brand'],
     },
   ],
 };
