@@ -16,7 +16,8 @@ export interface RefundSourceDoc {
 
 /** 与 ProductPicker.renderPanelHead 同一套：表头槽 + 行同一条 grid */
 const GRID_GAP = 4;
-const SOLD_ROW_GRID = '18px minmax(64px, 0.7fr) minmax(90px, 1.6fr) 52px 56px 52px';
+// 列：勾选 | 单据 | 产品名 | 品牌 | 规格 | 可退 | 单价 | 数量
+const SOLD_ROW_GRID = '18px minmax(64px,0.7fr) minmax(90px,1.2fr) minmax(44px,0.5fr) minmax(52px,0.6fr) 52px 56px 52px';
 
 function renderPanelHead(cols: string[], grid: string) {
   return (
@@ -231,7 +232,7 @@ export default function SoldLinePicker({
           />
           {showList ? (
             <>
-          {renderPanelHead(['', '单据', '产品', '可退', '单价', '数量'], SOLD_ROW_GRID)}
+          {renderPanelHead(['', '单据', '产品', '品牌', '规格', '可退', '单价', '数量'], SOLD_ROW_GRID)}
           <SuggestList
             options={hits}
             loading={searching}
@@ -246,7 +247,6 @@ export default function SoldLinePicker({
             maxHeight={280}
             rowKey={(h) => h.lineId}
             rowRender={(h) => {
-              const productBits = [h.productRef, h.brandName, h.spec].filter(Boolean).join(' ');
               return (
               <div
                 style={{
@@ -266,7 +266,7 @@ export default function SoldLinePicker({
                 <button
                   type="button"
                   onClick={() => onSelectLine(h)}
-                  title={productBits}
+                  title={h.productRef}
                   style={{
                     minWidth: 0,
                     border: 'none',
@@ -282,8 +282,14 @@ export default function SoldLinePicker({
                     fontWeight: 500,
                   }}
                 >
-                  {productBits}
+                  {h.productRef}
                 </button>
+                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {h.brandName || '—'}
+                </span>
+                <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {h.spec || '—'}
+                </span>
                 <span style={{ color: 'var(--text-tertiary)', textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>
                   {h.remaining}
                   {h.unit}
