@@ -16,7 +16,8 @@ DOC_VIZ.navGroups = [
       { id: "know-cause", title: "对照本项目", subtitle: "方法做通之后追源长什么样", enabled: true },
       { id: "know-brief", title: "下发文档范本", subtitle: "如果重来 · 范式层 + 不变量层 + 一个闭环", enabled: true },
       { id: "know-loop", title: "AI 工作法", subtitle: "甩给任意 AI · 自动抽象归类分支 · 改前先查同类", enabled: true },
-      { id: "know-layout", title: "文档项目怎么分层", subtitle: "改一章只动一个文件 · 换工具也能演进", enabled: true }
+      { id: "know-layout", title: "文档项目怎么分层", subtitle: "改一章只动一个文件 · 换工具也能演进", enabled: true },
+      { id: "know-recover", title: "版本记录与恢复", subtitle: "改动有账可查 · 出问题按记录回滚 · 恢复点人工确认", enabled: true }
     ]
   },
   {
