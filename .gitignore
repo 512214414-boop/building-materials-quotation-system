@@ -9,3 +9,4 @@ screenshots/
 e2e_browser/screenshots/
 .DS_Store
 backup_*/
+.trae_*
