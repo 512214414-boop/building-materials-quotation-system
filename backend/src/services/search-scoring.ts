@@ -466,3 +466,114 @@ function editDistanceSim(a: string, b: string): number {
   }
   return 1 - dp[b.length] / Math.max(a.length, b.length);
 }
+
+// ============================================================
+// v2.0 通用匹配打分（所有选用检索共用）
+//
+// 设计目标（用户指令）：
+//   - 不同选用检索（产品/单据/客户/供应商）仅传入差异的打分权重
+//   - 包含命中 vs 被包含命中有优先级差异
+//   - 兜底单字符命中（绝不能出现 0827 匹配不到 26-08-27）
+//   - 尽可能使有相关性的数据出现在检索列表
+//   - 减少噪音数据
+//
+// 三级打分（与 scoreSkuByCustomWeights 同构，但字段+权重可配置）：
+//   1. 完整关键词级：field === kw（精确）/ field.includes(kw)（包含）/ kw.includes(field)（被包含）
+//      精确 > 包含 > 被包含（用户输入包含字段值时权重低于字段包含用户输入）
+//   2. 语义段级：segmentizeKeyword 切段，段在字段归一化值中命中即加分
+//   3. 2-gram token 级：tokenizeKeyword 滑窗，token 在字段中命中即加分
+//
+// 归一化：normText 去空白+小写，并对"-"等分隔符做去除（解决 26-08-27 vs 0827）
+// ============================================================
+
+/** 去除分隔符的归一化（解决 "26-08-27" vs "0827" 跨分隔符匹配） */
+export function normSearchText(s: string): string {
+  return (s ?? '').toLowerCase().replace(/[\s\-_./]/g, '');
+}
+
+/** 单字段打分权重 */
+export interface FieldWeight {
+  /** 完整精确：field === kw */
+  fullExact: number;
+  /** 完整包含：field.includes(kw)（字段包含输入，顺序保留） */
+  fullContains: number;
+  /** 被包含：kw.includes(field)（输入包含字段值，用户输入更长） */
+  fullReverse: number;
+  /** token 完全匹配 */
+  tokenExact: number;
+  /** token 包含 */
+  tokenContains: number;
+}
+
+/** 通用打分配置 */
+export interface GenericScoreConfig {
+  /** 字段名 → 权重 */
+  fields: Record<string, FieldWeight>;
+  /** 段级每字符加分（默认与产品一致） */
+  segmentPerChar?: number;
+}
+
+/** 通用打分：对一条记录的多个字段计算总分 */
+export function scoreGenericByWeights(
+  row: Record<string, string | null | undefined>,
+  config: GenericScoreConfig,
+  tokens: string[],
+  segments: string[],
+  rawKw: string,
+): number {
+  let score = 0;
+  const kw = normSearchText(rawKw);
+  const segPerChar = config.segmentPerChar ?? SCORE_SEGMENT_PER_CHAR;
+
+  for (const [fieldName, weight] of Object.entries(config.fields)) {
+    const raw = row[fieldName];
+    if (!raw) continue;
+    const fieldNorm = normSearchText(raw);
+
+    // Tier 1：完整关键词级
+    if (kw && fieldNorm) {
+      if (fieldNorm === kw) {
+        score += weight.fullExact;
+      } else if (fieldNorm.includes(kw)) {
+        score += weight.fullContains;
+      } else if (fieldNorm.length >= 2 && kw.includes(fieldNorm) && !/^[0-9./]+$/.test(fieldNorm)) {
+        score += weight.fullReverse;
+      }
+    }
+
+    // Tier 2：语义段级
+    for (const seg of segments) {
+      const segNorm = normSearchText(seg);
+      if (segNorm && fieldNorm.includes(segNorm)) {
+        score += seg.length * segPerChar;
+      }
+    }
+
+    // Tier 3：2-gram token 级
+    for (const token of tokens) {
+      const tokNorm = normSearchText(token);
+      if (!tokNorm) continue;
+      if (fieldNorm === tokNorm) {
+        score += weight.tokenExact;
+      } else if (fieldNorm.includes(tokNorm)) {
+        score += weight.tokenContains;
+      }
+    }
+  }
+
+  return score;
+}
+
+/** 单据检索打分权重配置 */
+export const DOCUMENT_SCORE_CONFIG: GenericScoreConfig = {
+  segmentPerChar: SCORE_SEGMENT_PER_CHAR,
+  fields: {
+    documentNo: { fullExact: 8000, fullContains: 5000, fullReverse: 3000, tokenExact: 1000, tokenContains: 500 },
+    title: { fullExact: 6000, fullContains: 4000, fullReverse: 2000, tokenExact: 600, tokenContains: 300 },
+    customerName: { fullExact: 5000, fullContains: 3000, fullReverse: 1500, tokenExact: 500, tokenContains: 250 },
+    customerPhone: { fullExact: 5000, fullContains: 3000, fullReverse: 1500, tokenExact: 500, tokenContains: 250 },
+    customerContactMethod: { fullExact: 3000, fullContains: 2000, fullReverse: 1000, tokenExact: 300, tokenContains: 150 },
+    customerCompany: { fullExact: 3000, fullContains: 2000, fullReverse: 1000, tokenExact: 300, tokenContains: 150 },
+    note: { fullExact: 2000, fullContains: 1500, fullReverse: 800, tokenExact: 200, tokenContains: 100 },
+  },
+};

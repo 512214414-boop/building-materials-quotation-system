@@ -14,6 +14,13 @@ import { paginate } from '../utils/response.js';
 import { applyTransition, isPriceVisible } from '../engines/document-state-machine.js';
 import { wsManager } from '../ws/index.js';
 import type { DocumentStatus, StageStatus } from '../types/index.js';
+import {
+  tokenizeKeyword,
+  segmentizeKeyword,
+  scoreGenericByWeights,
+  DOCUMENT_SCORE_CONFIG,
+  searchNeedlesOrRaw,
+} from './search-scoring.js';
 
 function parseDayBound(raw: string, endOfDay: boolean): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
@@ -76,36 +83,39 @@ export async function listDocuments(query: Record<string, unknown>) {
 
   if (typeof query.keyword === 'string' && query.keyword) {
     const kw = query.keyword.trim();
+    // 单据号前缀直达（如 "25-" 匹配 25 年单据）
     if (/^\d{2}-/.test(kw) && (!entryView || entryView === 'loose')) {
       where.document_no = { startsWith: kw };
     } else {
       const num = parseDocSearchNumber(kw);
+      // 召回：用 searchNeedlesOrRaw 生成多针（语义段 + 整串 + 2-gram），
+      //   对每个字段做 OR LIKE 召回——解决 "0827" 匹配不到 "26-08-27"（分隔符阻断）
+      const needles = searchNeedlesOrRaw(kw);
       const or: Record<string, unknown>[] = [];
-      if (!entryView || entryView === 'loose') {
-        or.push(
-          { document_no: { contains: kw } },
-          { customerName: { contains: kw } },
-          { customerPhone: { contains: kw } },
-          { customerContactMethod: { contains: kw } },
-          { customerCompany: { contains: kw } },
-          { title: { contains: kw } },
-          { note: { contains: kw } },
-        );
-        if (num != null) {
-          or.push({ total_amount: num }, { total_qty: num });
+
+      // 文本字段按 entryView 切档
+      const textFields =
+        !entryView || entryView === 'loose'
+          ? ['document_no', 'customerName', 'customerPhone', 'customerContactMethod', 'customerCompany', 'title', 'note']
+          : entryView === 'customer'
+            ? ['customerName', 'customerPhone', 'customerContactMethod', 'customerCompany']
+            : [];
+
+      for (const field of textFields) {
+        for (const needle of needles) {
+          or.push({ [field]: { contains: needle } });
         }
-      } else if (entryView === 'customer') {
-        or.push(
-          { customerName: { contains: kw } },
-          { customerPhone: { contains: kw } },
-          { customerContactMethod: { contains: kw } },
-          { customerCompany: { contains: kw } },
-        );
-      } else if (entryView === 'qty') {
-        if (num != null) or.push({ total_qty: num });
-      } else if (entryView === 'amount') {
-        if (num != null) or.push({ total_amount: num });
       }
+
+      // 数值精确匹配（qty/amount 模式）
+      if (num != null && (!entryView || entryView === 'loose')) {
+        or.push({ total_amount: num }, { total_qty: num });
+      } else if (num != null && entryView === 'qty') {
+        or.push({ total_qty: num });
+      } else if (num != null && entryView === 'amount') {
+        or.push({ total_amount: num });
+      }
+
       if (or.length) where.OR = or;
       else where.id = -1n;
     }
@@ -136,19 +146,55 @@ export async function listDocuments(query: Record<string, unknown>) {
     field: 'created_at',
     order: 'desc',
   });
-  const [total, list] = await Promise.all([
+
+  // 关键词检索：召回用 LIMIT 放大（不打分，先多召回再应用层打分排序）
+  const hasKeyword = typeof query.keyword === 'string' && query.keyword.trim();
+  const recallLimit = hasKeyword ? 200 : undefined;
+
+  const [total, rawList] = await Promise.all([
     prisma.documents.count({ where }),
     prisma.documents.findMany({
       where,
       orderBy: sort,
-      skip,
-      take,
+      ...(recallLimit ? { take: recallLimit as number } : { skip, take }),
       include: {
-        // v11.0 解耦：移除 customer / creator include，使用扁平快照字段
         _count: { select: { document_lines: true } },
       },
     }),
   ]);
+
+  // 关键词检索：应用层打分排序 + 分页
+  let list = rawList;
+  if (hasKeyword) {
+    const kw = (query.keyword as string).trim();
+    const tokens = tokenizeKeyword(kw);
+    const segments = segmentizeKeyword(kw);
+    const scored = rawList.map((d) => {
+      const score = scoreGenericByWeights(
+        {
+          documentNo: d.document_no,
+          title: d.title,
+          customerName: d.customerName,
+          customerPhone: d.customerPhone,
+          customerContactMethod: d.customerContactMethod,
+          customerCompany: d.customerCompany,
+          note: d.note,
+        },
+        DOCUMENT_SCORE_CONFIG,
+        tokens,
+        segments,
+        kw,
+      );
+      return { doc: d, score };
+    });
+    // 过滤 0 分行（避免噪音），按 score DESC + created_at DESC 排序
+    list = scored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score || Number(b.doc.created_at) - Number(a.doc.created_at))
+      .map((s) => s.doc);
+    // 分页在打分排序后的列表上做
+    list = list.slice(skip, skip + take);
+  }
   if (!preview || list.length === 0) return paginate(list, total, page, pageSize);
   const ids = list.map((d) => d.id);
   const lines = await prisma.document_lines.findMany({
