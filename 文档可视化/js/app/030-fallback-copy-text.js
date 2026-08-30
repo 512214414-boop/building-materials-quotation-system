@@ -70,10 +70,160 @@
     btn.textContent = "复制本章 Markdown";
   }
 
+  /**
+   * 长文侧边目录（v25.5）：内容照常滚动，目录只指示「你现在在第几节」。
+   * 侧边放得下完整小节名；滚动联动高亮当前节；点条目只做定位，不隐藏其他内容。
+   * 滚动容器是 .main（不是 window），所以监听与偏移都按 .main 的矩形算。
+   */
+  var tocSpy = null;
+
+  function tocLabel(t, i) {
+    if (t.navLabel) return t.navLabel;
+    var raw = ((t.kicker || t.title || "") + "").trim();
+    if (!raw) return "第 " + (i + 1) + " 节";
+    return raw.split(" · ")[0].trim() || raw;
+  }
+
+  /** 取两次快照之间新增的子节点（不依赖下标，渲染器包几层都不会错） */
+  function newChildrenSince(parent, before) {
+    return Array.prototype.slice.call(parent.children).filter(function (n) {
+      return before.indexOf(n) < 0;
+    });
+  }
+
+  /** 当前子节点快照（配合 newChildrenSince 取某段渲染新增的节点） */
+  function snapChildren(parent) {
+    return Array.prototype.slice.call(parent.children);
+  }
+
+  /**
+   * TOC 生命周期：切换篇章时必须先清理（v25.6）。
+   * 否则切到指导思想（link 篇）/档案页/订单中心时，上一篇的目录残留——
+   * 指向已被清空的旧 DOM 节点，点击定位、滚动高亮全错乱，且与档案页顶部导航并存。
+   */
+  function resetWhyToc() {
+    var box = $("#toc");
+    var main = $(".main");
+    if (box) {
+      box.hidden = true;
+      box.innerHTML = "";
+      delete box.dataset.filled;
+    }
+    if (main) main.classList.remove("has-toc");
+    var scroller = main || document.scrollingElement || document.body;
+    if (tocSpy) {
+      scroller.removeEventListener("scroll", tocSpy);
+      tocSpy = null;
+    }
+  }
+
+  /**
+   * 统一侧边目录（v25.7）：全站所有文档一律「长文滚动 + 侧边节点」。
+   * secs = [{label, title, nodes}]——各分支（carry/link/shared）各自收集小节后统一调用。
+   * 内容照常滚动不被切碎；滚动联动高亮当前节；点条目只做定位。
+   * 滚动容器是 .main（不是 window），定位按它的矩形手算，避开吸顶导航。
+   */
+  /** 目录是否已被本篇填充（whyBiz 的 setupWhyToc / 档案五段 renderChapterNav 会置位） */
+  function tocFilled() {
+    var box = $("#toc");
+    return !!(box && box.dataset.filled === "1");
+  }
+
+  /**
+   * 渲染目录本体 + 滚动联动（各渲染路径共用）。
+   * secs = [{label, title, nodes}]；返回是否成功生成。
+   */
+  function renderTocBox(secs) {
+    var box = $("#toc");
+    var main = $(".main");
+    if (!box) return false;
+    var scroller = main || document.scrollingElement || document.body;
+    secs = (secs || []).filter(function (s) {
+      return s.nodes && s.nodes.length;
+    });
+    if (secs.length < 2) return false;
+    // 锚点直接用节点对象（闭包捕获），不落 id——避免同名 id 指向错节点
+    secs.forEach(function (s) {
+      s.head = s.nodes[0];
+    });
+
+    box.hidden = false;
+    box.innerHTML = "";
+    box.appendChild(el("p", "toc-title", "这一篇的小节"));
+    var list = el("div", "toc-list");
+    var links = [];
+    secs.forEach(function (s) {
+      if (!s.head) return;
+      var a = el("button", "toc-link");
+      a.type = "button";
+      a.textContent = s.label;
+      a.title = s.title || s.label;
+      a.addEventListener("click", function () {
+        var navBar = $("#chapter-nav");
+        var offset = (navBar && !navBar.hidden ? navBar.offsetHeight : 0) + 8;
+        var delta =
+          s.head.getBoundingClientRect().top - scroller.getBoundingClientRect().top - offset;
+        scroller.scrollTop += delta;
+      });
+      list.appendChild(a);
+      links.push(a);
+    });
+    box.appendChild(list);
+    if (main) main.classList.add("has-toc");
+
+    if (tocSpy) scroller.removeEventListener("scroll", tocSpy);
+    tocSpy = function () {
+      var baseTop = scroller.getBoundingClientRect().top;
+      var active = 0;
+      for (var i = 0; i < secs.length; i++) {
+        if (!secs[i].head || !secs[i].head.isConnected) continue;
+        if (secs[i].head.getBoundingClientRect().top - baseTop <= 120) active = i;
+      }
+      links.forEach(function (a, i) {
+        a.className = "toc-link" + (i === active ? " is-active" : "");
+      });
+    };
+    scroller.addEventListener("scroll", tocSpy, { passive: true });
+    tocSpy();
+    box.dataset.filled = "1";
+    return true;
+  }
+
+  /** whyBiz 各分支：按已知小节结构生成目录 */
+  function setupWhyToc(parent, secs) {
+    resetWhyToc(); // 先清上一篇的目录与监听
+    renderTocBox(secs);
+  }
+
+  /**
+   * 通用扫描（v25.8 · 真正的统一）：任何渲染路径渲染完后扫描内容区小节，
+   * 自动提取小标题生成侧边目录——不必在每个渲染分支里手写调用，
+   * 因此 archive-framework / order-framework / 界面基座 / 实体关系槽位 全都自动覆盖。
+   */
+  function buildTocFromSections(parent) {
+    if (!parent || tocFilled()) return;
+    var nodes = Array.prototype.slice.call(parent.children);
+    var secs = [];
+    nodes.forEach(function (n) {
+      var cls = n.className || "";
+      // 分隔箭头 / 边界 / 演示块是装饰节点，不是内容小节——不进目录
+      if (/\b(arrow|boundary|demo|archive-demo)\b/.test(cls)) return;
+      var kick = n.querySelector(".kicker, h3, .layer-head > div");
+      var raw = kick && kick.textContent ? kick.textContent.trim() : "";
+      // 无小标题且内容极少 → 跳过（多半是占位块）
+      if (!raw && (n.textContent || "").trim().length < 20) return;
+      var label = raw ? raw.split(" · ")[0].trim() || raw : "第 " + (secs.length + 1) + " 节";
+      secs.push({ label: label.slice(0, 10), title: raw || label, nodes: [n] });
+    });
+    renderTocBox(secs);
+  }
+
   function renderWhyBizContent(parent, page) {
     if (!page) return;
     var kind = page.kind || "link";
+
     if (kind === "scope" || kind === "canon" || kind === "carry") {
+      var b0 = snapChildren(parent);
       appendIntroLayer(parent, page);
       if (page.facts && page.facts.length) {
         appendIntentReality(parent, {
@@ -83,6 +233,8 @@
           facts: page.facts
         });
       }
+      var introNodes = newChildrenSince(parent, b0);
+      var b1 = snapChildren(parent);
       (page.tables || []).forEach(function (t) {
         appendPairTable(
           parent,
@@ -96,6 +248,8 @@
           function (r) { return r[1]; }
         );
       });
+      var tableNodes = newChildrenSince(parent, b1);
+      var b2 = snapChildren(parent);
       if (page.rules && page.rules.length) {
         appendRuleLayer(parent, {
           kicker: page.rulesKicker || "不管怎么实现",
@@ -107,23 +261,45 @@
       (page.ruleBlocks || []).forEach(function (b) {
         appendRuleLayer(parent, b);
       });
-      return;
-    }
-    if (kind === "shared") {
-      appendIntroLayer(parent, page);
-      (page.caps || []).forEach(function (cap) {
-        appendRuleLayer(parent, {
-          kicker: cap.usedIn,
-          title: cap.title,
-          lead: cap.why,
-          rules: cap.rules
-        });
+      var ruleNodes = newChildrenSince(parent, b2);
+
+      var secs = [];
+      if (introNodes.length) secs.push({ label: "要点", title: "这一篇解决什么", nodes: introNodes });
+      (page.tables || []).forEach(function (t, i) {
+        if (tableNodes[i]) secs.push({ label: tocLabel(t, i), title: t.kicker || t.title || "", nodes: [tableNodes[i]] });
       });
+      if (ruleNodes.length) secs.push({ label: "规则", title: page.rulesTitle || "不管怎么实现", nodes: ruleNodes });
+      setupWhyToc(parent, secs);
       return;
     }
+
+    if (kind === "shared") {
+      var s0 = snapChildren(parent);
+      appendIntroLayer(parent, page);
+      var sIntro = newChildrenSince(parent, s0);
+      var sSecs = [];
+      if (sIntro.length) sSecs.push({ label: "是什么", title: page.title || "", nodes: sIntro });
+      (page.caps || []).forEach(function (cap) {
+        var b = snapChildren(parent);
+        appendRuleLayer(parent, { kicker: cap.usedIn, title: cap.title, lead: cap.why, rules: cap.rules });
+        var n = newChildrenSince(parent, b);
+        if (n.length) sSecs.push({ label: cap.title, title: cap.usedIn || cap.title, nodes: n });
+      });
+      setupWhyToc(parent, sSecs);
+      return;
+    }
+
+    // link 分支（指导思想各环：是什么 → 现场对话 → 效果 → 看法 → 公共能力 → 规则）
+    var l0 = snapChildren(parent);
     appendIntroLayer(parent, page);
     if (page.what) appendIntentReality(parent, page.what);
+    var lIntro = newChildrenSince(parent, l0);
+
+    var l1 = snapChildren(parent);
     appendIntentDialogue(parent, page.dialogue);
+    var lDlg = newChildrenSince(parent, l1);
+
+    var l2 = snapChildren(parent);
     appendPairTable(
       parent,
       "系统要达成什么",
@@ -135,6 +311,9 @@
       function (r) { return r[0]; },
       function (r) { return r[1]; }
     );
+    var lEff = newChildrenSince(parent, l2);
+
+    var l3 = snapChildren(parent);
     if (page.looks && page.looks.length) {
       var lh = page.looksHead || {};
       appendPairTable(
@@ -149,6 +328,9 @@
         function (s) { return s.why; }
       );
     }
+    var lLooks = newChildrenSince(parent, l3);
+
+    var l4 = snapChildren(parent);
     if (page.sharedUses && page.sharedUses.length) {
       appendRuleLayer(parent, {
         kicker: "本环用到的公共能力",
@@ -157,6 +339,9 @@
         rules: page.sharedUses
       });
     }
+    var lShared = newChildrenSince(parent, l4);
+
+    var l5 = snapChildren(parent);
     if (page.rules && page.rules.length) {
       appendRuleLayer(parent, {
         kicker: page.rulesKicker || "本环取舍",
@@ -165,6 +350,16 @@
         rules: page.rules
       });
     }
+    var lRules = newChildrenSince(parent, l5);
+
+    var lSecs = [];
+    if (lIntro.length) lSecs.push({ label: "是什么", title: (page.what && page.what.title) || page.title || "", nodes: lIntro });
+    if (lDlg.length) lSecs.push({ label: "现场对话", title: (page.dialogue && (page.dialogue.kicker || page.dialogue.title)) || "线下怎么干", nodes: lDlg });
+    if (lEff.length) lSecs.push({ label: "要达成什么", title: "痛点变成效果", nodes: lEff });
+    if (lLooks.length) lSecs.push({ label: "看法", title: (page.looksHead && page.looksHead.title) || "同一行字的不同看法", nodes: lLooks });
+    if (lShared.length) lSecs.push({ label: "公共能力", title: "本环用到的公共能力", nodes: lShared });
+    if (lRules.length) lSecs.push({ label: "规则", title: page.rulesTitle || "本环取舍", nodes: lRules });
+    setupWhyToc(parent, lSecs);
   }
 
   function appendNeedLayer(parent, need) {

@@ -12,6 +12,60 @@
   margin-top: 4px;
 }
 
+/* 长文侧边目录（v25.5）
+ * 内容照常滚动，目录只指示当前所在小节：点条目=定位，不隐藏其他内容。
+ * .main 才是滚动容器，目录用 fixed 挂在视口右侧，内容用 padding-right 避让。 */
+.main.has-toc {
+  padding-right: 216px;
+}
+.toc {
+  position: fixed;
+  right: 14px;
+  top: 96px;
+  width: 190px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  z-index: 5;
+  border-left: 1px solid var(--line);
+  padding-left: 10px;
+}
+.toc-title {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 6px;
+  letter-spacing: 0.08em;
+}
+.toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toc-link {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-left: 2px solid transparent;
+  margin-left: -10px;
+  padding: 4px 6px 4px 8px;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  color: var(--muted);
+  cursor: pointer;
+}
+.toc-link:hover {
+  color: var(--ink);
+}
+.toc-link.is-active {
+  color: var(--ink);
+  border-left-color: var(--line-strong);
+  background: var(--accent-soft);
+  font-weight: 650;
+}
+@media (max-width: 1180px) {
+  .toc { display: none; }
+  .main.has-toc { padding-right: 0; }
+}
+
 .layer-head .lead {
   margin-top: 8px;
   font-size: 13px;

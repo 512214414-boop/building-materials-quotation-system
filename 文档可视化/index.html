@@ -26,6 +26,7 @@
       <p>按一类活 · 先业务后能力 · 不写表和组件</p>
     </header>
     <nav class="chapter-nav" id="chapter-nav" hidden></nav>
+    <aside class="toc" id="toc" hidden></aside>
     <div id="module-extra" class="module-extra"></div>
 
     <div id="why"></div>
@@ -123,7 +124,7 @@
        加载清单 = 唯一装配处。顺序即依赖顺序。
        分层：内容层 js/data/** → 渲染层 js/app/**
        加一章：建 js/data/ 下文件 → 05-nav-groups 登记 → 此处加一行
-       详见侧栏「知识沉淀 · 文档项目怎么分层」
+       详见侧栏「方法论库 · 文档项目怎么分层」
        ============================================================ -->
 
   <!-- 内容层 · 命名空间（必须最先） -->
@@ -135,24 +136,29 @@
   <script src="js/data/02-delivery-map.js"></script>
   <script src="js/data/03-manage-modules.js"></script>
 
-  <!-- 内容层 · 指导思想 11 章 + 知识沉淀 5 章（一章一文件） -->
-  <script src="js/data/04-why/01-scope.js"></script>
-  <script src="js/data/04-why/02-sales.js"></script>
-  <script src="js/data/04-why/03-fulfill.js"></script>
-  <script src="js/data/04-why/04-money.js"></script>
-  <script src="js/data/04-why/05-after.js"></script>
-  <script src="js/data/04-why/06-shared.js"></script>
-  <script src="js/data/04-why/07-canon.js"></script>
-  <script src="js/data/04-why/08-inbound.js"></script>
-  <script src="js/data/04-why/09-objects.js"></script>
-  <script src="js/data/04-why/10-flow.js"></script>
-  <script src="js/data/04-why/11-habit.js"></script>
-  <script src="js/data/04-why/12-know-method.js"></script>
-  <script src="js/data/04-why/13-know-cause.js"></script>
-  <script src="js/data/04-why/14-know-brief.js"></script>
-  <script src="js/data/04-why/15-know-loop.js"></script>
-  <script src="js/data/04-why/16-know-layout.js"></script>
-  <script src="js/data/04-why/17-know-recover.js"></script>
+  <!-- 内容层 · 指导思想 11 章 + 方法论库 9 章 —— 全部由 tools/gen-docs.mjs 从真相源生成，禁止手改 -->
+  <!-- GEN:SCRIPTS:BEGIN -->
+  <script src="js/data/gen/01-know-table.js"></script>
+  <script src="js/data/gen/02-why-scope.js"></script>
+  <script src="js/data/gen/03-why-sales.js"></script>
+  <script src="js/data/gen/04-why-fulfill.js"></script>
+  <script src="js/data/gen/05-why-money.js"></script>
+  <script src="js/data/gen/06-why-after.js"></script>
+  <script src="js/data/gen/07-why-shared.js"></script>
+  <script src="js/data/gen/08-why-canon.js"></script>
+  <script src="js/data/gen/09-why-inbound.js"></script>
+  <script src="js/data/gen/10-why-objects.js"></script>
+  <script src="js/data/gen/11-why-flow.js"></script>
+  <script src="js/data/gen/12-why-habit.js"></script>
+  <script src="js/data/gen/13-know-method.js"></script>
+  <script src="js/data/gen/14-know-cause.js"></script>
+  <script src="js/data/gen/15-know-brief.js"></script>
+  <script src="js/data/gen/16-know-loop.js"></script>
+  <script src="js/data/gen/17-know-layout.js"></script>
+  <script src="js/data/gen/18-know-recover.js"></script>
+  <script src="js/data/gen/19-know-route.js"></script>
+  <script src="js/data/gen/20-know-precipitate.js"></script>
+  <!-- GEN:SCRIPTS:END -->
 
   <!-- 内容层 · 侧栏导航注册表（加章时改这里） -->
   <script src="js/data/05-nav-groups.js"></script>

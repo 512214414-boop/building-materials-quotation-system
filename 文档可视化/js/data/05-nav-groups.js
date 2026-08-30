@@ -8,16 +8,19 @@
 DOC_VIZ.navGroups = [
   {
     id: "know-how",
-    title: "知识沉淀",
-    hint: "方法 · 可带到任何项目 · 产出能指导开发的指导思想",
+    title: "方法论库",
+    hint: "对话从这里进 · 标题即触发信号 · 登记进真相源才能被命中",
     defaultOpen: true,
     items: [
-      { id: "know-method", title: "按一类活来写", subtitle: "方法 · 六条线写满才能指导开发", enabled: true },
-      { id: "know-cause", title: "对照本项目", subtitle: "方法做通之后追源长什么样", enabled: true },
-      { id: "know-brief", title: "下发文档范本", subtitle: "如果重来 · 范式层 + 不变量层 + 一个闭环", enabled: true },
-      { id: "know-loop", title: "AI 工作法", subtitle: "甩给任意 AI · 自动抽象归类分支 · 改前先查同类", enabled: true },
-      { id: "know-layout", title: "文档项目怎么分层", subtitle: "改一章只动一个文件 · 换工具也能演进", enabled: true },
-      { id: "know-recover", title: "版本记录与恢复", subtitle: "改动有账可查 · 出问题按记录回滚 · 恢复点人工确认", enabled: true }
+      { id: "know-route", title: "对话分流", subtitle: "每轮对话第 0 步 · 判类型→判产物→查方法论→干活→报验收", enabled: true },
+      { id: "know-precipitate", title: "怎么沉淀方法论", subtitle: "重复才沉淀 · 三件套登记齐才算 · 标题即触发信号", enabled: true },
+      { id: "know-method", title: "对话 → 指导思想", subtitle: "触发：对话要沉淀成指导思想 · 项目文档的生成源头", enabled: true },
+      { id: "know-cause", title: "对照本项目", subtitle: "触发：要看方法做通的实样 · 只参照不复制", enabled: true },
+      { id: "know-brief", title: "下发文档范本", subtitle: "触发：新项目下发文档 · 范式+不变量+一个闭环", enabled: true },
+      { id: "know-loop", title: "接到需求先归类", subtitle: "触发：接到功能需求 · 先打包归类共性差异再动手", enabled: true },
+      { id: "know-table", title: "表功能方法论", subtitle: "触发：识别到表功能 · 画图→集合体→分层→插槽", enabled: true },
+      { id: "know-layout", title: "文档项目怎么分层", subtitle: "触发：建/改文档站点 · 一章一文件", enabled: true },
+      { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true }
     ]
   },
   {

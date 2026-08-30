@@ -183,33 +183,39 @@
   }
 
   function renderChapterNav() {
-    var bar = $("#chapter-nav");
-    if (!bar) return;
+    // v25.7 统一侧边导航：顶部五段 tab 停用，档案页五段节点移到 #toc 侧边。
+    var topBar = $("#chapter-nav");
+    if (topBar) {
+      topBar.hidden = true;
+      topBar.innerHTML = "";
+    }
+    var box = $("#toc");
+    if (!box) return;
+    var main = $(".main");
     if (state.chapter === "why") state.chapter = "need";
     if (state.chapter === "deliver" || state.chapter === "use") state.chapter = "manage";
     var isManage = !!(D.manageModules && D.manageModules[state.module]);
-    if (!isManage) {
-      bar.hidden = true;
-      bar.innerHTML = "";
-      return;
-    }
-    bar.hidden = false;
-    bar.innerHTML = "";
-    var tabs = el("div", "chapter-tabs");
+    if (!isManage) return; // 非档案页：#toc 由 whyBiz 的 setupWhyToc 处理
+    box.hidden = false;
+    box.innerHTML = "";
+    box.appendChild(el("p", "toc-title", "本章五段"));
+    var list = el("div", "toc-list");
     (D.chapters || []).forEach(function (ch) {
-      var b = el("button", "chapter-tab" + (state.chapter === ch.id ? " is-active" : ""));
-      b.type = "button";
-      b.textContent = ch.label;
-      b.title = ch.hint || "";
-      b.addEventListener("click", function () {
+      var a = el("button", "toc-link" + (state.chapter === ch.id ? " is-active" : ""));
+      a.type = "button";
+      a.textContent = ch.label;
+      a.title = ch.hint || "";
+      a.addEventListener("click", function () {
         state.chapter = ch.id;
         renderModuleShell();
       });
-      tabs.appendChild(b);
+      list.appendChild(a);
     });
-    bar.appendChild(tabs);
+    box.appendChild(list);
     var cur = (D.chapters || []).filter(function (c) { return c.id === state.chapter; })[0];
-    bar.appendChild(el("p", "chapter-hint", (cur && cur.hint) || "同一套段落 · 换模块对照同一段"));
+    box.appendChild(el("p", "chapter-hint", (cur && cur.hint) || "同一套段落 · 换模块对照同一段"));
+    if (main) main.classList.add("has-toc");
+    box.dataset.filled = "1"; // 已填充，末尾通用扫描不再覆盖
   }
 
   function setProductHosts(chapter) {
@@ -242,6 +248,8 @@
     if (title && mod) title.textContent = mod.title;
     if (sub && mod) sub.textContent = mod.subtitle;
     syncWhyExportBtn(!!(D.whyBiz && D.whyBiz[state.module]));
+    // 先清侧边目录（v25.7 统一侧边），再由 renderChapterNav（档案页）或 whyBiz 的 setupWhyToc 重建
+    if (typeof resetWhyToc === "function") resetWhyToc();
     renderChapterNav();
 
     var isProduct = state.module === "product-model";
@@ -335,6 +343,12 @@
       renderCanvasContent(extra, meta, function () {});
     }
     } finally {
+      // v25.8 通用扫描兜底：放在 finally——各分支渲染后都 return，只有 finally 一定执行。
+      // whyBiz / 档案五段已填目录则跳过；其余路径（archive-framework / order-framework /
+      // 界面基座 / 实体关系槽位）一律自动按小节生成侧边目录。
+      if (typeof buildTocFromSections === "function") {
+        buildTocFromSections($("#module-extra"));
+      }
       if (typeof state._restoreSearchQ === "string") {
         var restoredSearch = $("#search-input");
         if (restoredSearch) restoredSearch.value = state._restoreSearchQ;
