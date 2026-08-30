@@ -445,3 +445,27 @@
   padding: 0 5px;
   margin-top: 2px;
 }
+
+/* 关系二维 · 使用边（结构树画不了的跨层引用） */
+.usage-list { display: flex; flex-direction: column; gap: 8px; }
+.usage-edge {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+}
+.usage-edge.is-struct { background: #f7f5f0; border-style: dashed; }
+.usage-arrow { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.usage-meta { display: flex; flex-direction: column; gap: 2px; margin-left: auto; text-align: right; }
+.usage-where { font-size: 12px; color: var(--ink-2); }
+.usage-note { font-size: 11px; color: var(--muted); }
+
+/* 形态 · 第三维 */
+.form-row {
+  display: grid; grid-template-columns: 52px 1.3fr 1.5fr 1.1fr 1.2fr;
+  gap: 8px; align-items: center; padding: 7px 8px;
+  border-bottom: 1px dashed var(--line); font-size: 12px; color: var(--ink-2);
+}
+.form-row.is-head { font-size: 11px; color: var(--muted); letter-spacing: 0.04em; border-bottom: 1px solid var(--line); }
+.form-tag {
+  font-size: 11px; letter-spacing: 0.04em; text-align: center;
+  color: #1f4d3a; background: #e7f0eb; padding: 2px 4px; border-radius: 3px;
+}

@@ -25,6 +25,8 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
       tree: DOC_VIZ.tree,
       treeRoot: DOC_VIZ.tree.root,
       treeSide: DOC_VIZ.tree.side,
+      usage: DOC_VIZ.usage,
+      forms: DOC_VIZ.forms,
       pointModel: DOC_VIZ.pointModel,
       archiveLayers: DOC_VIZ.archiveLayers,
       pickerLayers: DOC_VIZ.layers,

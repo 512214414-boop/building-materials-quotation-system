@@ -7,8 +7,8 @@
  */
 DOC_VIZ.tree = {
   kicker: "层级关系 · 还不是槽位",
-  title: "按挂载展开",
-  hint: "品牌挂产品名称，规格挂品牌。换算挂规格，粒度是品牌+规格+单位，不是品牌+单位。售价面价、进价面价、图片同样挂规格。点位规则不挂规格，按圈组另查。",
+  title: "按挂载展开（v26 层级修正：单位是独立层，售价/进价挂单位下）",
+  hint: "品牌挂产品名称，规格挂品牌，单位挂规格（独立层），换算挂单位（粒度=品牌+规格+单位），售价/进价挂单位（规格×品牌×单位）。图片、点位挂规格。点位规则不挂规格，按圈组另查。粒度到哪一层就挂到哪一层——不同粒度的表禁止画成同级。",
   root: {
     table: "product_name",
     children: [
@@ -22,13 +22,19 @@ DOC_VIZ.tree = {
             table: "spec",
             card: "N",
             children: [
-              { table: "spec_unit", card: "N", via: "unit" },
-              { table: "spec_unit_conversion", card: "N", via: "unit" },
-              { table: "sale_price", card: "N", via: "price_type" },
-              { table: "purchase_price", card: "N", via: "supplier" },
+              { table: "product_image", card: "N" },
               { table: "sale_spec_point", card: "N", via: "price_type" },
               { table: "purchase_spec_point", card: "N", via: "supplier" },
-              { table: "product_image", card: "N" }
+              {
+                table: "spec_unit",
+                card: "N",
+                via: "unit",
+                children: [
+                  { table: "spec_unit_conversion", card: "N", via: "unit" },
+                  { table: "sale_price", card: "N", via: "price_type" },
+                  { table: "purchase_price", card: "N", via: "supplier" }
+                ]
+              }
             ]
           }
         ]

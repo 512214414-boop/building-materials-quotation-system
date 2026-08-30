@@ -79,6 +79,7 @@
   function renderOrderFrameworkContent(parent, meta) {
     appendIntroLayer(parent, meta);
     appendMethodLayer(parent, meta.method);
+    appendRuleLayer(parent, meta.viewForm);
     appendArrow(parent, "落地时按这个顺序，不要先给格子挂输入");
     appendMethodLayer(parent, meta.implOrder);
     appendArrow(parent, "点值确认层接到开单表");
