@@ -171,8 +171,18 @@
 
   function appendTreeLayer(parent, meta) {
     if (!meta.treeRoot || !meta.tree) return;
+    if (meta.relGraph && typeof appendRelViewsLayer === "function") {
+      appendRelViewsLayer(parent, meta);
+      return;
+    }
     var sec = el("section", "layer");
     sec.appendChild(layerHead(meta.tree.kicker, meta.tree.title, { hint: meta.tree.hint }));
+    appendLayerBody(sec, renderTreeBody(meta));
+    parent.appendChild(sec);
+  }
+
+  // 结构树投影（树 + 圈组 side 区）：appendTreeLayer 与「关系 · 三种看法」共用，只此一份
+  function renderTreeBody(meta) {
     var body = el("div", "tree-body");
     body.appendChild(renderModelTreeNode(meta.treeRoot, meta.inventory, true));
     if (meta.treeSide) {
@@ -192,57 +202,7 @@
       side.appendChild(sideRow);
       body.appendChild(side);
     }
-    appendLayerBody(sec, body);
-    parent.appendChild(sec);
-    appendUsageLayer(parent, meta);
-    appendFormsLayer(parent, meta);
-  }
-
-  function appendUsageLayer(parent, meta) {
-    var usage = meta.usage;
-    if (!usage || !usage.edges) return;
-    var sec = el("section", "layer");
-    sec.appendChild(layerHead(usage.kicker, usage.title, { hint: usage.hint }));
-    var body = el("div", "tree-body");
-    var list = el("div", "usage-list");
-    usage.edges.forEach(function (e) {
-      var row = el("div", "usage-edge" + (e.kind === "struct" ? " is-struct" : ""));
-      row.appendChild(tblCard(e.from));
-      row.appendChild(el("span", "usage-arrow", e.kind === "struct" ? "— 结构边 →" : "— 使用边 →"));
-      row.appendChild(tblCard(e.to));
-      var info = el("div", "usage-meta");
-      info.appendChild(el("span", "usage-where", e.where));
-      if (e.note) info.appendChild(el("span", "usage-note", e.note));
-      row.appendChild(info);
-      list.appendChild(row);
-    });
-    body.appendChild(list);
-    appendLayerBody(sec, body);
-    parent.appendChild(sec);
-  }
-
-  function appendFormsLayer(parent, meta) {
-    var forms = meta.forms;
-    if (!forms || !forms.items) return;
-    var sec = el("section", "layer");
-    sec.appendChild(layerHead(forms.kicker, forms.title, { hint: forms.hint }));
-    var body = el("div", "tree-body");
-    var head = el("div", "form-row is-head");
-    ["形态", "判据", "界面", "树中节点", "例子"].forEach(function (t) {
-      head.appendChild(el("span", "form-cell", t));
-    });
-    body.appendChild(head);
-    forms.items.forEach(function (it) {
-      var row = el("div", "form-row");
-      row.appendChild(el("span", "form-tag", it.form));
-      row.appendChild(el("span", "form-cell", it.judge));
-      row.appendChild(el("span", "form-cell", it.ui));
-      row.appendChild(el("span", "form-cell", it.tree));
-      row.appendChild(el("span", "form-cell", it.eg));
-      body.appendChild(row);
-    });
-    appendLayerBody(sec, body);
-    parent.appendChild(sec);
+    return body;
   }
 
   function renderSurfaceNode(node, isRoot, selectedId) {

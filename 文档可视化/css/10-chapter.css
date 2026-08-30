@@ -469,3 +469,42 @@
   font-size: 11px; letter-spacing: 0.04em; text-align: center;
   color: #1f4d3a; background: #e7f0eb; padding: 2px 4px; border-radius: 3px;
 }
+
+/* 关系三视图（一份图数据 → 结构树 / 全关系图 / 形态矩阵） */
+.rel-wrap { display: flex; flex-direction: column; gap: 12px; }
+.view-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.view-tab {
+  font: inherit; font-size: 12px; padding: 5px 13px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink-2);
+}
+.view-tab.is-active { background: #1f4d3a; border-color: #1f4d3a; color: #fff; }
+.view-body { min-height: 120px; }
+
+.rel-scroll { overflow: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; }
+.rel-svg { display: block; }
+.rel-edge { fill: none; stroke-width: 1.6; }
+.rel-edge.edge-struct { stroke: #1c1c1c; }
+.rel-edge.edge-use { stroke: #1f4d3a; stroke-dasharray: 6 4; stroke-width: 2; }
+.rel-edge.edge-dict { stroke: #b0aa9c; stroke-dasharray: 1.5 3; }
+.rel-node rect { fill: #fff; stroke: var(--line); }
+.rel-node.form-param rect { fill: #f7f5f0; stroke-dasharray: 3 2; }
+.rel-node { cursor: pointer; }
+.rel-node:hover rect { stroke: #1f4d3a; stroke-width: 2; }
+.rel-node .n-cn { font-size: 12.5px; fill: var(--ink); }
+.rel-node .n-db { font-size: 10.5px; fill: var(--muted); }
+.rel-node .n-form { font-size: 10px; fill: #1f4d3a; }
+
+.rel-matrix { display: grid; grid-template-columns: 92px repeat(4, 1fr); gap: 6px; }
+.mx-cell {
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+  background: #fff; display: flex; flex-direction: column; gap: 6px; min-height: 48px;
+}
+.mx-cell.is-head, .mx-cell.is-rowhead { background: #f7f5f0; font-size: 12px; align-items: center; justify-content: center; }
+.mx-cell.is-corner { background: none; border: none; font-size: 11px; color: var(--muted); }
+.mx-cell.is-empty { background: #faf8f4; align-items: center; justify-content: center; border-style: dashed; }
+.mx-dash { font-size: 11px; color: #a8a294; }
+
+.rel-legend { display: flex; gap: 24px; flex-wrap: wrap; border-top: 1px dashed var(--line); padding-top: 10px; }
+.lg-block { flex: 1 1 300px; }
+.lg-svg { display: block; }
+.lg-text { font-size: 11.5px; fill: var(--ink-2); }

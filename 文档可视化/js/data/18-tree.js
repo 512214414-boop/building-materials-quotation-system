@@ -1,53 +1,22 @@
 /**
  * DOC_VIZ.tree
  * 归属：文档可视化 / 内容层
- * 切片自：js/data.js 原 2184-2223 行（已按分层规范拆出，原单文件不再维护）
+ *
+ * 结构树 = 关系图的一个投影（只取 struct 边），数据不再在这里写第二份。
+ * 数据来源：js/data/18-graph.js（root / side 全部由它推导）。
+ * 改挂载关系请改 18-graph.js；改这里的文案（怎么读这棵树）才改本文件。
  *
  * 约定：本文件只承载这一段内容。改这一段，只读/只改本文件，不必读全量。
  */
 DOC_VIZ.tree = {
-  kicker: "层级关系 · 还不是槽位",
-  title: "按挂载展开（v26 层级修正：单位是独立层，售价/进价挂单位下）",
-  hint: "品牌挂产品名称，规格挂品牌，单位挂规格（独立层），换算挂单位（粒度=品牌+规格+单位），售价/进价挂单位（规格×品牌×单位）。图片、点位挂规格。点位规则不挂规格，按圈组另查。粒度到哪一层就挂到哪一层——不同粒度的表禁止画成同级。",
-  root: {
-    table: "product_name",
-    children: [
-      { table: "product_category", card: "1", via: "category" },
-      {
-        table: "product_brand",
-        card: "N",
-        via: "brand",
-        children: [
-          {
-            table: "spec",
-            card: "N",
-            children: [
-              { table: "product_image", card: "N" },
-              { table: "sale_spec_point", card: "N", via: "price_type" },
-              { table: "purchase_spec_point", card: "N", via: "supplier" },
-              {
-                table: "spec_unit",
-                card: "N",
-                via: "unit",
-                children: [
-                  { table: "spec_unit_conversion", card: "N", via: "unit" },
-                  { table: "sale_price", card: "N", via: "price_type" },
-                  { table: "purchase_price", card: "N", via: "supplier" }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]
-  },
+  kicker: "结构树 · 三种看法之一",
+  title: "按挂载展开（只画结构边）",
+  hint: "结构树只画 struct 边：谁包含谁、粒度到哪层。共享字典（一本字典被多张表引用）、跨层使用边、不挂树的参数表它画不出来——这些看「关系 · 三种看法」里的另两个投影。",
+  root: DOC_VIZ.relGraph.buildStructTree(),
   side: {
     kicker: "圈组表 · 点位默认 · 不挂规格",
     title: "改全局动这两张。确认修改写规格上那一条。",
     hint: "圈组 = 当前品牌 + 当前分类（售价再锁类型，进价再锁渠道）。不是整个品牌。读点位：这一条有单独改过的 → 圈组 → 1。已经单独改过的规格，整批再调时不跟着变。",
-    tables: [
-      { table: "supplier_point_rule", group: "渠道 + 品牌名 + 分类名", formula: "进价圈组" },
-      { table: "sale_point_rule", group: "售价类型 + 品牌名 + 分类名", formula: "售价圈组" }
-    ]
+    tables: DOC_VIZ.relGraph.buildSideTables()
   }
 };
