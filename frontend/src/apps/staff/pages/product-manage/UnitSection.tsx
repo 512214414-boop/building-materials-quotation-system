@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Popover } from 'antd';
+import { Popover, message } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
 import UnitManagePanel, {
   type UnitManagePanelExtensions,
@@ -15,6 +15,9 @@ import { smartPopupContainer } from '../../../../shared/utils/smartPopupContaine
 import { isPointerOnFloatPanel } from '../../../../shared/components/PanelTree.js';
 import { calcEffectivePrice } from '../../../../shared/utils/format.js';
 import { resolveUnitPriceDisplay } from '../../../../shared/engines/pricing-engine.js';
+import {
+  DisplayCell,
+} from '../../../../shared/components/product-picker/PickerInlineCells.js';
 import type { UnitItem } from './productEditTypes.js';
 
 /** 常用单位列表（快速选择 chips） */
@@ -449,11 +452,22 @@ export function UnitSection({
       onSetDisplay={(key) => handleSetDisplay(units.findIndex((u) => u.rowKey === key))}
       onDelete={(key) => handleDelete(units.findIndex((u) => u.rowKey === key))}
       onAdd={(name, rate) => handleAddUnitCommit(name, rate)}
+      // v25.3 空行必反馈：新增被拒时给原因（重名/空名），不静默丢弃
+      onReject={(reason) => message.warning(reason)}
       commonUnits={COMMON_UNITS}
       extensions={{
         showBase: true,
         onSetBase: (key) => handleSetBase(units.findIndex((u) => u.rowKey === key)),
-        priceColumns,
+        priceColumns: {
+          ...priceColumns,
+          // v25.4 空行售价/进价：不再是死的占位格——有 hover，点击提示「请先新增单位」
+          emptySaleCell: (
+            <DisplayCell text="" placeholder="—" align="center" rejectReason="请先新增单位" />
+          ),
+          emptyPurchaseCell: (
+            <DisplayCell text="" placeholder="—" align="center" rejectReason="请先新增单位" />
+          ),
+        },
       }}
       disabled={disabled}
     />

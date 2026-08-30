@@ -1,7 +1,7 @@
 // 选品/档案格子只展示。点开后在确认浮层里改（看全文 + 影响范围 + 确认/取消）。
 // 划过仍走原来常驻输入框那套 hover（边框 + 底），光标改成手型，让人知道能点。
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
-import { Checkbox } from 'antd';
+import { Checkbox, message } from 'antd';
 import { usePickerEditGate } from './PickerEditGate.js';
 import {
   catalogDictField,
@@ -48,6 +48,8 @@ export function DisplayCell({
   title,
   embed = 'inline',
   onOpen,
+  rejectReason,
+  onReject,
 }: {
   text: string;
   placeholder: string;
@@ -58,9 +60,20 @@ export function DisplayCell({
   title?: string;
   embed?: PickerCellEmbed;
   onOpen?: (el: HTMLElement) => void;
+  /**
+   * v25.4 门禁提示：前置条件未满足的原因（如「请先填写系列/规格」）。
+   * 有此值时格子保持正常视觉与 hover（不置灰），点击走提示而非静默——
+   * 矩阵内所有格子形态一致，只有点击结果不同。
+   */
+  rejectReason?: string;
+  /** 提示方式（不传则内部兜底 message.warning） */
+  onReject?: (reason: string) => void;
 }) {
   const empty = !text;
   const canOpen = !disabled && !!onOpen;
+  const gated = !!rejectReason;
+  // 门禁格同样可交互（保留 hover / 手型 / 键盘可达），只是点击结果是提示
+  const interactive = gated || canOpen;
 
   const openFrom = (el: HTMLElement) => {
     onOpen?.(el);
@@ -68,17 +81,27 @@ export function DisplayCell({
 
   const onMouseDown = (e: MouseEvent<HTMLElement>) => {
     e.stopPropagation();
-    if (!canOpen || e.button !== 0) return;
+    if (!interactive || e.button !== 0) return;
     // 拦住默认，宿主输入框不失焦；在 mousedown 里打开，确认层能赶在父面板判「点了外面」之前挂上
     e.preventDefault();
+    if (gated) {
+      if (onReject) onReject(rejectReason);
+      else message.warning(rejectReason);
+      return;
+    }
     openFrom(e.currentTarget);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLElement>) => {
-    if (!canOpen) return;
+    if (!interactive) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
+      if (gated) {
+        if (onReject) onReject(rejectReason);
+        else message.warning(rejectReason);
+        return;
+      }
       openFrom(e.currentTarget);
     }
   };
@@ -89,10 +112,17 @@ export function DisplayCell({
 
   return (
     <span
-      className={`ds-picker-edit-trigger${disabled ? ' is-disabled' : ''}`}
-      role={canOpen ? 'button' : undefined}
-      tabIndex={canOpen ? 0 : undefined}
-      title={title ?? (canOpen ? (text || placeholder || '点击修改') : (text || placeholder))}
+      className={`ds-picker-edit-trigger${disabled && !gated ? ' is-disabled' : ''}`}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      title={
+        title ??
+        (gated
+          ? `${rejectReason}（${text || placeholder}）`
+          : canOpen
+            ? text || placeholder || '点击修改'
+            : text || placeholder)
+      }
       onMouseDown={onMouseDown}
       onClick={onClick}
       onKeyDown={onKeyDown}
@@ -292,6 +322,8 @@ export function ArchiveFieldCell({
   suggestField,
   dictConfig,
   onApply,
+  disabledReason,
+  onReject,
 }: {
   value: string;
   disabled?: boolean;
@@ -303,6 +335,9 @@ export function ArchiveFieldCell({
   suggestField?: SuggestField;
   dictConfig?: DictRecordConfig<any>;
   onApply: (next: string) => void | Promise<void>;
+  /** v25.4 门禁提示：前置未满足的原因（如「请先填写系列/规格」），视觉保持 hover，点击给提示 */
+  disabledReason?: string;
+  onReject?: (reason: string) => void;
 }) {
   const gate = usePickerEditGate();
   const impact: CatalogImpactView = {
@@ -316,6 +351,8 @@ export function ArchiveFieldCell({
       placeholder={placeholder}
       align={align}
       disabled={disabled}
+      rejectReason={disabledReason}
+      onReject={onReject}
       onOpen={(el) =>
         gate.open(
           {
@@ -344,6 +381,8 @@ export function ArchiveEmptyFieldCell({
   dictConfig,
   onApply,
   leadCheck = false,
+  disabledReason,
+  onReject,
 }: {
   placeholder: string;
   title: string;
@@ -352,6 +391,9 @@ export function ArchiveEmptyFieldCell({
   dictConfig?: DictRecordConfig<any>;
   onApply: (value: string) => void | Promise<void>;
   leadCheck?: boolean;
+  /** v25.4 门禁提示：前置未满足的原因（如「请先填写系列/规格」），视觉保持 hover，点击给提示 */
+  disabledReason?: string;
+  onReject?: (reason: string) => void;
 }) {
   const gate = usePickerEditGate();
   const impact: CatalogImpactView = {
@@ -364,6 +406,8 @@ export function ArchiveEmptyFieldCell({
       text=""
       placeholder={placeholder}
       disabled={false}
+      rejectReason={disabledReason}
+      onReject={onReject}
       onOpen={(el) =>
         gate.open(
           {

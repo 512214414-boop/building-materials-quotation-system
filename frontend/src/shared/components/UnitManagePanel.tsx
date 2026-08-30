@@ -63,6 +63,13 @@ export interface UnitManagePanelExtensions {
     saleCell: (unit: UnitManageItem) => React.ReactNode;
     /** 每个单位渲染进价列内容 */
     purchaseCell: (unit: UnitManageItem) => React.ReactNode;
+    /**
+     * v25.4 空行售价占位（前置未满足 → 点击给提示，视觉保持 hover）。
+     * 不传则纯占位（旧行为）。
+     */
+    emptySaleCell?: React.ReactNode;
+    /** v25.4 空行进价占位（同 emptySaleCell） */
+    emptyPurchaseCell?: React.ReactNode;
   };
 }
 
@@ -87,6 +94,11 @@ export interface UnitManagePanelProps {
   onDelete: (unitKey: string) => void;
   /** 新增单位回调（落库；末尾空行输入有效名后触发；rate 可选——空行换算率一次录入） */
   onAdd: (name: string, rate?: string) => void;
+  /**
+   * v25.3 空行反馈（空行必反馈纪律）：空行/常用单位新增被拒时给原因。
+   * 禁止静默丢弃——确认层照常开、确认后界面零变化，用户感知就是「点了没反应」。
+   */
+  onReject?: (reason: string) => void;
   /**
    * v1.9：预置快速选项（常用单位，通用 quickOptions 抽象——数据补全·预置快速选项）。
    * 点击填入空行并触发新增；不传 = 不渲染快速选项条。
@@ -115,6 +127,7 @@ export function UnitManagePanel({
   commonUnits = [],
   extensions,
   disabled,
+  onReject,
 }: UnitManagePanelProps) {
   // 末尾空行：点空位打开确认浮层新增；换算率可先点好再点名称
   const [addRate, setAddRate] = useState('');
@@ -141,9 +154,13 @@ export function UnitManagePanel({
 
   const handleAddCommit = (nameInput?: string, rateInput?: string) => {
     const name = (nameInput ?? '').trim();
-    if (!name) return;
+    if (!name) {
+      onReject?.('请先输入单位名');
+      return;
+    }
     if (units.some((u) => u.unitName === name)) {
       setAddRate('');
+      onReject?.(`单位「${name}」已存在`);
       return;
     }
     onAdd(name, (rateInput ?? addRate).trim() || undefined);
@@ -292,8 +309,8 @@ export function UnitManagePanel({
           />
           {extensions?.priceColumns && (
             <>
-              <span />
-              <span />
+              {extensions.priceColumns.emptySaleCell ?? <span />}
+              {extensions.priceColumns.emptyPurchaseCell ?? <span />}
             </>
           )}
           {extensions?.showBase && (

@@ -44,7 +44,7 @@ import {
 import { DsDialog } from '../../../../shared/components/DsDialog.js';
 import DsButton from '../../../../shared/components/DsButton.js';
 import { ArchiveDialogField, ArchiveDialogFieldSkeleton, confirmFillsBeforeSave } from '../../../../shared/components/index.js';
-import { ArchiveFieldCell } from '../../../../shared/components/product-picker/PickerInlineCells.js';
+import { ArchiveFieldCell, ArchiveEmptyFieldCell } from '../../../../shared/components/product-picker/PickerInlineCells.js';
 import {
   QUICK_CREATE_LAYERS,
   resolveFieldValue,
@@ -75,6 +75,8 @@ import {
 } from '../../../../shared/components/UnitPriceExpandPanel.js';
 import { UnitSection } from './UnitSection.js';
 import { BrandImages } from './BrandImages.js';
+// v25.4：规格矩阵走共享组件 MatrixTable（C29，同供应商联系信息矩阵），禁止弹窗内第二套矩阵
+import MatrixTable from '../../../../shared/components/MatrixTable.js';
 import type { UnitItem, ImageItem, BrandItem } from './productEditTypes.js';
 import { useCanvasApp } from '../../../../shared/hooks/useCanvasApp.js';
 
@@ -101,35 +103,9 @@ const SECTION_BOX_STYLE: React.CSSProperties = {
   marginBottom: 6,
 };
 
-// v25 规格表格样式（同单位区范式：紧凑表头+单元格+内嵌输入框）
-const SPEC_HEADER_STYLE: React.CSSProperties = {
-  padding: '4px 8px',
-  fontSize: 'var(--body-xs-font-size)',
-  fontWeight: 500,
-  color: 'var(--text-tertiary)',
-  borderBottom: '1px solid var(--border-neutral-l1)',
-  background: 'var(--bg-base-tertiary)',
-  whiteSpace: 'nowrap',
-};
-
-const SPEC_CELL_STYLE: React.CSSProperties = {
-  padding: '2px 4px',
-  borderBottom: '1px solid var(--border-neutral-l1)',
-  display: 'flex',
-  alignItems: 'center',
-  minWidth: 0,
-};
-
-const SPEC_INPUT_STYLE: React.CSSProperties = {
-  width: '100%',
-  minWidth: 0,
-  border: 'none',
-  background: 'transparent',
-  fontSize: 'var(--body-xs-font-size)',
-  padding: '2px 4px',
-  outline: 'none',
-  fontFamily: 'inherit',
-};
+// v25.2 规格表格：骨架走 EntityPanel（.ds-grid-* 令牌）+ 单元格走确认层
+// （ArchiveFieldCell / ArchiveEmptyFieldCell，同档案矩阵范式）。
+// 全局规范：常驻输入框已全部取消，改由确认层——本地 SPEC_* 样式常量随之清零。
 
 
 // v10.1.6：品牌标签区 + 单位区按钮 hover 效果
@@ -261,8 +237,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   const [currentSpecId, setCurrentSpecId] = useState<string | null>(null);
   // 创建新规格模式（在同产品名+分类下新建规格，预填名称和分类）
   const [creatingSibling, setCreatingSibling] = useState(false);
-  // v25：规格空行输入（新增规格变体的末尾空行）
-  const [newSpecInput, setNewSpecInput] = useState('');
 
   // v22.0：系列/规格唯一性（同产品×品牌下 specModel 不重复）
   const specDuplicate = useMemo(() => {
@@ -497,7 +471,6 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
     setCurrentProductId(productId ?? null);
     setCurrentSpecId(null);
     setCreatingSibling(false);
-    setNewSpecInput('');
     setActiveBrandId(null);
     setProductBrandTabs([]);
     if (productId) {
@@ -1482,7 +1455,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
 
         {/* ============================================================ */}
         {/* ============================================================ */}
-        {/* §C 系列/规格表格：当前品牌下的规格变体（纵向表格，同单位区范式） */}
+        {/* §C 系列/规格表格：当前品牌下的规格变体（v25.1 走 EntityPanel C65，与单位区同一套网格令牌） */}
         {/* ============================================================ */}
         <div style={SECTION_BOX_STYLE}>
           <div
@@ -1494,185 +1467,145 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
           >
             系列/规格：当前品牌下的货号变体（如 dn25、伟星绿、伟星黄）。通用尺寸写在产品名；此处填品牌私有属性。
           </div>
-          {/* 规格表格：系列/规格 | 规格备注 | 操作 */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(80px, 1fr) minmax(80px, 1fr) 48px',
-              gap: 0,
-              border: '1px solid var(--border-neutral-l1)',
-              borderRadius: 'var(--radius-3)',
-              overflow: 'hidden',
+          {/* v25.4 规格矩阵：走共享组件 MatrixTable（与供应商联系信息矩阵同一组件）。
+              所有格子一律确认层（空行三格同可点），前置未满足 → 点击给提示，视觉保持一致。 */}
+          <MatrixTable
+            headerName="系列/规格"
+            headerPrice="规格备注"
+            showDefault={false}
+            showAddButton={false}
+            template="minmax(100px, 1fr) minmax(120px, 1fr) 24px"
+            selectedRowKey={creatingSibling ? 'creating-sibling' : currentSpecId ?? undefined}
+            onRowSelect={(key) => {
+              if (key === 'creating-sibling') return;
+              if (!creatingSibling) handleSwitchSpec(key);
             }}
-          >
-            {/* 表头 */}
-            <div style={SPEC_HEADER_STYLE}>系列/规格</div>
-            <div style={SPEC_HEADER_STYLE}>规格备注</div>
-            <div style={{ ...SPEC_HEADER_STYLE, textAlign: 'center' }}>操作</div>
-
-            {/* 已有规格行 */}
-            {specsForActiveBrand.map((spec) => {
-              const isCurrent = spec.id === currentSpecId && !creatingSibling;
-              const isInactive = spec.status === 0;
-              return (
-                <Fragment key={spec.id}>
-                  {/* 系列/规格 */}
-                  <div
-                    style={{
-                      ...SPEC_CELL_STYLE,
-                      background: isCurrent ? 'var(--bg-brand-popup)' : 'transparent',
-                      cursor: isCurrent ? 'default' : 'pointer',
-                    }}
-                    onClick={() => !isCurrent && !creatingSibling && handleSwitchSpec(spec.id)}
-                  >
-                    {isCurrent ? (
-                      <input
-                        value={specModel}
-                        placeholder="留空默认「通用」"
-                        disabled={loading || saving}
-                        onChange={(e) => setSpecModel(e.target.value)}
-                        style={SPEC_INPUT_STYLE}
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          fontSize: 'var(--body-xs-font-size)',
-                          color: isInactive ? 'var(--text-quaternary)' : 'var(--text-default)',
-                        }}
-                      >
-                        {spec.specModel || '(空)'}
-                        {isInactive && (
-                          <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.6 }}>(停用)</span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                  {/* 规格备注 */}
-                  <div
-                    style={{
-                      ...SPEC_CELL_STYLE,
-                      background: isCurrent ? 'var(--bg-brand-popup)' : 'transparent',
-                      cursor: isCurrent ? 'default' : 'pointer',
-                    }}
-                    onClick={() => !isCurrent && !creatingSibling && handleSwitchSpec(spec.id)}
-                  >
-                    {isCurrent ? (
-                      <input
-                        value={specRemark}
-                        placeholder="执行标准 / 企标 / 国标"
-                        disabled={loading || saving}
-                        onChange={(e) => setSpecRemark(e.target.value)}
-                        style={SPEC_INPUT_STYLE}
-                      />
-                    ) : (
-                      <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-secondary)' }}>
-                        {spec.remark || '—'}
-                      </span>
-                    )}
-                  </div>
-                  {/* 操作 */}
-                  <div
-                    style={{
-                      ...SPEC_CELL_STYLE,
-                      background: isCurrent ? 'var(--bg-brand-popup)' : 'transparent',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {!isCurrent && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSpec(spec);
-                        }}
-                        disabled={loading || saving}
-                        title="删除规格"
-                        style={{
-                          border: 'none',
-                          background: 'transparent',
-                          color: 'var(--text-quaternary)',
-                          cursor: loading || saving ? 'not-allowed' : 'pointer',
-                          padding: '2px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <DeleteOutlined style={{ fontSize: 12 }} />
-                      </button>
-                    )}
-                  </div>
-                </Fragment>
-              );
-            })}
-
-            {/* 新建中行（creatingSibling=true 时显示） */}
-            {creatingSibling && (
-              <Fragment key="creating-sibling">
-                <div style={{ ...SPEC_CELL_STYLE, background: 'var(--bg-brand-popup)', borderTop: '1px dashed var(--text-brand)' }}>
-                  <input
-                    value={specModel}
-                    placeholder="输入系列/规格"
-                    autoFocus
-                    disabled={loading || saving}
-                    onChange={(e) => setSpecModel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
+            rows={[
+              // 已有规格行：行点击切换当前规格；点值走确认层。
+              // 门禁统一：非当前行 / 规格名未填 → 格子视觉不变（照常有 hover），点击给提示。
+              ...specsForActiveBrand.map((spec) => {
+                const isCurrent = spec.id === currentSpecId && !creatingSibling;
+                const isInactive = spec.status === 0;
+                const switchReason = '请先点击该行切换到此规格，再修改';
+                const nameReason = specModel.trim() ? undefined : '请先填写系列/规格';
+                return {
+                  rowKey: spec.id,
+                  nameCell: isCurrent ? (
+                    <ArchiveFieldCell
+                      value={specModel}
+                      placeholder="留空默认「通用」"
+                      title="修改系列/规格"
+                      bullets={[
+                        '仅修改当前规格的系列/规格，保存时统一落库。',
+                        '与同品牌下其他规格重复时，保存将被阻止。',
+                      ]}
+                      disabled={loading || saving}
+                      onApply={(v) => setSpecModel(v)}
+                    />
+                  ) : (
+                    <ArchiveFieldCell
+                      value={`${spec.specModel || '(空)'}${isInactive ? '（停用）' : ''}`}
+                      placeholder="—"
+                      title="修改系列/规格"
+                      disabled
+                      disabledReason={switchReason}
+                      onApply={() => undefined}
+                    />
+                  ),
+                  price: '',
+                  onPriceChange: () => undefined,
+                  priceRender: isCurrent ? (
+                    <ArchiveFieldCell
+                      value={specRemark}
+                      placeholder="执行标准 / 企标 / 国标"
+                      title="修改规格备注"
+                      bullets={['仅修改当前规格的备注，保存时统一落库。']}
+                      disabled={loading || saving}
+                      disabledReason={nameReason}
+                      onApply={(v) => setSpecRemark(v)}
+                    />
+                  ) : (
+                    <ArchiveFieldCell
+                      value={spec.remark || ''}
+                      placeholder="—"
+                      title="修改规格备注"
+                      disabled
+                      disabledReason={switchReason}
+                      onApply={() => undefined}
+                    />
+                  ),
+                  isDefault: false,
+                  onIsDefaultChange: () => undefined,
+                  defaultTitle: '',
+                  onDelete: () => handleDeleteSpec(spec),
+                  deleteTitle: '删除规格',
+                  deleteDisabled: isCurrent || loading || saving,
+                };
+              }),
+              // 新建规格行（creatingSibling）：确认层编辑；操作列=取消新建
+              ...(creatingSibling
+                ? [
+                    {
+                      rowKey: 'creating-sibling',
+                      nameCell: (
+                        <ArchiveFieldCell
+                          value={specModel}
+                          placeholder="输入系列/规格"
+                          title="系列/规格（新建）"
+                          bullets={['确认后写入本地，保存时统一落库。']}
+                          disabled={loading || saving}
+                          onApply={(v) => setSpecModel(v)}
+                        />
+                      ),
+                      price: '',
+                      onPriceChange: () => undefined,
+                      priceRender: (
+                        <ArchiveFieldCell
+                          value={specRemark}
+                          placeholder="执行标准 / 企标 / 国标"
+                          title="规格备注（新建）"
+                          bullets={['确认后写入本地，保存时统一落库。']}
+                          disabled={loading || saving}
+                          disabledReason={specModel.trim() ? undefined : '请先填写系列/规格'}
+                          onApply={(v) => setSpecRemark(v)}
+                        />
+                      ),
+                      isDefault: false,
+                      onIsDefaultChange: () => undefined,
+                      defaultTitle: '',
+                      onDelete: () => {
                         setCreatingSibling(false);
                         setSpecModel('');
                         setSpecRemark('');
-                      }
-                    }}
-                    style={{ ...SPEC_INPUT_STYLE, color: 'var(--text-brand)', fontWeight: 500 }}
-                  />
-                </div>
-                <div style={{ ...SPEC_CELL_STYLE, background: 'var(--bg-brand-popup)', borderTop: '1px dashed var(--text-brand)' }}>
-                  <input
-                    value={specRemark}
-                    placeholder="执行标准 / 企标 / 国标"
-                    disabled={loading || saving}
-                    onChange={(e) => setSpecRemark(e.target.value)}
-                    style={{ ...SPEC_INPUT_STYLE, color: 'var(--text-brand)', fontWeight: 500 }}
-                  />
-                </div>
-                <div
-                  style={{
-                    ...SPEC_CELL_STYLE,
-                    background: 'var(--bg-brand-popup)',
-                    borderTop: '1px dashed var(--text-brand)',
-                    textAlign: 'center',
-                  }}
-                >
-                  <span style={{ fontSize: 10, color: 'var(--text-brand)' }}>新建</span>
-                </div>
-              </Fragment>
-            )}
-
-            {/* 末尾空行：输入新增规格（非创建中时显示） */}
-            {!creatingSibling && (
-              <Fragment key="spec-empty-row">
-                <div style={SPEC_CELL_STYLE}>
-                  <input
-                    value={newSpecInput}
-                    placeholder="新增系列/规格…"
-                    disabled={loading || saving || !activeBrandId}
-                    onChange={(e) => setNewSpecInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newSpecInput.trim()) {
-                        e.preventDefault();
-                        handleAddSiblingSpec(newSpecInput.trim());
-                        setNewSpecInput('');
-                      }
-                    }}
-                    style={{ ...SPEC_INPUT_STYLE, color: 'var(--text-brand)' }}
-                  />
-                </div>
-                <div style={SPEC_CELL_STYLE} />
-                <div style={SPEC_CELL_STYLE} />
-              </Fragment>
-            )}
-          </div>
+                      },
+                      deleteTitle: '取消新建规格',
+                    },
+                  ]
+                : []),
+            ]}
+            // 末尾空行：两格都走确认层（同供应商联系矩阵——空行每列都有 hover 态，可点）；
+            // 门禁统一：备注格前置未满足 → 点击提示「请先填写系列/规格」，不默默不可点。
+            addNameCell={
+              <ArchiveEmptyFieldCell
+                placeholder="新增系列/规格…"
+                title="新增规格变体"
+                bullets={['新增规格变体：保留品牌与单位，价格清空，保存时统一落库。']}
+                disabledReason={creatingSibling ? '请先完成或取消正在新建的规格' : undefined}
+                onApply={(v) => {
+                  const name = v.trim();
+                  if (name && !loading && !saving) handleAddSiblingSpec(name);
+                }}
+              />
+            }
+            addPriceCell={
+              <ArchiveEmptyFieldCell
+                placeholder="执行标准 / 企标 / 国标"
+                title="规格备注"
+                disabledReason="请先填写系列/规格"
+                onApply={(v) => setSpecRemark(v)}
+              />
+            }
+          />
 
           {/* 重复提示 */}
           {specDuplicate && (
