@@ -37,6 +37,8 @@ fs.mkdirSync(genDir, { recursive: true });
 for (const f of fs.readdirSync(genDir)) {
   if (/^\d+-.+\.js$/.test(f)) fs.unlinkSync(path.join(genDir, f));
 }
+// genIndex：收集「序号 + 文件名 + 条目」，供 ④ 技能索引生成使用
+const genIndex = [];
 let seq = 0;
 for (const item of items) {
   seq += 1;
@@ -56,6 +58,7 @@ for (const item of items) {
     `DOC_VIZ.whyBiz["${navId}"] = ${body};\n`;
   const nn = String(seq).padStart(2, '0');
   fs.writeFileSync(path.join(genDir, `${nn}-${navId}.js`), code, 'utf8');
+  genIndex.push({ nn, navId, item });
 }
 
 // ---------- ② 生成执行卡（AGENTS.md 的 GEN 标记之间） ----------
@@ -129,6 +132,10 @@ if (agents.includes(BEGIN) && agents.includes(END)) {
 }
 fs.writeFileSync(agentsFile, agents, 'utf8');
 
+// 缓存治理：全站 script 版本号收口到真相源 meta.version，升版本即全站强制刷新。
+// 手写登记的 script 也一并归一，否则 gen 块升版、手写块滞留旧号 → 新旧脚本混载。
+const cacheV = src.meta?.version ?? 1;
+
 // ---------- ③ 生成 index.html 的加载清单（GEN:SCRIPTS 标记之间） ----------
 const htmlFile = path.join(docViz, 'index.html');
 if (fs.existsSync(htmlFile)) {
@@ -136,14 +143,49 @@ if (fs.existsSync(htmlFile)) {
   const SBEGIN = '<!-- GEN:SCRIPTS:BEGIN -->';
   const SEND = '<!-- GEN:SCRIPTS:END -->';
   const genFiles = fs.readdirSync(genDir).filter((f) => /^\d+-.+\.js$/.test(f)).sort();
-  const scriptLines = genFiles.map((f) => `  <script src="js/data/gen/${f}"></script>`).join('\n');
+  const scriptLines = genFiles.map((f) => `  <script src="js/data/gen/${f}?v=${cacheV}"></script>`).join('\n');
   const block = `${SBEGIN}\n${scriptLines}\n  ${SEND}`;
   if (html.includes(SBEGIN) && html.includes(SEND)) {
     html = html.replace(new RegExp(`${SBEGIN}[\\s\\S]*?${SEND}`), block);
-    fs.writeFileSync(htmlFile, html, 'utf8');
   } else {
     console.warn('! index.html 缺 GEN:SCRIPTS 标记，跳过加载清单生成');
   }
+  // 关键：块替换之后再全量归一，手写登记的 script 同样跟到当前版本
+  html = html.replace(/(\.js)\?v=\d+/g, `$1?v=${cacheV}`);
+  fs.writeFileSync(htmlFile, html, 'utf8');
 }
 
-console.log(`✓ 生成完成：${items.length} 条 → js/data/gen/ + AGENTS.md（GEN 节）+ index.html 加载清单`);
+// ---------- ④ 生成技能索引（AGENTS.md 的 GEN:INDEX 标记之间） ----------
+/**
+ * 索引由真相源生成，禁止手写。
+ * 手写索引必然漂移：本次事故就是路径写成 04-why/、9 个编号错 7 个、20 章只登记 9 章。
+ * 触发词：真相源写了 index.hear 用写的（可精修），否则从 nav.subtitle 的「触发：X」派生。
+ */
+function deriveHear(item) {
+  if (item.index && item.index.hear) return item.index.hear;
+  const sub = (item.nav && item.nav.subtitle) || '';
+  const m = sub.match(/触发[：:]\s*([^·|]+)/);
+  if (m) return m[1].trim();
+  return (item.nav && item.nav.title) || item.id;
+}
+
+const idxLines = [];
+idxLines.push('| 听到什么 | 先读哪篇 | 文件（文档可视化/js/data/gen/） |');
+idxLines.push('|---|---|---|');
+genIndex.forEach(({ nn, navId, item }) => {
+  const title = (item.nav && item.nav.title) || item.id;
+  idxLines.push(`| ${deriveHear(item)} | ${title} | \`${nn}-${navId}.js\` |`);
+});
+
+let agentsForIdx = fs.existsSync(agentsFile) ? fs.readFileSync(agentsFile, 'utf8') : '';
+const IBEGIN = '<!-- GEN:INDEX:BEGIN -->';
+const IEND = '<!-- GEN:INDEX:END -->';
+if (agentsForIdx.includes(IBEGIN) && agentsForIdx.includes(IEND)) {
+  const re = new RegExp(`${IBEGIN}[\\s\\S]*?${IEND}`);
+  agentsForIdx = agentsForIdx.replace(re, `${IBEGIN}\n${idxLines.join('\n')}\n${IEND}`);
+  fs.writeFileSync(agentsFile, agentsForIdx, 'utf8');
+} else {
+  console.warn('! AGENTS.md 缺 GEN:INDEX 标记，跳过技能索引生成');
+}
+
+console.log(`✓ 生成完成：${items.length} 条 → js/data/gen/ + AGENTS.md（GEN 节 + 技能索引）+ index.html 加载清单`);

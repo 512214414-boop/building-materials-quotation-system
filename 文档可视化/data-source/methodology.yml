@@ -60,6 +60,8 @@ items:
   - id: table-feature-pipeline
     layer: L0
     navId: know-table
+    index:
+      hear: "识别到表功能（存数据/列清单/挂关系/留痕迹）"
     nav:
       title: 表功能方法论
       subtitle: 触发：识别到表功能 · 画图→集合体→分层→插槽
@@ -964,6 +966,8 @@ items:
     layer: L0
     navId: know-method
     kind: carry
+    index:
+      hear: "对话要沉淀成指导思想、切一类活"
     nav:
       title: 对话 → 指导思想
       subtitle: 触发：对话要沉淀成指导思想 · 项目文档的生成源头
@@ -1196,6 +1200,8 @@ items:
     layer: L1
     navId: know-cause
     kind: carry
+    index:
+      hear: "想看方法做通的实样"
     nav:
       title: 对照本项目
       subtitle: 触发：要看方法做通的实样 · 只参照不复制
@@ -1286,6 +1292,8 @@ items:
     layer: L0
     navId: know-brief
     kind: carry
+    index:
+      hear: "新项目下发文档"
     nav:
       title: 下发文档范本
       subtitle: 触发：新项目下发文档 · 范式+不变量+一个闭环
@@ -1409,6 +1417,8 @@ items:
     layer: L0
     navId: know-loop
     kind: carry
+    index:
+      hear: "接到任意功能需求"
     nav:
       title: 接到需求先归类
       subtitle: 触发：接到功能需求 · 先打包归类共性差异再动手
@@ -1514,6 +1524,8 @@ items:
     layer: L0
     navId: know-layout
     kind: carry
+    index:
+      hear: "建/改文档站点、往里加一章"
     nav:
       title: 文档项目怎么分层
       subtitle: 触发：建/改文档站点 · 一章一文件
@@ -1655,6 +1667,8 @@ items:
     layer: L0
     navId: know-recover
     kind: carry
+    index:
+      hear: "文档改动记账 / 出问题回滚"
     nav:
       title: 版本记录与恢复
       subtitle: 触发：文档改动前后 · 有账可查可回滚
@@ -1750,6 +1764,8 @@ items:
     layer: L1
     navId: know-route
     kind: carry
+    index:
+      hear: "每轮任务对话开工前 / 判完类型判产物后"
     nav:
       title: 对话分流
       subtitle: 每轮对话第 0 步 · 判类型→判产物→查方法论→干活→报验收
@@ -1935,6 +1951,8 @@ items:
     layer: L0
     navId: know-precipitate
     kind: carry
+    index:
+      hear: "同类问题第二次出现 / 高代价教训"
     nav:
       title: 怎么沉淀方法论
       subtitle: 重复才沉淀 · 三件套登记齐才算 · 标题即触发信号
