@@ -1,0 +1,95 @@
+# entity-meta.yml — 实体 × 字段 × 行为维度的唯一真相源（v2）
+# 用法：node tools/gen-entity-meta.mjs
+# 元模型运行时阶段：A✅category → B✅gate → C 快照(document_line) → D 审计/统计 → E 字典实体扩展
+# 维度注释：A身份(layer/unique) B语义(required/defaults) C来源(dict/valueFrom)
+#          E呈现(confirmStrategy) F行为(gate) G检索(searchLayer) H历史(snapshotFrom)
+version: 2
+
+entities:
+  category:
+    label: 分类
+    table: category
+    layer: globalDict
+    primaryKey: id
+    behavior:
+      quickCreate: true
+      deleteGuard: 被引用不能删，只能停用
+    fields:
+      id: { label: 分类ID, dataType: int }
+      name: { label: 分类名称, dataType: string, required: true, unique: global, defaults: { sortOrder: 0, status: 1 }, confirmStrategy: dialog, searchLayer: name }
+      sortOrder: { label: 排序号, dataType: int, defaults: 0 }
+      status: { label: 状态, dataType: int, defaults: 1 }
+
+  brand:
+    label: 品牌
+    table: brand
+    layer: globalDict
+    primaryKey: id
+    behavior:
+      quickCreate: true
+      deleteGuard: 被引用不能删，只能停用
+    fields:
+      id: { label: 品牌ID, dataType: int }
+      name: { label: 品牌名称, dataType: string, required: true, unique: global, defaults: { status: 1 }, confirmStrategy: dialog, searchLayer: name }
+      status: { label: 状态, dataType: int, defaults: 1 }
+
+  unit:
+    label: 单位
+    table: unit
+    layer: globalDict
+    primaryKey: id
+    behavior:
+      quickCreate: true
+      deleteGuard: 被引用不能删，只能停用
+    fields:
+      id: { label: 单位ID, dataType: int }
+      unitName: { label: 单位名称, dataType: string, required: true, unique: global, defaults: { status: 1 }, confirmStrategy: dialog, searchLayer: name }
+      status: { label: 状态, dataType: int, defaults: 1 }
+
+  price_type:
+    label: 价格类型
+    table: price_type
+    layer: globalDict
+    primaryKey: id
+    behavior:
+      quickCreate: true
+      deleteGuard: 被引用不能删，只能停用
+    fields:
+      id: { label: 价格类型ID, dataType: int }
+      name: { label: 类型名称, dataType: string, required: true, unique: global, defaults: { sortOrder: 0, status: 1 }, confirmStrategy: dialog, searchLayer: name }
+      sortOrder: { label: 排序, dataType: int, defaults: 0 }
+      status: { label: 状态, dataType: int, defaults: 1 }
+
+  document_line:
+    label: 单据行（快照）
+    table: document_lines
+    layer: snapshot
+    primaryKey: id
+    fields:
+      productName: { label: 产品名（快照）, snapshotFrom: product.name }
+      brandName: { label: 品牌（快照）, snapshotFrom: brand.name }
+      categoryName: { label: 分类（快照）, snapshotFrom: category.name }
+      specModel: { label: 规格（快照）, snapshotFrom: spec.specModel }
+      unitName: { label: 单位（快照）, snapshotFrom: unit.unitName }
+
+# 阶段 D · 审计 action 目录（单一来源）：controller 只填 action 名，记录字段由
+# 中间件从本目录统一取。此清单为代表性样例，完整清单以现状盘点为准逐步迁入。
+auditActions:
+  - { action: document_create, resource: document, label: 建档 }
+  - { action: document_update, resource: document, label: 改单 }
+  - { action: product_create, resource: product, label: 产品建档 }
+  - { action: product_update, resource: product, label: 产品改单 }
+  - { action: supplier_create, resource: supplier, label: 供应商建档 }
+  - { action: customer_create, resource: customer, label: 客户建档 }
+  - { action: payment_add, resource: payment, label: 记收款 }
+  - { action: refund_record, resource: refund, label: 记退款 }
+  - { action: inventory_adjust, resource: inventory, label: 库存调整 }
+  - { action: user_create, resource: user, label: 新建用户 }
+
+# 阶段 D · 统计口径（区间汇总，与 summaryService/rangeSummary 同一口径）
+indicators:
+  - { id: salesAmount, label: 销售额, aggregate: SUM(document_lines.amount) }
+  - { id: paymentAmount, label: 回款, aggregate: SUM(payment_records.amount), filter: reconcile_status=reconciled }
+  - { id: costAmount, label: 成本, aggregate: SUM(cost_lines.cost_amount) }
+  - { id: refundAmount, label: 退货扣减, aggregate: SUM(refund_lines.refund_amount), filter: refund_type=refund }
+  - { id: netProfit, label: 净利润, formula: salesAmount - costAmount - refundAmount }
