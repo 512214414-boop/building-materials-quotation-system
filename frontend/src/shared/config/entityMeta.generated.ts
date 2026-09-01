@@ -87,7 +87,8 @@ export const entityMeta: Record<string, EntityMeta> = {
     behavior: undefined,
     fields: [
       { key: "name", label: "产品名称", dataType: "string", required: true, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
-      { key: "specModel", label: "规格型号", dataType: "string", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
+      { key: "brand", label: "品牌", dataType: "string", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
+      { key: "specModel", label: "规格型号", dataType: "string", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: {"requires":"brand","reason":"请先选择品牌"}, snapshotFrom: undefined },
       { key: "remark", label: "规格备注", dataType: "string", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: {"requires":"specModel","reason":"请先选规格"}, snapshotFrom: undefined },
     ],
   },

@@ -75,7 +75,8 @@ entities:
     primaryKey: id
     fields:
       name: { label: 产品名称, dataType: string, required: true }
-      specModel: { label: 规格型号, dataType: string }
+      brand: { label: 品牌, dataType: string }
+      specModel: { label: 规格型号, dataType: string, gate: { requires: brand, reason: 请先选择品牌 } }
       remark: { label: 规格备注, dataType: string, gate: { requires: specModel, reason: 请先选规格 } }
     columns:
       - { key: productRef, title: 产品名, dataIndex: productRef, renderMode: custom, minWidth: NAME_PRODUCT, align: left, className: ds-cascade-col, order: 10, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
