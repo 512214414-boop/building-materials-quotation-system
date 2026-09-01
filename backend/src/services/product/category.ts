@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
+import { assertInventoryNotReferenced } from '../dictInventoryGuard.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
 import { paginate } from '../../utils/response.js';
 import { logger } from '../../utils/logger.js';
@@ -129,6 +130,8 @@ export async function deleteCategory(id: number) {
       `分类下存在 ${productCount} 个产品，请先迁移后再删除`,
     );
   }
+  // v28：校验实时库存引用（inventory 无物理外键，被库存引用即禁止删除，经 spec→product 反查）
+  await assertInventoryNotReferenced('category', BigInt(id));
   return prisma.category.delete({ where: { id } });
 }
 

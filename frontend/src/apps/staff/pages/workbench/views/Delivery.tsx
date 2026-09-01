@@ -36,6 +36,7 @@ import { useSaveStatus } from '../../../../../shared/components/common/SaveStatu
 import type { DeliveryMethod, DeliveryStatus } from '../../../../../shared/types/index.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useViewLock } from '../../../../../shared/hooks/useViewLock.js';
 
 // ============================================================
 // 常量映射
@@ -96,7 +97,7 @@ interface QuickAddBuffer {
 // ============================================================
 
 export default function Delivery({ documentId }: { documentId: string }) {
-  const { message, modal } = useCanvasApp();
+  const { message } = useCanvasApp();
   const { trackSave } = useSaveStatus();
 
   const [loading, setLoading] = useState(true);
@@ -110,9 +111,19 @@ export default function Delivery({ documentId }: { documentId: string }) {
   const [addingDelivery, setAddingDelivery] = useState(false);
   const submittingRef = useRef<Set<string>>(new Set());
 
-  // 视图锁定
-  const [viewLocked, setViewLocked] = useState(false);
-  const [lockActioning, setLockActioning] = useState(false);
+  // 视图锁定（防误触）：状态机收敛到 useViewLock，锁定/解锁的确认策略只有一处实现
+  const {
+    locked: viewLocked,
+    actioning: lockActioning,
+    applyLocks,
+    toggle: toggleLock,
+  } = useViewLock({
+    key: 'delivery',
+    label: '交付履约视图',
+    unlockHint: '解锁后所有交付记录将恢复可编辑状态，确定要解锁吗？',
+    lock: () => lockDeliveryView(documentId),
+    unlock: () => unlockDeliveryView(documentId),
+  });
 
   // ----------------------------------------------------------
   // 数据加载
@@ -125,8 +136,7 @@ export default function Delivery({ documentId }: { documentId: string }) {
         getDocument(documentId).catch(() => null),
       ]);
       setDeliveries(list);
-      const locks = docDetail?.viewLocks ?? {};
-      setViewLocked(!!locks['delivery']);
+      applyLocks(docDetail?.viewLocks);
     } catch (e) {
       message.error((e as Error).message || '加载交付记录失败');
     } finally {
@@ -267,38 +277,6 @@ export default function Delivery({ documentId }: { documentId: string }) {
   // ----------------------------------------------------------
   // 锁定/解锁视图
   // ----------------------------------------------------------
-  const handleToggleLock = () => {
-    if (viewLocked) {
-      modal.confirm({
-        title: '解锁交付履约视图',
-        content: '解锁后所有交付记录将恢复可编辑状态，确定要解锁吗？',
-        okText: '确认解锁',
-        cancelText: '取消',
-        onOk: async () => {
-          setLockActioning(true);
-          try {
-            await unlockDeliveryView(documentId);
-            setViewLocked(false);
-            message.success('已解锁', 0.8);
-          } catch (e) {
-            message.error((e as Error).message || '解锁失败');
-          } finally {
-            setLockActioning(false);
-          }
-        },
-      });
-    } else {
-      setLockActioning(true);
-      lockDeliveryView(documentId)
-        .then(() => {
-          setViewLocked(true);
-          message.success('已锁定，防止误触', 0.8);
-        })
-        .catch((e) => message.error((e as Error).message || '锁定失败'))
-        .finally(() => setLockActioning(false));
-    }
-  };
-
   // ----------------------------------------------------------
   // 表格列定义
   // ----------------------------------------------------------
@@ -514,7 +492,7 @@ export default function Delivery({ documentId }: { documentId: string }) {
             variant={viewLocked ? 'primary' : 'secondary'}
             size="sm"
             icon={viewLocked ? <UnlockOutlined /> : <LockOutlined />}
-            onClick={handleToggleLock}
+            onClick={toggleLock}
             loading={lockActioning}
           >
             {viewLocked ? '解锁编辑' : '锁定编辑'}

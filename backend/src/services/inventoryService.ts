@@ -23,6 +23,26 @@ function genLedgerNo(): string {
 }
 
 // ============================================================
+// SKU 维度名称快照（写入时落库，v28）
+//   与 attachSkuSnapshots（读时实时 JOIN 宽表）双轨：写入点存一份，
+//   删品牌/单位/规格后库存行仍能读出名字（宽表被级联删，实时 JOIN 会失名）。
+// ============================================================
+export async function resolveSkuNameSnapshot(specId: bigint, brandId: bigint, unitId: bigint) {
+  const [sku, unit] = await Promise.all([
+    prisma.product_sku_search.findUnique({
+      where: { specId },
+      select: { specModel: true, brandName: true },
+    }),
+    prisma.unit.findUnique({ where: { id: unitId }, select: { unitName: true } }),
+  ]);
+  return {
+    specModel: sku?.specModel ?? null,
+    brandName: sku?.brandName ?? null,
+    unitName: unit?.unitName ?? null,
+  };
+}
+
+// ============================================================
 // 库存台账查询
 // ============================================================
 
@@ -98,13 +118,22 @@ export async function attachSkuSnapshots(
   const unitByName = new Map(unitMap.map((u) => [String(u.id), u.unitName]));
   return invs.map((i) => {
     const sku = skuByPair.get(`${i.spec_id}_${i.brand_id}`);
+    // v28：已落库快照优先（删品牌/单位/规格后实时 JOIN 会失名，必须用写入时存的快照）
+    //   旧库存行快照为空时回退实时 JOIN，保证向后兼容
+    const rec = i as Record<string, unknown>;
+    const has = (v: unknown) => v !== null && v !== undefined && v !== '';
+    const specModel = has(rec.specModel) ? (rec.specModel as string) : (sku?.specModel ?? '');
+    const brandName = has(rec.brandName) ? (rec.brandName as string) : (sku?.brandName ?? '');
+    const unitName = has(rec.unitName)
+      ? (rec.unitName as string)
+      : (unitByName.get(String(i.unit_id)) ?? sku?.defaultUnitName ?? '');
     return {
       ...i,
       productName: sku?.productName ?? '',
-      specModel: sku?.specModel ?? '',
-      brandName: sku?.brandName ?? '',
+      specModel,
+      brandName,
       mainImageThumbUrl: sku?.mainImageThumbUrl ?? null,
-      unitName: unitByName.get(String(i.unit_id)) ?? sku?.defaultUnitName ?? '',
+      unitName,
     };
   });
 }
@@ -199,6 +228,7 @@ async function increaseInventoryCore(
   const costNum = Number(unitCost);
   if (qtyNum <= 0) throw Errors.unprocessable('入库数量必须大于 0');
   if (!isFinite(costNum) || costNum < 0) throw Errors.unprocessable('入库单价非法');
+  const snap = await resolveSkuNameSnapshot(specId, brandId, unitId);
   const run = async (tx: Prisma.TransactionClient) => {
     const existing = await tx.inventory.findUnique({
       where: {
@@ -213,7 +243,7 @@ async function increaseInventoryCore(
     const record = existing
       ? await tx.inventory.update({
           where: { id: existing.id },
-          data: { qty: newQty, weighted_avg_cost: newAvg, last_in_at: new Date() },
+          data: { qty: newQty, weighted_avg_cost: newAvg, last_in_at: new Date(), ...snap },
         })
       : await tx.inventory.create({
           data: {
@@ -224,6 +254,7 @@ async function increaseInventoryCore(
             qty: newQty,
             weighted_avg_cost: newAvg,
             last_in_at: new Date(),
+            ...snap,
           },
         });
 
@@ -234,6 +265,7 @@ async function increaseInventoryCore(
         spec_id: specId,
         brand_id: brandId,
         unit_id: unitId,
+        ...snap,
         movement_type: 'in',
         qty: qtyNum,
         unit_cost: costNum,
@@ -293,6 +325,7 @@ async function decreaseInventoryCore(
 ) {
   const qtyNum = Number(qty);
   if (qtyNum <= 0) throw Errors.unprocessable('出库数量必须大于 0');
+  const snap = await resolveSkuNameSnapshot(specId, brandId, unitId);
   // 顶层 prisma 开事务；事务客户端直接复用（避免嵌套事务）
   const run = async (tx: Prisma.TransactionClient) => {
     const existing = await tx.inventory.findUnique({
@@ -309,7 +342,7 @@ async function decreaseInventoryCore(
       const newQty = round2(currentQty - deducted);
       await tx.inventory.update({
         where: { id: existing!.id },
-        data: { qty: newQty },
+        data: { qty: newQty, ...snap },
       });
       await tx.inventory_ledger.create({
         data: {
@@ -318,6 +351,7 @@ async function decreaseInventoryCore(
           spec_id: specId,
           brand_id: brandId,
           unit_id: unitId,
+          ...snap,
           movement_type: 'out',
           qty: -deducted,
           unit_cost: avgCost,
@@ -377,9 +411,10 @@ export async function adjustInventory(
       else if (target > 0) newAvg = costInput;
     }
     if (diff === 0 && (costInput == null || newAvg === oldAvg)) return existing;
+    const snap = await resolveSkuNameSnapshot(existing.spec_id, existing.brand_id, existing.unit_id);
     const updated = await tx.inventory.update({
       where: { id: existing.id },
-      data: { qty: target, weighted_avg_cost: newAvg },
+      data: { qty: target, weighted_avg_cost: newAvg, ...snap },
     });
     await tx.inventory_ledger.create({
       data: {
@@ -388,6 +423,7 @@ export async function adjustInventory(
         spec_id: existing.spec_id,
         brand_id: existing.brand_id,
         unit_id: existing.unit_id,
+        ...snap,
         movement_type: 'adjust',
         qty: diff,
         unit_cost: costInput ?? oldAvg,

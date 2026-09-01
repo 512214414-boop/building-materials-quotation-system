@@ -241,42 +241,23 @@ function buildWarehouseDef(): ArchiveEntityDef<WarehouseView> {
         },
       },
       {
-        kind: 'custom',
+        // 布尔语义走 toggle 槽而不是 enum（下拉选是/否多一步）或 custom（形态埋回本页）
+        kind: 'toggle',
         key: 'isMain',
         label: '主仓',
+        hint: '设为主自有库房（超额入库默认入仓，同店有且仅有一个）',
         list: false,
-        dialogRender: ({ extras, setExtras }) => (
-          <div className="ds-dialog-field-row">
-            <span className="ds-dialog-field-label" />
-            <div className="ds-dialog-field-body" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={Boolean(extras.isMain)}
-                onChange={(e) => setExtras({ ...extras, isMain: e.target.checked })}
-                style={{ accentColor: 'var(--text-brand)', width: 14, height: 14 }}
-              />
-              <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-default)' }}>
-                设为主自有库房（超额入库默认入仓，同店有且仅有一个）
-              </span>
-            </div>
-          </div>
-        ),
+        get: (w) => Boolean(w.isMain),
       },
       {
-        kind: 'custom',
+        // 只给看不给改、也不进弹窗 → readonly 槽，不再用 custom 自己拼 column
+        kind: 'readonly',
         key: 'updatedAt',
         label: '更新时间',
-        dialog: false,
         minWidth: COL_WIDTHS.DATETIME,
-        column: () => ({
-          key: 'updatedAt',
-          title: '更新时间',
-          dataIndex: 'updatedAt',
-          minWidth: COL_WIDTHS.DATETIME,
-          align: 'center',
-          renderMode: 'custom',
-          render: (val: string) => <DateTimeCell value={val} />,
-        }),
+        align: 'center',
+        get: (w) => w.updatedAt ?? '',
+        render: (w) => <DateTimeCell value={w.updatedAt} />,
       },
     ],
   };

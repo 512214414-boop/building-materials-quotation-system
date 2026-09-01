@@ -117,6 +117,35 @@ export function genRowKey(prefix: string): string {
 // §6 单单位价格展开面板（公共组件，产品编辑弹窗与产品列表共用）
 // ============================================================
 
+/**
+ * 点位写入核心（售价 / 进价共用）。
+ *
+ * 抽出来的理由不是省行数，是这条规则必须两侧一致：
+ *   **specPoint 传 'keepFollow' 时，已经单独改过点位的规格不跟着变。**
+ * 这是「整批调整不覆盖个性化点位」的实现，散在售价和进价两处就会改了一处忘另一处，
+ * 而点位直接参与算价（实际价 = 面价 × 点位），错了就是算错钱。
+ *
+ * 用泛型 + match 回调而不是把字段名传进来，是为了保住类型安全——
+ * 售价用 priceTypeId、进价用 supplierId，用字符串字段名索引会退化成 any。
+ */
+function patchPointList<T extends { point?: number | null; specPoint?: boolean; price: string }>(
+  list: T[],
+  match: (item: T) => boolean,
+  n: number,
+  specPoint: boolean | 'keepFollow',
+): T[] {
+  return list.map((p) => {
+    if (!match(p)) return p;
+    if (specPoint === 'keepFollow' && p.specPoint) return p;
+    return {
+      ...p,
+      point: n,
+      specPoint: specPoint === true,
+      effectivePrice: calcEffectivePrice({ price: p.price, point: n }),
+    } as T;
+  });
+}
+
 interface UnitPriceExpandPanelProps {
   /** 当前选中的单位 idx */
   unitIdx: number;
@@ -490,31 +519,13 @@ export function UnitPriceExpandPanel({
 
   const patchSalePoint = (priceTypeId: string, n: number, specPoint: boolean | 'keepFollow') => {
     onSalePricesChange(
-      salePrices.map((p) => {
-        if (p.priceTypeId !== priceTypeId) return p;
-        if (specPoint === 'keepFollow' && p.specPoint) return p;
-        return {
-          ...p,
-          point: n,
-          specPoint: specPoint === true,
-          effectivePrice: calcEffectivePrice({ price: p.price, point: n }),
-        };
-      }),
+      patchPointList(salePrices, (p) => p.priceTypeId === priceTypeId, n, specPoint),
     );
   };
 
   const patchPurchasePoint = (supplierId: string, n: number, specPoint: boolean | 'keepFollow') => {
     onPurchasePricesChange(
-      purchasePrices.map((p) => {
-        if (p.supplierId !== supplierId) return p;
-        if (specPoint === 'keepFollow' && p.specPoint) return p;
-        return {
-          ...p,
-          point: n,
-          specPoint: specPoint === true,
-          effectivePrice: calcEffectivePrice({ price: p.price, point: n }),
-        };
-      }),
+      patchPointList(purchasePrices, (p) => p.supplierId === supplierId, n, specPoint),
     );
   };
 

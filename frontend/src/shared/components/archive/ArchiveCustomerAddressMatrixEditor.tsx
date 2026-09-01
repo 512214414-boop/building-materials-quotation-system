@@ -1,12 +1,17 @@
-// 客户地址矩阵 — 与供应商地址/联系人同一套 RecordFieldColumn + 点值确认层
-import MatrixTable, { type MatrixRowConfig } from '../MatrixTable.js';
-import RecordExpandPanel from '../RecordExpandPanel.js';
-import useMatrixRecords from '../../hooks/useMatrixRecords.js';
+// 客户地址矩阵
+// 行为层（默认互斥 / 空行晋升 / 最后一条不可删 / 失焦即脏）已收进 ArchiveAddressMatrixShell，
+// 本文件只剩字段与文案：标签自由填、联系人与电话直接填、省市区需要三段解析。
+import type { MatrixRowConfig } from '../MatrixTable.js';
 import { normalizeDefaultRecords } from '../../utils/defaultRecord.js';
 import {
   ArchiveEmptyFieldCell,
   ArchiveFieldCell,
 } from '../product-picker/PickerInlineCells.js';
+import ArchiveAddressMatrixShell, {
+  type AddressMatrixApi,
+  type AddressBlankApi,
+  type AddressMatrixConfig,
+} from './ArchiveAddressMatrixShell.js';
 
 export interface ArchiveCustomerAddressRecord {
   id?: string;
@@ -47,7 +52,9 @@ function formatRegion(a: ArchiveCustomerAddressRecord): string {
   return [a.province, a.city, a.district].filter(Boolean).join('·');
 }
 
-function parseRegion(text: string): Pick<ArchiveCustomerAddressRecord, 'province' | 'city' | 'district'> {
+function parseRegion(
+  text: string,
+): Pick<ArchiveCustomerAddressRecord, 'province' | 'city' | 'district'> {
   const parts = text.split(/[·/]/).map((s) => s.trim()).filter(Boolean);
   return {
     province: parts[0] ?? '',
@@ -58,9 +65,7 @@ function parseRegion(text: string): Pick<ArchiveCustomerAddressRecord, 'province
 
 function buildRows(
   rows: ArchiveCustomerAddressRecord[],
-  onUpdate: (idx: number, patch: Partial<ArchiveCustomerAddressRecord>) => void,
-  onRemove: (idx: number) => void,
-  onSetDefault: (idx: number) => void,
+  api: AddressMatrixApi<ArchiveCustomerAddressRecord>,
   canWrite: boolean,
   deleteDisabled: (idx: number) => boolean,
 ): MatrixRowConfig[] {
@@ -72,7 +77,7 @@ function buildRows(
         placeholder="标签"
         disabled={!canWrite}
         title="修改地址标签"
-        onApply={(v) => onUpdate(idx, { label: v || null })}
+        onApply={(v) => api.update(idx, { label: v || null })}
       />
     ),
     midCells: [
@@ -82,7 +87,7 @@ function buildRows(
         placeholder="联系人"
         disabled={!canWrite}
         title="修改联系人"
-        onApply={(v) => onUpdate(idx, { contact: v })}
+        onApply={(v) => api.update(idx, { contact: v })}
       />,
       <ArchiveFieldCell
         key="phone"
@@ -90,7 +95,7 @@ function buildRows(
         placeholder="电话"
         disabled={!canWrite}
         title="修改电话"
-        onApply={(v) => onUpdate(idx, { phone: v })}
+        onApply={(v) => api.update(idx, { phone: v })}
       />,
       <ArchiveFieldCell
         key="region"
@@ -98,7 +103,7 @@ function buildRows(
         placeholder="省·市·区"
         disabled={!canWrite}
         title="修改省市区"
-        onApply={(v) => onUpdate(idx, parseRegion(v))}
+        onApply={(v) => api.update(idx, parseRegion(v))}
       />,
     ],
     price: '',
@@ -109,18 +114,65 @@ function buildRows(
         placeholder="详细地址"
         disabled={!canWrite}
         title="修改详细地址"
-        onApply={(v) => onUpdate(idx, { detail: v })}
+        onApply={(v) => api.update(idx, { detail: v })}
       />
     ),
     isDefault: Boolean(a.isDefault),
-    onIsDefaultChange: () => onSetDefault(idx),
+    onIsDefaultChange: () => api.setDefault(idx),
     defaultTitle: a.isDefault ? '当前默认地址' : '设为默认地址',
     defaultDisabled: !canWrite || !isCustomerAddressDataRow(a),
-    onDelete: () => onRemove(idx),
+    onDelete: () => api.remove(idx),
     deleteTitle: '删除该地址',
     deleteDisabled: deleteDisabled(idx),
   }));
 }
+
+const CFG: AddressMatrixConfig<ArchiveCustomerAddressRecord> = {
+  headerName: '标签',
+  headerPrice: '详细地址',
+  midCols: ['联系人', '电话', '省市区'],
+  minWidth: 520,
+  template: '72px 88px 100px 108px minmax(140px,1fr) 28px 24px',
+  rowKeyPrefix: 'address_',
+  isDataRow: isCustomerAddressDataRow,
+  blank: blankRow,
+  normalize: normalizeCustomerAddresses,
+  buildRows,
+  addNameCell: (api: AddressBlankApi<ArchiveCustomerAddressRecord>) => (
+    <ArchiveEmptyFieldCell
+      placeholder="标签"
+      title="新增地址标签"
+      onApply={(v) => api.updateLastBlank({ label: v || null })}
+    />
+  ),
+  addMidCells: (api: AddressBlankApi<ArchiveCustomerAddressRecord>) => [
+    <ArchiveEmptyFieldCell
+      key="contact"
+      placeholder="联系人"
+      title="新增联系人"
+      onApply={(v) => api.updateLastBlank({ contact: v })}
+    />,
+    <ArchiveEmptyFieldCell
+      key="phone"
+      placeholder="电话"
+      title="新增电话"
+      onApply={(v) => api.updateLastBlank({ phone: v })}
+    />,
+    <ArchiveEmptyFieldCell
+      key="region"
+      placeholder="省·市·区"
+      title="新增省市区"
+      onApply={(v) => api.updateLastBlank(parseRegion(v))}
+    />,
+  ],
+  addPriceCell: (api: AddressBlankApi<ArchiveCustomerAddressRecord>) => (
+    <ArchiveEmptyFieldCell
+      placeholder="详细地址"
+      title="新增详细地址"
+      onApply={(v) => api.updateLastBlank({ detail: v })}
+    />
+  ),
+};
 
 export default function ArchiveCustomerAddressMatrixEditor({
   value,
@@ -129,7 +181,7 @@ export default function ArchiveCustomerAddressMatrixEditor({
   selectedRowKey,
   onRowSelect,
   fill = false,
-  gridTemplate = '72px 88px 100px 108px minmax(140px,1fr) 28px 24px',
+  gridTemplate,
 }: {
   value: ArchiveCustomerAddressRecord[];
   canWrite: boolean;
@@ -139,74 +191,17 @@ export default function ArchiveCustomerAddressMatrixEditor({
   fill?: boolean;
   gridTemplate?: string;
 }) {
-  const matrix = useMatrixRecords({
-    value: value ?? [],
-    isDataRow: isCustomerAddressDataRow,
-    blank: blankRow,
-    normalize: normalizeCustomerAddresses,
-    onDirty,
-  });
-
-  const tableRows = buildRows(
-    matrix.dataRows,
-    matrix.update,
-    matrix.remove,
-    (idx) => matrix.setDefault(idx, 'isDefault'),
-    canWrite,
-    (_idx) => !canWrite || matrix.dataRowCount <= 1,
-  );
-
   return (
-    <div className={fill ? 'ds-record-panel-fill' : undefined}>
-      <RecordExpandPanel minWidth={fill ? undefined : 520}>
-        <MatrixTable
-          headerName="标签"
-          headerPrice="详细地址"
-          midCols={['联系人', '电话', '省市区']}
-          rows={tableRows}
-          selectedRowKey={selectedRowKey}
-          onRowSelect={onRowSelect}
-          rowSelectDisabled={(rk) => !rk.startsWith('address_')}
-          addNameCell={
-            <ArchiveEmptyFieldCell
-              placeholder="标签"
-              title="新增地址标签"
-              onApply={(v) => matrix.updateLastBlank({ label: v || null })}
-            />
-          }
-          addMidCells={[
-            <ArchiveEmptyFieldCell
-              key="contact"
-              placeholder="联系人"
-              title="新增联系人"
-              onApply={(v) => matrix.updateLastBlank({ contact: v })}
-            />,
-            <ArchiveEmptyFieldCell
-              key="phone"
-              placeholder="电话"
-              title="新增电话"
-              onApply={(v) => matrix.updateLastBlank({ phone: v })}
-            />,
-            <ArchiveEmptyFieldCell
-              key="region"
-              placeholder="省·市·区"
-              title="新增省市区"
-              onApply={(v) => matrix.updateLastBlank(parseRegion(v))}
-            />,
-          ]}
-          addPriceCell={
-            <ArchiveEmptyFieldCell
-              placeholder="详细地址"
-              title="新增详细地址"
-              onApply={(v) => matrix.updateLastBlank({ detail: v })}
-            />
-          }
-          showAddButton={false}
-          template={gridTemplate}
-          disabled={!canWrite}
-        />
-      </RecordExpandPanel>
-    </div>
+    <ArchiveAddressMatrixShell
+      cfg={CFG}
+      value={value}
+      canWrite={canWrite}
+      onDirty={onDirty}
+      selectedRowKey={selectedRowKey}
+      onRowSelect={onRowSelect}
+      fill={fill}
+      gridTemplate={gridTemplate}
+    />
   );
 }
 

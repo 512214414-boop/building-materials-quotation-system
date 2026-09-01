@@ -39,6 +39,7 @@ import type { PaymentType, ReconcileStatus } from '../../../../../shared/types/i
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
 import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useViewLock } from '../../../../../shared/hooks/useViewLock.js';
 
 const PAYMENT_TYPE_MAP: Record<PaymentType, { label: string; color: 'brand' | 'warning' | 'default' }> = {
   deposit: { label: '定金', color: 'brand' },
@@ -90,9 +91,19 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
   const [addingPayment, setAddingPayment] = useState(false);
   const submittingRef = useRef<Set<string>>(new Set());
 
-  // 视图锁定
-  const [viewLocked, setViewLocked] = useState(false);
-  const [lockActioning, setLockActioning] = useState(false);
+  // 视图锁定（防误触）：状态机收敛到 useViewLock，锁定/解锁的确认策略只有一处实现
+  const {
+    locked: viewLocked,
+    actioning: lockActioning,
+    applyLocks,
+    toggle: toggleLock,
+  } = useViewLock({
+    key: 'paymentReconcile',
+    label: '收款对账视图',
+    unlockHint: '解锁后所有收款记录将恢复可编辑状态，确定要解锁吗？',
+    lock: () => lockPaymentView(documentId),
+    unlock: () => unlockPaymentView(documentId),
+  });
 
   // ----------------------------------------------------------
   // 数据加载
@@ -108,8 +119,7 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
       setPayments(list || []);
       setSummary(sum);
       // 读取视图锁定状态
-      const locks = docDetail?.viewLocks ?? {};
-      setViewLocked(!!locks['paymentReconcile']);
+      applyLocks(docDetail?.viewLocks);
     } catch (e) {
       message.error((e as Error).message || '加载收款记录失败');
     } finally {
@@ -239,38 +249,6 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
   // ----------------------------------------------------------
   // 锁定/解锁视图
   // ----------------------------------------------------------
-  const handleToggleLock = () => {
-    if (viewLocked) {
-      modal.confirm({
-        title: '解锁收款对账视图',
-        content: '解锁后所有收款记录将恢复可编辑状态，确定要解锁吗？',
-        okText: '确认解锁',
-        cancelText: '取消',
-        onOk: async () => {
-          setLockActioning(true);
-          try {
-            await unlockPaymentView(documentId);
-            setViewLocked(false);
-            message.success('已解锁', 0.8);
-          } catch (e) {
-            message.error((e as Error).message || '解锁失败');
-          } finally {
-            setLockActioning(false);
-          }
-        },
-      });
-    } else {
-      setLockActioning(true);
-      lockPaymentView(documentId)
-        .then(() => {
-          setViewLocked(true);
-          message.success('已锁定，防止误触', 0.8);
-        })
-        .catch((e) => message.error((e as Error).message || '锁定失败'))
-        .finally(() => setLockActioning(false));
-    }
-  };
-
   // ----------------------------------------------------------
   // 表格列
   // ----------------------------------------------------------
@@ -488,7 +466,7 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
             variant={viewLocked ? 'primary' : 'secondary'}
             size="sm"
             icon={viewLocked ? <UnlockOutlined /> : <LockOutlined />}
-            onClick={handleToggleLock}
+            onClick={toggleLock}
             loading={lockActioning}
           >
             {viewLocked ? '解锁编辑' : '锁定编辑'}

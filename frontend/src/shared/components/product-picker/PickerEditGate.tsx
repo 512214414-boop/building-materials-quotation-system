@@ -60,6 +60,16 @@ export interface PickerCatalogEditReq {
   dictConfig?: DictRecordConfig<any>;
   suggestField?: SuggestField;
   /**
+   * v26.2 确认层承载切换语义：确认不依赖值变化——值没改时确认按钮仍可用，
+   * 按当前值执行 apply（用于「点未选中的中间层标签 → 确认=切换到它」）。
+   */
+  allowNoChange?: boolean;
+  /**
+   * v26.3 确认层承载删除：确认层底栏出现删除按钮（danger）。
+   * 增删改全部进确认层——切换行上不再出现独立删除按钮。
+   */
+  onDelete?: { label: string; run: () => void | Promise<void> };
+  /**
    * 邻格快切：确认层底栏出方向钮，键盘 Tab/Shift+Tab/↑↓ 跳到相邻可编辑格，
    * 跳转即提交当前格并打开下一格确认层。未传则确认层行为不变。
    */
@@ -101,21 +111,23 @@ export function usePickerEditGate(): GateApi {
 
 function canSubmit(req: PickerCatalogEditReq, draft: string): string | null {
   const to = draft.trim();
+  // v26.2 allowNoChange：确认不依赖值变化——承载切换语义（值没改也按当前值执行 apply）
+  const unchangedFallback = req.allowNoChange && to ? to : null;
   if (req.input === 'number') {
     const n = Number(to);
-    if (!Number.isFinite(n) || to === '') return null;
-    if (req.from !== '' && Math.abs(n - Number(req.from)) < 1e-9) return null;
+    if (!Number.isFinite(n) || to === '') return unchangedFallback;
+    if (req.from !== '' && Math.abs(n - Number(req.from)) < 1e-9) return unchangedFallback;
     return String(n);
   }
   if (req.input === 'date') {
-    if (!to || to === req.from.trim()) return null;
+    if (!to || to === req.from.trim()) return unchangedFallback;
     return to;
   }
   if (req.allowEmpty) {
-    if (to === req.from.trim()) return null;
+    if (to === req.from.trim()) return unchangedFallback;
     return to;
   }
-  if (!to || to === req.from.trim()) return null;
+  if (!to || to === req.from.trim()) return unchangedFallback;
   return to;
 }
 
@@ -434,6 +446,20 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                 <span />
               )}
               <div style={{ display: 'flex', gap: 8 }}>
+                {req.onDelete && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    danger
+                    loading={busy}
+                    onClick={() => {
+                      void Promise.resolve(req.onDelete!.run()).then(() => close());
+                    }}
+                    title={req.onDelete.label}
+                  >
+                    {req.onDelete.label}
+                  </DsButton>
+                )}
                 <DsButton variant="ghost" size="sm" disabled={busy} onClick={close}>
                   取消
                 </DsButton>

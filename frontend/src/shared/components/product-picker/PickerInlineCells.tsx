@@ -324,6 +324,8 @@ export function ArchiveFieldCell({
   onApply,
   disabledReason,
   onReject,
+  allowNoChange,
+  onDelete,
 }: {
   value: string;
   disabled?: boolean;
@@ -338,6 +340,10 @@ export function ArchiveFieldCell({
   /** v25.4 门禁提示：前置未满足的原因（如「请先填写系列/规格」），视觉保持 hover，点击给提示 */
   disabledReason?: string;
   onReject?: (reason: string) => void;
+  /** v26.2 确认层承载切换语义：值没变也可确认（apply 按当前值执行） */
+  allowNoChange?: boolean;
+  /** v26.3 确认层承载删除：底栏出现删除按钮 */
+  onDelete?: { label: string; run: () => void | Promise<void> };
 }) {
   const gate = usePickerEditGate();
   const impact: CatalogImpactView = {
@@ -364,6 +370,8 @@ export function ArchiveFieldCell({
             suggestField,
             dictConfig,
             apply: onApply,
+            allowNoChange,
+            onDelete,
           },
           el,
           { allowRoot: true },

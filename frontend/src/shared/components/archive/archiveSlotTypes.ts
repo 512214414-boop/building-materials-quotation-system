@@ -4,6 +4,7 @@
  */
 import type { ComponentType, CSSProperties, ReactNode } from 'react';
 import type { DictRecordConfig } from '../DictRefField.js';
+import type { CascadeOption } from '../CascadeSwitchRow.js';
 import type { SuggestField, SuggestOption } from '../../services/api/baseDataApi.js';
 import type { ViewCode } from '../../types/index.js';
 import type { UnifiedTableColumn } from '../UnifiedTable.js';
@@ -77,6 +78,15 @@ export interface ArchiveNameSlot<T> {
   extra?: (row: T) => ReactNode;
 }
 
+/**
+ * 格级只读判定（scalar / enum 共用）。
+ * 返回 null = 可编辑；返回字符串 = 只读，且该串作为点击时的提示理由。
+ *
+ * 为什么返回理由而不是布尔：硬纪律「门禁用提示不用静默」——
+ * 不可编辑的格子视觉保持正常，点了要告诉用户为什么，禁止默默不可点或置灰消失。
+ */
+export type ReadonlyWhen<T> = (row: T) => string | null;
+
 export interface ArchiveScalarSlot<T> {
   kind: 'scalar';
   key: string;
@@ -93,6 +103,8 @@ export interface ArchiveScalarSlot<T> {
   dictConfig?: DictRecordConfig<{ id: string | number; name: string }>;
   get: (row: T) => string;
   toPatch: (value: string) => Record<string, unknown>;
+  /** 该格在这一行是否只读，返回提示理由 */
+  readonlyWhen?: ReadonlyWhen<T>;
 }
 
 export interface ArchiveEnumSlot<T> {
@@ -106,6 +118,8 @@ export interface ArchiveEnumSlot<T> {
   get: (row: T) => string;
   toPatch: (value: string) => Record<string, unknown>;
   renderValue?: (value: string) => ReactNode;
+  /** 该格在这一行是否只读，返回提示理由 */
+  readonlyWhen?: ReadonlyWhen<T>;
 }
 
 export interface ArchiveMatrixSlot<T> {
@@ -126,6 +140,70 @@ export interface ArchiveMatrixSlot<T> {
   isDataRow?: (row: unknown) => boolean;
 }
 
+/**
+ * 布尔开关槽。
+ * 专门给「是/否」语义的字段：弹窗里渲染成复选框，列表里由调用方挂在 name 槽的 extra 上。
+ * 不要用 enum 装布尔值——下拉选「是/否」比复选框多一步，是体验降级；
+ * 也不要用 custom 自己写复选框，那等于把这个形态又埋回各页、槽位表里查不到。
+ */
+export interface ArchiveToggleSlot<T> {
+  kind: 'toggle';
+  key: string;
+  label: string;
+  /** 复选框旁的说明，写清这个开关的后果（如「同店有且仅有一个」） */
+  hint?: string;
+  list?: boolean;
+  dialog?: boolean;
+  get: (row: T) => boolean;
+}
+
+/**
+ * 只读展示列。
+ * 给「只给看、不给改、也不进编辑弹窗」的字段：更新时间、创建人、流水号、归档时间等。
+ * 这类列以前只能走 custom 自己拼 column，导致每个实体各写一遍，
+ * 槽位表里也看不出「这是个只读列」。
+ */
+/**
+ * 级联切换行槽（编辑矩阵中间层）。
+ *
+ * 对应方法论「中间层（下挂多个子记录且非叶子）= 切换 + 下挂数据展示」，
+ * 组件是 CascadeSwitchRow：行首=层级名，选项横排，选中高亮，末尾=新增空位。
+ * 多行级联（品牌行→规格行→单位行）整体呈现挂载层级关系。
+ *
+ * 为什么 options/addCell/editRow 都是函数：
+ * 槽位声明是静态构造的（useMemo 里建一次），但选中项、选项列表是运行时状态。
+ * 用函数延迟到渲染时取值，宿主才能把当前 ctx 传进去。
+ */
+export interface ArchiveCascadeSlot<T> {
+  kind: 'cascade';
+  key: string;
+  /** 层级名（品牌 / 规格 / 单位） */
+  label: string;
+  /** 层级说明，渲染在切换行下方 */
+  hint?: string;
+  list?: boolean;
+  dialog?: boolean;
+  options: (ctx: ArchiveDialogCtx<T>) => CascadeOption[];
+  onSelect: (ctx: ArchiveDialogCtx<T>, key: string) => void;
+  /** 末尾新增空位（确认层）。不传则不显示新增位 */
+  addCell?: (ctx: ArchiveDialogCtx<T>) => ReactNode;
+  /** 多字段层选中后下方挂的单行编辑表格 */
+  editRow?: (ctx: ArchiveDialogCtx<T>) => ReactNode;
+}
+
+export interface ArchiveReadonlySlot<T> {
+  kind: 'readonly';
+  key: string;
+  label: string;
+  minWidth?: number;
+  align?: 'left' | 'center' | 'right';
+  list?: boolean;
+  /** 纯文本取值，用于导出与缺省渲染 */
+  get: (row: T) => string;
+  /** 自定义单元格（如 DateTimeCell）。缺省直接渲染 get 的文本 */
+  render?: (row: T) => ReactNode;
+}
+
 export interface ArchiveCustomSlot<T> {
   kind: 'custom';
   key: string;
@@ -142,6 +220,9 @@ export type ArchiveSlot<T> =
   | ArchiveScalarSlot<T>
   | ArchiveEnumSlot<T>
   | ArchiveMatrixSlot<T>
+  | ArchiveToggleSlot<T>
+  | ArchiveReadonlySlot<T>
+  | ArchiveCascadeSlot<T>
   | ArchiveCustomSlot<T>;
 
 export interface ArchiveEntityDef<T extends { id: string }> {

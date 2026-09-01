@@ -1,6 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Popover, message } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { Checkbox } from 'antd';
+import { DeleteOutlined, DownOutlined } from '@ant-design/icons';
+import CascadeSwitchRow from '../../../../shared/components/CascadeSwitchRow.js';
+import EntityPanel from '../../../../shared/components/EntityPanel.js';
+import DsButton from '../../../../shared/components/DsButton.js';
 import UnitManagePanel, {
   type UnitManagePanelExtensions,
 } from '../../../../shared/components/UnitManagePanel.js';
@@ -17,6 +21,9 @@ import { calcEffectivePrice } from '../../../../shared/utils/format.js';
 import { resolveUnitPriceDisplay } from '../../../../shared/engines/pricing-engine.js';
 import {
   DisplayCell,
+  PickerNameCell,
+  PickerNumCell,
+  ArchiveEmptyFieldCell,
 } from '../../../../shared/components/product-picker/PickerInlineCells.js';
 import type { UnitItem } from './productEditTypes.js';
 
@@ -272,9 +279,9 @@ export function UnitSection({
     };
   };
 
-  // v2.2：单位区收敛为公共基座 UnitManagePanel 组装（组件体系总纲领·基准唯一）
-  //   基座固定层 = 单位名/换算/默认/操作 + 排序 + 空行完整 + 常用快选；
-  //   业务可变层 extensions 注入：showBase（基准切换）+ priceColumns（售价/进价快捷显示 + 弹明细面板）
+  // v26 单位行级联化：选项横排切换 + 选中单位单行编辑（与品牌/规格同一套标准形式）。
+  // 价格格（saleCell/purchaseCell）按 rowKey 定位 unitIdx，单行渲染不导致错位。
+  const [selectedUnitKey, setSelectedUnitKey] = useState<string | null>(null);
   const priceColumns: NonNullable<UnitManagePanelExtensions['priceColumns']> = {
     saleCell: (unit) => {
       const idx = units.findIndex((u) => u.rowKey === unit.key);
@@ -436,40 +443,148 @@ export function UnitSection({
     },
   };
 
-  // 单位区 = 公共基座 UnitManagePanel 组装（价格索引/基准归一化等业务回调注入 extensions）
+  // v26 单位行级联化：选项横排切换（选中高亮），选中单位在下方单行编辑表格
+  // （单位名确认层 / 换算 / 售价 / 进价 / 基准 / 默认 / 删除——增删改全在编辑行与确认层）。
+  // 价格格按 rowKey 定位 unitIdx，单行渲染不错位。
+  const selIdx = units.findIndex((u) => u.rowKey === selectedUnitKey);
+  const selUnit = selIdx >= 0 ? units[selIdx] : null;
+  const selRate = selUnit
+    ? currentBrandConversions[selUnit.rowKey] ?? (selUnit.isBase ? '1' : '')
+    : '';
+  const idxOf = (key: string) => units.findIndex((u) => u.rowKey === key);
+
   return (
-    <UnitManagePanel
-      units={units.map((u) => ({
-        key: u.rowKey,
-        unitName: u.unitName,
-        isBase: u.isBase,
-        isDisplay: u.isDisplay,
-      }))}
-      conversions={currentBrandConversions}
-      onSwitch={() => undefined}
-      onRename={(key, name) => handleUnitNameChange(units.findIndex((u) => u.rowKey === key), name)}
-      onRateChange={(key, rate) => handleRateChange(key, rate)}
-      onSetDisplay={(key) => handleSetDisplay(units.findIndex((u) => u.rowKey === key))}
-      onDelete={(key) => handleDelete(units.findIndex((u) => u.rowKey === key))}
-      onAdd={(name, rate) => handleAddUnitCommit(name, rate)}
-      // v25.3 空行必反馈：新增被拒时给原因（重名/空名），不静默丢弃
-      onReject={(reason) => message.warning(reason)}
-      commonUnits={COMMON_UNITS}
-      extensions={{
-        showBase: true,
-        onSetBase: (key) => handleSetBase(units.findIndex((u) => u.rowKey === key)),
-        priceColumns: {
-          ...priceColumns,
-          // v25.4 空行售价/进价：不再是死的占位格——有 hover，点击提示「请先新增单位」
-          emptySaleCell: (
-            <DisplayCell text="" placeholder="—" align="center" rejectReason="请先新增单位" />
-          ),
-          emptyPurchaseCell: (
-            <DisplayCell text="" placeholder="—" align="center" rejectReason="请先新增单位" />
-          ),
-        },
-      }}
-      disabled={disabled}
-    />
+    <div>
+      <CascadeSwitchRow
+        label="单位"
+        disabled={disabled}
+        options={units.map((u) => ({
+          key: u.rowKey,
+          label: u.unitName,
+          active: u.rowKey === selectedUnitKey,
+          editCell:
+            u.rowKey === selectedUnitKey && selUnit ? (
+              <PickerNameCell
+                value={selUnit.unitName}
+                kind="unit"
+                fromId={selUnit.rowKey}
+                placeholder="单位"
+                disabled={disabled}
+                onApply={(val) => handleUnitNameChange(selIdx, val)}
+              />
+            ) : undefined,
+        }))}
+        onSelect={(key) => setSelectedUnitKey(key)}
+        addCell={
+          <ArchiveEmptyFieldCell
+            placeholder="新增单位…"
+            title="新增单位（查全局字典，没有则新建）"
+            onApply={(name) => {
+              const trimmed = name.trim();
+              if (trimmed) handleAddUnitCommit(trimmed);
+              else message.warning('请先输入单位名');
+            }}
+          />
+        }
+      />
+      {selUnit && (
+        <EntityPanel
+          template="minmax(70px,1fr) 52px 64px 64px 34px 34px 24px"
+          header={
+            <>
+              <span style={{ textAlign: 'left', paddingLeft: 8 }}>单位</span>
+              <span style={{ textAlign: 'center' }}>换算</span>
+              <span style={{ textAlign: 'center' }}>售价</span>
+              <span style={{ textAlign: 'center' }}>进价</span>
+              <span style={{ textAlign: 'center' }}>基准</span>
+              <span style={{ textAlign: 'center' }}>默认</span>
+              <span style={{ textAlign: 'center' }}>操作</span>
+            </>
+          }
+          rows={[
+            {
+              key: selUnit.rowKey,
+              cells: (
+                <>
+                  <PickerNameCell
+                    value={selUnit.unitName}
+                    kind="unit"
+                    fromId={selUnit.rowKey}
+                    placeholder="单位"
+                    disabled={disabled}
+                    onApply={(val) => handleUnitNameChange(selIdx, val)}
+                  />
+                  <PickerNumCell
+                    value={selRate === '' ? null : Number(selRate)}
+                    label={selUnit.isBase ? '1' : selRate}
+                    kind="conversion"
+                    placeholder="1"
+                    disabled={selUnit.isBase || disabled}
+                    onApply={(n) => handleRateChange(selUnit.rowKey, String(n))}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    {priceColumns.saleCell({
+                      key: selUnit.rowKey,
+                      unitName: selUnit.unitName,
+                      isBase: selUnit.isBase,
+                      isDisplay: selUnit.isDisplay,
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    {priceColumns.purchaseCell({
+                      key: selUnit.rowKey,
+                      unitName: selUnit.unitName,
+                      isBase: selUnit.isBase,
+                      isDisplay: selUnit.isDisplay,
+                    })}
+                  </div>
+                  <div
+                    className="ds-grid-check"
+                    style={{ justifySelf: 'center' }}
+                    title={selUnit.isBase ? '当前基准单位' : '设为基准单位'}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selUnit.isBase}
+                      disabled={disabled}
+                      onChange={(e) => {
+                        if (e.target.checked) handleSetBase(selIdx);
+                      }}
+                    />
+                  </div>
+                  <div
+                    className="ds-grid-check"
+                    style={{ justifySelf: 'center' }}
+                    title={selUnit.isDisplay ? '当前默认单位' : '设为默认单位'}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selUnit.isDisplay}
+                      disabled={disabled}
+                      onChange={(e) => {
+                        if (e.target.checked) handleSetDisplay(selIdx);
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <DsButton
+                      size="sm"
+                      variant="ghost"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => handleDelete(selIdx)}
+                      disabled={disabled || (selUnit.isBase && units.length > 1)}
+                      title={
+                        selUnit.isBase && units.length > 1 ? '基准单位不可删除' : '删除单位'
+                      }
+                    />
+                  </div>
+                </>
+              ),
+            },
+          ]}
+        />
+      )}
+    </div>
   );
 }

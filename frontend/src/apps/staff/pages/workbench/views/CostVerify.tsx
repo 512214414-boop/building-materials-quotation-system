@@ -59,6 +59,7 @@ import type { CostChannelType } from '../../../../../shared/types/index.js';
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
 import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useViewLock } from '../../../../../shared/hooks/useViewLock.js';
 
 // ============================================================
 // 毛利告警阈值
@@ -380,7 +381,7 @@ function SourceInfoPanel({
 // ============================================================
 
 export default function CostVerify({ documentId }: { documentId: string }) {
-  const { message, modal } = useCanvasApp();
+  const { message } = useCanvasApp();
   const { trackSave } = useSaveStatus();
   const [docLines, setDocLines] = useState<CostDocumentLineView[]>([]);
   const lineFilter = useDocumentLineCascadeFilter(documentId);
@@ -392,9 +393,19 @@ export default function CostVerify({ documentId }: { documentId: string }) {
   const [verifying, setVerifying] = useState(false);
   const submittingRef = useRef<Set<string>>(new Set());
 
-  // 视图锁定（防误触，与行级 verified 独立）
-  const [viewLocked, setViewLocked] = useState(false);
-  const [lockActioning, setLockActioning] = useState(false);
+  // 视图锁定（防误触，与行级 verified 独立）：状态机收敛到 useViewLock
+  const {
+    locked: viewLocked,
+    actioning: lockActioning,
+    applyLocks,
+    toggle: toggleLock,
+  } = useViewLock({
+    key: 'costVerify',
+    label: '成本核定视图',
+    unlockHint: '解锁后所有成本行将恢复可编辑状态，确定要解锁吗？',
+    lock: () => lockCostVerifyView(documentId),
+    unlock: () => unlockCostVerifyView(documentId),
+  });
 
   // ----------------------------------------------------------
   // 数据加载（并发：成本行 + 单据详情 + 配货（V4+V5合并） + 退换）
@@ -434,8 +445,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
       });
       setDrafts({});
       // 读取视图锁定状态
-      const locks = doc.viewLocks ?? {};
-      setViewLocked(!!locks['costVerify']);
+      applyLocks(doc.viewLocks);
     } catch (e) {
       message.error((e as Error).message || '加载成本核定数据失败');
     } finally {
@@ -725,38 +735,6 @@ export default function CostVerify({ documentId }: { documentId: string }) {
   // ----------------------------------------------------------
   // 锁定/解锁视图（防误触，与行级 verified 独立）
   // ----------------------------------------------------------
-  const handleToggleLock = () => {
-    if (viewLocked) {
-      modal.confirm({
-        title: '解锁成本核定视图',
-        content: '解锁后所有成本行将恢复可编辑状态，确定要解锁吗？',
-        okText: '确认解锁',
-        cancelText: '取消',
-        onOk: async () => {
-          setLockActioning(true);
-          try {
-            await unlockCostVerifyView(documentId);
-            setViewLocked(false);
-            message.success('已解锁', 0.8);
-          } catch (e) {
-            message.error((e as Error).message || '解锁失败');
-          } finally {
-            setLockActioning(false);
-          }
-        },
-      });
-    } else {
-      setLockActioning(true);
-      lockCostVerifyView(documentId)
-        .then(() => {
-          setViewLocked(true);
-          message.success('已锁定，防止误触', 0.8);
-        })
-        .catch((e) => message.error((e as Error).message || '锁定失败'))
-        .finally(() => setLockActioning(false));
-    }
-  };
-
   // ----------------------------------------------------------
   // 操作：核定完成（先自动保存 dirty，再调用 verifyCost）
   // ----------------------------------------------------------
@@ -1179,7 +1157,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
               variant={viewLocked ? 'primary' : 'secondary'}
               size="sm"
               icon={viewLocked ? <UnlockOutlined /> : <LockOutlined />}
-              onClick={handleToggleLock}
+              onClick={toggleLock}
               loading={lockActioning}
             >
               {viewLocked ? '解锁编辑' : '锁定编辑'}

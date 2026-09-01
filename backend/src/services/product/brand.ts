@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
+import { assertInventoryNotReferenced } from '../dictInventoryGuard.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
 import { paginate } from '../../utils/response.js';
 import { logger } from '../../utils/logger.js';
@@ -168,6 +169,9 @@ export async function deleteBrand(id: bigint) {
   if (refCount > 0) {
     throw Errors.unprocessable(`品牌「${existing.name}」正被 ${refCount} 个规格引用，请先在规格中更换品牌或删除关联后再删除档案`);
   }
+
+  // v28：校验实时库存引用（inventory 无物理外键，被库存引用即禁止删除，对齐 address_type 护栏）
+  await assertInventoryNotReferenced('brand', id);
 
   // v11.0：查询单据引用数（用于审计日志，不阻止删除）
   const docLineCount = await prisma.document_lines.count({ where: { brandId: id } });

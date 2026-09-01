@@ -3,6 +3,7 @@
 
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
+import { assertInventoryNotReferenced } from '../dictInventoryGuard.js';
 import { parsePagination } from '../../utils/validation.js';
 import { paginate } from '../../utils/response.js';
 import { Prisma } from '@prisma/client';
@@ -509,6 +510,8 @@ export async function deleteUnit(id: bigint, specId?: bigint) {
     if (linkCount > 0) {
       throw Errors.unprocessable(`该单位被 ${linkCount} 个规格引用，请先在产品编辑里解绑`);
     }
+    // v28：校验实时库存引用（inventory 无物理外键，被库存引用即禁止删除）
+    await assertInventoryNotReferenced('unit', id);
     await prisma.unit.delete({ where: { id } });
     return { id, deletedDocLineRefs: docLineCount };
   }

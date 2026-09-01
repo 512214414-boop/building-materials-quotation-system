@@ -9,7 +9,7 @@ import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
 import { round2 } from '../engines/pricing-engine.js';
-import { increaseInventoryTx, attachSkuSnapshots } from './inventoryService.js';
+import { increaseInventoryTx, attachSkuSnapshots, resolveSkuNameSnapshot } from './inventoryService.js';
 import { getMainWarehouse } from './warehouseService.js';
 import { recallSkuRowsByKeyword } from './productService.js';
 
@@ -386,6 +386,8 @@ export async function createBackorder(input: {
   if (!warehouse) throw Errors.notFound('仓库不存在');
   if (warehouse.status !== 1) throw Errors.unprocessable('仓库已停用，不可挂欠库');
 
+  // v28：写入时落 SKU 维度名称快照，删品牌/单位/规格后仍能读出
+  const snap = await resolveSkuNameSnapshot(line.specId ?? 0n, line.brandId ?? 0n, line.unitId ?? 0n);
   return prisma.backorders.create({
     data: {
       document_id: line.documentId,
@@ -395,6 +397,7 @@ export async function createBackorder(input: {
       spec_id: line.specId ?? 0n,
       brand_id: line.brandId ?? 0n,
       unit_id: line.unitId ?? 0n,
+      ...snap,
       qty: qtyNum,
       note: input.note ?? null,
       status: 'pending',

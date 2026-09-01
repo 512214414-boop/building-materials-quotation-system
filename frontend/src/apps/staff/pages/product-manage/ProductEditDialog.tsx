@@ -36,9 +36,6 @@ import {
 } from 'antd';
 import {
   DeleteOutlined,
-  PlusOutlined,
-  EditOutlined,
-  CheckOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { DsDialog } from '../../../../shared/components/DsDialog.js';
@@ -75,8 +72,9 @@ import {
 } from '../../../../shared/components/UnitPriceExpandPanel.js';
 import { UnitSection } from './UnitSection.js';
 import { BrandImages } from './BrandImages.js';
-// v25.4：规格矩阵走共享组件 MatrixTable（C29，同供应商联系信息矩阵），禁止弹窗内第二套矩阵
-import MatrixTable from '../../../../shared/components/MatrixTable.js';
+// v26：级联切换行（编辑矩阵中间层统一形态）+ 单行编辑网格基座（C65）
+import CascadeSwitchRow from '../../../../shared/components/CascadeSwitchRow.js';
+import EntityPanel from '../../../../shared/components/EntityPanel.js';
 import type { UnitItem, ImageItem, BrandItem } from './productEditTypes.js';
 import { useCanvasApp } from '../../../../shared/hooks/useCanvasApp.js';
 
@@ -220,7 +218,8 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   /** 产品下已挂品牌 tab（来自 product_brand；loadProduct 时写入） */
   const [productBrandTabs, setProductBrandTabs] = useState<Array<{ id: string; name: string }>>([]);
   // 正在编辑名称的品牌索引（null=无；就地编辑标签名，去掉占位输入框）
-  const [editingBrandIdx, setEditingBrandIdx] = useState<number | null>(null);
+  // v26：品牌层走「横向切换条 + 确认层格」标准形式（编辑矩阵中间层规则），
+  // 名称点值直连确认层改名，不再有编辑中间态（editingBrandIdx 已删除）。
 
   // ---- 售价/进价列表（SKU 级，brandIdx + unitIdx）----
   const [salePrices, setSalePrices] = useState<SalePriceItem[]>([]);
@@ -409,13 +408,20 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         setSalePrices(salePriceItems);
         setPurchasePrices(purchasePriceItems);
 
-        // 选中初始品牌（若指定 initialBrandId，定位到对应索引；否则选第一个）
+        // 选中初始品牌（若指定，定位到对应索引；否则选第一个）
         if (brandList.length > 0) {
           let initIdx = 0;
           let initBrandGlobalId: string | null = null;
-          if (initialBrandId) {
-            const bySpecBrand = brandList.findIndex((b) => b.id === initialBrandId);
-            const byGlobal = brandList.findIndex((b) => b.brandId === initialBrandId);
+          // v26 修复（品牌切换不生效的根因）：
+          // ① 品牌初始化原来读闭包里的 props.initialBrandId（打开弹窗时的定位），
+          //    切换品牌调 loadProduct 时闭包值不变 → 匹配失败 → 回滚到第一个品牌，
+          //    覆盖掉 handleSelectProductBrand 刚设的 activeBrandId。改用本次调用的
+          //    effectiveBrandId（切换时=目标品牌，打开时=props 定位）。
+          // ② 品牌 id 类型 number/string 混存，比较一律 String 归一。
+          const wantBrandId = effectiveBrandId ?? undefined;
+          if (wantBrandId) {
+            const bySpecBrand = brandList.findIndex((b) => String(b.id ?? '') === String(wantBrandId));
+            const byGlobal = brandList.findIndex((b) => String(b.brandId ?? '') === String(wantBrandId));
             if (bySpecBrand >= 0) {
               initIdx = bySpecBrand;
               initBrandGlobalId = brandList[bySpecBrand].brandId ?? brandList[bySpecBrand].id ?? null;
@@ -617,15 +623,18 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   /** 切换全局品牌 tab：重载该品牌下系列/规格（尽量保持同 specModel） */
   const handleSelectProductBrand = useCallback(
     (brandId: string) => {
-      if (brandId === activeBrandId || loading || saving) return;
+      // v26：品牌 id 类型 number/string 混存，比较一律 String 归一
+      if (String(brandId) === String(activeBrandId ?? '') || loading || saving) return;
       setActiveBrandId(brandId);
-      const idxOnSpec = brands.findIndex((b) => b.brandId === brandId);
+      const idxOnSpec = brands.findIndex((b) => String(b.brandId ?? '') === String(brandId));
       if (idxOnSpec >= 0) {
         setCurrentBrandIdx(idxOnSpec);
       }
       if (!currentProductId) return;
       const trimmed = specModel.trim();
-      const specsWithBrand = siblingSpecs.filter((s) => s.brands?.some((b) => b.id === brandId));
+      const specsWithBrand = siblingSpecs.filter((s) =>
+        s.brands?.some((b) => String(b.id ?? '') === String(brandId)),
+      );
       const target =
         (trimmed ? specsWithBrand.find((s) => s.specModel === trimmed) : undefined) ??
         specsWithBrand.find((s) => s.id === currentSpecId) ??
@@ -748,22 +757,45 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
     [units],
   );
 
-  const handleAddBrand = useCallback(() => {
-    setBrands((prev) => {
-      const newBrand: BrandItem = {
-        rowKey: genRowKey('brand'),
-        name: '',
-        images: [],
-        conversions: {},
-      };
-      // 新增后自动选中并进入名称编辑
-      const newIdx = prev.length;
-      setCurrentBrandIdx(newIdx);
-      setEditingBrandIdx(newIdx);
-      setSpecRemark('');
-      return [...prev, newBrand];
-    });
-  }, []);
+  /**
+   * v26 新增品牌：末尾空位确认层直接新增（空行必反馈范式）。
+   * 输入名 → 全局字典查/建 → 挂到本产品并选中；不再走「先建空名再编辑」中间态。
+   */
+  const handleAddBrandConfirm = useCallback(
+    async (nameInput: string) => {
+      const trimmed = nameInput.trim();
+      if (!trimmed || loading || saving) return;
+      let resolved: { id?: string; name: string } = { name: trimmed };
+      try {
+        const list = await brandDict.list();
+        const matched = list.find((b) => b.name === trimmed);
+        if (matched) {
+          resolved = { id: String(matched.id), name: matched.name };
+        } else {
+          const created = await brandDict.create(trimmed);
+          resolved = { id: String(created.id), name: created.name };
+        }
+      } catch {
+        // 字典服务不可用：保存时按值兜底，此处先落本地名
+      }
+      setBrands((prev) => {
+        if (prev.some((b) => b.name === resolved.name && b.brandId === resolved.id)) return prev;
+        const item: BrandItem = {
+          rowKey: genRowKey('brand'),
+          name: resolved.name,
+          brandId: resolved.id,
+          images: [],
+          conversions: {},
+        };
+        const newIdx = prev.length;
+        setCurrentBrandIdx(newIdx);
+        if (resolved.id) setActiveBrandId(resolved.id);
+        setSpecRemark('');
+        return [...prev, item];
+      });
+    },
+    [loading, saving],
+  );
 
   const handleDeleteBrand = useCallback(
     (idx: number) => {
@@ -1257,7 +1289,8 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         </div>
 
         {/* ============================================================ */}
-        {/* §B 品牌切换：先选品牌，再维护该品牌下的系列/规格 */}
+        {/* §B 品牌级联切换行（v26 中间层标准形态）：品牌挂产品下，规格挂品牌下 */}
+        {/* 点选项切换；选中品牌的名称格=确认层改名；删除在名称确认层内 */}
         {/* ============================================================ */}
         <div style={SECTION_BOX_STYLE}>
           <div
@@ -1267,195 +1300,71 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
               marginBottom: 6,
             }}
           >
-            品牌为全店档案；同一产品可挂多个品牌。先选品牌，再编辑该品牌下的系列/规格与价格。
+            品牌为全店档案；同一产品可挂多个品牌。点选项切换；选中品牌的名称可点值改名，删除在名称确认层内。
           </div>
-          {/* 品牌标签行 */}
-          <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'center', overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 2 }}>
-            {(productBrands.length > 0 ? productBrands : brands.map((b, i) => ({
+          <CascadeSwitchRow
+            label="品牌"
+            disabled={loading || saving}
+            options={(productBrands.length > 0 ? productBrands : brands.map((b, i) => ({
               id: b.brandId || b.rowKey || String(i),
               name: b.name || `品牌 ${i + 1}`,
             }))).map((pb) => {
               const bIdx = brands.findIndex(
                 (b) => (pb.id && b.brandId === pb.id) || b.rowKey === pb.id,
               );
-              const active = activeBrandId ? pb.id === activeBrandId : bIdx === currentBrandIdx;
-              const editing = bIdx >= 0 && bIdx === editingBrandIdx;
+              const active = activeBrandId
+                ? String(pb.id) === String(activeBrandId)
+                : bIdx === currentBrandIdx;
               const brand = bIdx >= 0 ? brands[bIdx] : null;
-              return (
-                <div
-                  key={pb.id}
-                  className={`brand-tag${active ? ' brand-tag-active' : ''}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    border: active
-                      ? '1px solid var(--text-brand)'
-                      : '1px solid var(--tag-border, var(--border-neutral-l2))',
-                    borderRadius: 'var(--radius-3)',
-                    overflow: 'hidden',
-                    background: active ? 'var(--bg-brand-popup)' : 'transparent',
-                    color: active ? 'var(--text-brand)' : 'var(--tag-color, var(--text-default))',
-                  }}
-                >
-                  {editing && brand ? (
-                    <div
-                      className="ds-dialog-field-point"
-                      style={{ width: 140, minHeight: 28, border: 'none', background: 'transparent', padding: 0 }}
-                    >
-                      <ArchiveFieldCell
-                        value={brand.name}
-                        placeholder="品牌名称"
-                        title="修改品牌"
-                        dictConfig={brandDict}
-                        disabled={loading || saving}
-                        onApply={async (name) => {
-                          const trimmed = name.trim();
-                          if (!trimmed) return;
-                          try {
-                            const list = await brandDict.list();
-                            const matched = list.find((b) => b.name === trimmed);
-                            if (matched) {
-                              handleBrandResolve(bIdx, { id: String(matched.id), name: matched.name });
-                            } else {
-                              const created = await brandDict.create(trimmed);
-                              handleBrandResolve(bIdx, { id: String(created.id), name: created.name });
-                            }
-                          } catch {
-                            handleBrandResolve(bIdx, { id: brand.brandId ?? '', name: trimmed });
-                          }
-                          setEditingBrandIdx(null);
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectProductBrand(pb.id)}
-                      style={{
-                        padding: '4px 10px',
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'inherit',
-                        cursor: 'pointer',
-                        fontSize: 'var(--body-sm-font-size)',
-                        fontWeight: active ? 500 : 400,
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                      }}
-                      title={pb.name}
-                    >
-                      {pb.name}
-                      {brand && brand.images.length > 0 && (
-                        <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>
-                          ({brand.images.length}图)
-                        </span>
-                      )}
-                    </button>
-                  )}
-
-                  {/* 编辑/确认按钮（仅当前规格已挂接的品牌可编辑） */}
-                  {editing ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditingBrandIdx(null)}
-                      title="确认"
-                      className="brand-tag-btn brand-tag-btn-edit"
-                      style={{
-                        padding: '4px 6px',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border-neutral-l2)',
-                        background: 'transparent',
-                        color: 'var(--btn-color, var(--text-brand))',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <CheckOutlined style={{ fontSize: 12 }} />
-                    </button>
-                  ) : bIdx >= 0 ? (
-                    <Tooltip title="编辑品牌名称">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentBrandIdx(bIdx);
-                          setEditingBrandIdx(bIdx);
-                          if (brand?.brandId) setActiveBrandId(brand.brandId);
-                        }}
-                        disabled={loading || saving}
-                        className="brand-tag-btn brand-tag-btn-edit"
-                        style={{
-                          padding: '4px 6px',
-                          border: 'none',
-                          borderLeft: '1px solid var(--border-neutral-l2)',
-                          background: 'transparent',
-                          color: 'var(--btn-color, var(--text-tertiary))',
-                        cursor: loading || saving ? 'not-allowed' : 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <EditOutlined style={{ fontSize: 12 }} />
-                      </button>
-                    </Tooltip>
-                  ) : null}
-
-                  {bIdx >= 0 ? (
-                  <Tooltip title="删除品牌（级联删除该品牌的售价/进价/图片）">
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteBrand(bIdx)}
-                      disabled={brands.length === 0 || saving}
-                      className="brand-tag-btn brand-tag-btn-del"
-                      style={{
-                        padding: '4px 6px',
-                        border: 'none',
-                        borderLeft: '1px solid var(--border-neutral-l2)',
-                        background: 'transparent',
-                        color: 'var(--btn-color, var(--text-tertiary))',
-                        cursor: brands.length === 0 || saving ? 'not-allowed' : 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        opacity: brands.length === 0 ? 0.4 : undefined,
-                      }}
-                    >
-                      <DeleteOutlined style={{ fontSize: 12 }} />
-                    </button>
-                  </Tooltip>
-                  ) : null}
-                </div>
-              );
+              return {
+                key: pb.id,
+                label: pb.name,
+                active,
+                suffix: brand && brand.images.length > 0 ? (
+                  <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({brand.images.length}图)</span>
+                ) : undefined,
+                editCell: brand && active ? (
+                  <ArchiveFieldCell
+                    value={brand.name}
+                    placeholder="品牌名称"
+                    title="修改品牌（查全局档案，没有则新建）"
+                    dictConfig={brandDict}
+                    disabled={loading || saving}
+                    onDelete={{ label: '删除品牌', run: () => handleDeleteBrand(bIdx) }}
+                    onApply={async (name) => {
+                      const trimmed = name.trim();
+                      if (!trimmed) return;
+                      try {
+                        const list = await brandDict.list();
+                        const matched = list.find((b) => b.name === trimmed);
+                        if (matched) {
+                          handleBrandResolve(bIdx, { id: String(matched.id), name: matched.name });
+                        } else {
+                          const created = await brandDict.create(trimmed);
+                          handleBrandResolve(bIdx, { id: String(created.id), name: created.name });
+                        }
+                      } catch {
+                        handleBrandResolve(bIdx, { id: brand.brandId ?? '', name: trimmed });
+                      }
+                    }}
+                  />
+                ) : undefined,
+              };
             })}
-
-            {/* 标签行末尾：新增品牌按钮 */}
-            <button
-              type="button"
-              onClick={handleAddBrand}
-              disabled={loading || saving}
-              className="brand-add-btn"
-              style={{
-                padding: '4px 10px',
-                border: '1px dashed var(--text-brand)',
-                borderRadius: 'var(--radius-3)',
-                background: 'var(--add-bg, transparent)',
-                color: 'var(--text-brand)',
-                cursor: loading || saving ? 'not-allowed' : 'pointer',
-                fontSize: 'var(--body-sm-font-size)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                flexShrink: 0,
-              }}
-            >
-              <PlusOutlined style={{ fontSize: 12 }} />
-              新增品牌
-            </button>
-          </div>
+            onSelect={(key) => handleSelectProductBrand(key)}
+            addCell={
+              <ArchiveEmptyFieldCell
+                placeholder="新增品牌…"
+                title="新增品牌（查全局档案，没有则新建并挂到本产品）"
+                onApply={(v) => handleAddBrandConfirm(v)}
+              />
+            }
+          />
         </div>
 
         {/* ============================================================ */}
-        {/* ============================================================ */}
-        {/* §C 系列/规格表格：当前品牌下的规格变体（v25.1 走 EntityPanel C65，与单位区同一套网格令牌） */}
+        {/* §C 规格级联切换行（v26 中间层标准形态）：规格挂品牌下，单位挂规格下 */}
+        {/* 多字段层：选项横排切换（唯一性字段=规格型号），选中后下方单行编辑表格 */}
         {/* ============================================================ */}
         <div style={SECTION_BOX_STYLE}>
           <div
@@ -1465,127 +1374,20 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
               marginBottom: 6,
             }}
           >
-            系列/规格：当前品牌下的货号变体（如 dn25、伟星绿、伟星黄）。通用尺寸写在产品名；此处填品牌私有属性。
+            系列/规格：当前品牌下的货号变体（如 dn25、伟星绿、伟星黄）。通用尺寸写在产品名；此处填品牌私有属性。点选项切换，选中的规格在下方单行编辑。
           </div>
-          {/* v25.4 规格矩阵：走共享组件 MatrixTable（与供应商联系信息矩阵同一组件）。
-              所有格子一律确认层（空行三格同可点），前置未满足 → 点击给提示，视觉保持一致。 */}
-          <MatrixTable
-            headerName="系列/规格"
-            headerPrice="规格备注"
-            showDefault={false}
-            showAddButton={false}
-            template="minmax(100px, 1fr) minmax(120px, 1fr) 24px"
-            selectedRowKey={creatingSibling ? 'creating-sibling' : currentSpecId ?? undefined}
-            onRowSelect={(key) => {
-              if (key === 'creating-sibling') return;
+          <CascadeSwitchRow
+            label="规格"
+            disabled={loading || saving}
+            options={specsForActiveBrand.map((spec) => ({
+              key: spec.id,
+              label: (spec.specModel || '(空)') + (spec.status === 0 ? '（停用）' : ''),
+              active: spec.id === currentSpecId && !creatingSibling,
+            }))}
+            onSelect={(key) => {
               if (!creatingSibling) handleSwitchSpec(key);
             }}
-            rows={[
-              // 已有规格行：行点击切换当前规格；点值走确认层。
-              // 门禁统一：非当前行 / 规格名未填 → 格子视觉不变（照常有 hover），点击给提示。
-              ...specsForActiveBrand.map((spec) => {
-                const isCurrent = spec.id === currentSpecId && !creatingSibling;
-                const isInactive = spec.status === 0;
-                const switchReason = '请先点击该行切换到此规格，再修改';
-                const nameReason = specModel.trim() ? undefined : '请先填写系列/规格';
-                return {
-                  rowKey: spec.id,
-                  nameCell: isCurrent ? (
-                    <ArchiveFieldCell
-                      value={specModel}
-                      placeholder="留空默认「通用」"
-                      title="修改系列/规格"
-                      bullets={[
-                        '仅修改当前规格的系列/规格，保存时统一落库。',
-                        '与同品牌下其他规格重复时，保存将被阻止。',
-                      ]}
-                      disabled={loading || saving}
-                      onApply={(v) => setSpecModel(v)}
-                    />
-                  ) : (
-                    <ArchiveFieldCell
-                      value={`${spec.specModel || '(空)'}${isInactive ? '（停用）' : ''}`}
-                      placeholder="—"
-                      title="修改系列/规格"
-                      disabled
-                      disabledReason={switchReason}
-                      onApply={() => undefined}
-                    />
-                  ),
-                  price: '',
-                  onPriceChange: () => undefined,
-                  priceRender: isCurrent ? (
-                    <ArchiveFieldCell
-                      value={specRemark}
-                      placeholder="执行标准 / 企标 / 国标"
-                      title="修改规格备注"
-                      bullets={['仅修改当前规格的备注，保存时统一落库。']}
-                      disabled={loading || saving}
-                      disabledReason={nameReason}
-                      onApply={(v) => setSpecRemark(v)}
-                    />
-                  ) : (
-                    <ArchiveFieldCell
-                      value={spec.remark || ''}
-                      placeholder="—"
-                      title="修改规格备注"
-                      disabled
-                      disabledReason={switchReason}
-                      onApply={() => undefined}
-                    />
-                  ),
-                  isDefault: false,
-                  onIsDefaultChange: () => undefined,
-                  defaultTitle: '',
-                  onDelete: () => handleDeleteSpec(spec),
-                  deleteTitle: '删除规格',
-                  deleteDisabled: isCurrent || loading || saving,
-                };
-              }),
-              // 新建规格行（creatingSibling）：确认层编辑；操作列=取消新建
-              ...(creatingSibling
-                ? [
-                    {
-                      rowKey: 'creating-sibling',
-                      nameCell: (
-                        <ArchiveFieldCell
-                          value={specModel}
-                          placeholder="输入系列/规格"
-                          title="系列/规格（新建）"
-                          bullets={['确认后写入本地，保存时统一落库。']}
-                          disabled={loading || saving}
-                          onApply={(v) => setSpecModel(v)}
-                        />
-                      ),
-                      price: '',
-                      onPriceChange: () => undefined,
-                      priceRender: (
-                        <ArchiveFieldCell
-                          value={specRemark}
-                          placeholder="执行标准 / 企标 / 国标"
-                          title="规格备注（新建）"
-                          bullets={['确认后写入本地，保存时统一落库。']}
-                          disabled={loading || saving}
-                          disabledReason={specModel.trim() ? undefined : '请先填写系列/规格'}
-                          onApply={(v) => setSpecRemark(v)}
-                        />
-                      ),
-                      isDefault: false,
-                      onIsDefaultChange: () => undefined,
-                      defaultTitle: '',
-                      onDelete: () => {
-                        setCreatingSibling(false);
-                        setSpecModel('');
-                        setSpecRemark('');
-                      },
-                      deleteTitle: '取消新建规格',
-                    },
-                  ]
-                : []),
-            ]}
-            // 末尾空行：两格都走确认层（同供应商联系矩阵——空行每列都有 hover 态，可点）；
-            // 门禁统一：备注格前置未满足 → 点击提示「请先填写系列/规格」，不默默不可点。
-            addNameCell={
+            addCell={
               <ArchiveEmptyFieldCell
                 placeholder="新增系列/规格…"
                 title="新增规格变体"
@@ -1597,13 +1399,94 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                 }}
               />
             }
-            addPriceCell={
-              <ArchiveEmptyFieldCell
-                placeholder="执行标准 / 企标 / 国标"
-                title="规格备注"
-                disabledReason="请先填写系列/规格"
-                onApply={(v) => setSpecRemark(v)}
-              />
+            editRow={
+              creatingSibling || currentSpecId ? (
+                <EntityPanel
+                  template="minmax(120px, 1fr) minmax(140px, 1fr) 28px"
+                  header={
+                    <>
+                      <span style={{ textAlign: 'left', paddingLeft: 8 }}>规格型号</span>
+                      <span style={{ textAlign: 'left' }}>规格备注</span>
+                      <span style={{ textAlign: 'center' }}>操作</span>
+                    </>
+                  }
+                  rows={[
+                    {
+                      key: 'spec-edit-row',
+                      cells: (
+                        <>
+                          <ArchiveFieldCell
+                            value={specModel}
+                            placeholder="留空默认「通用」"
+                            title="修改系列/规格"
+                            bullets={[
+                              '仅修改当前规格的系列/规格，保存时统一落库。',
+                              '与同品牌下其他规格重复时，保存将被阻止。',
+                            ]}
+                            disabled={loading || saving}
+                            onApply={(v) => setSpecModel(v)}
+                          />
+                          <ArchiveFieldCell
+                            value={specRemark}
+                            placeholder="执行标准 / 企标 / 国标"
+                            title="修改规格备注"
+                            bullets={['仅修改当前规格的备注，保存时统一落库。']}
+                            disabled={loading || saving}
+                            onApply={(v) => setSpecRemark(v)}
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            {creatingSibling ? (
+                              <button
+                                type="button"
+                                title="取消新建规格"
+                                onClick={() => {
+                                  setCreatingSibling(false);
+                                  setSpecModel('');
+                                  setSpecRemark('');
+                                }}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: 'var(--text-tertiary)',
+                                  cursor: 'pointer',
+                                  fontSize: 10,
+                                  padding: '2px',
+                                }}
+                              >
+                                取消
+                              </button>
+                            ) : currentSpecId ? (
+                              (() => {
+                                const s = siblingSpecs.find((x) => x.id === currentSpecId);
+                                return s ? (
+                                  <Tooltip title="删除规格">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteSpec(s)}
+                                      disabled={loading || saving}
+                                      style={{
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: 'var(--text-quaternary)',
+                                        cursor: loading || saving ? 'not-allowed' : 'pointer',
+                                        padding: '2px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                      }}
+                                    >
+                                      <DeleteOutlined style={{ fontSize: 12 }} />
+                                    </button>
+                                  </Tooltip>
+                                ) : null;
+                              })()
+                            ) : null}
+                          </div>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
+              ) : undefined
             }
           />
 
@@ -1634,6 +1517,30 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
         {/* ============================================================ */}
         {/* §D 单位区 + 价格明细（当前 spec×brand） */}
         <div style={SECTION_BOX_STYLE}>
+          {/* v26.1 父级路径面包屑：挂载关系一眼可见——单位挂在规格下、价格挂在 规格×品牌×单位。
+              切换品牌/规格时路径跟着变，子集区块的归属不再看不出来。 */}
+          <div
+            style={{
+              fontSize: 'var(--body-xs-font-size)',
+              color: 'var(--text-tertiary)',
+              marginBottom: 6,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>单位与价格 · 挂载路径：</span>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+              品牌 {currentBrand?.name || '—'}
+            </span>
+            <span style={{ opacity: 0.5 }}>→</span>
+            <span style={{ color: 'var(--text-brand)', fontWeight: 500 }}>
+              规格 {specModel.trim() || '(通用)'}
+            </span>
+            <span style={{ opacity: 0.5 }}>→</span>
+            <span>单位（每规格一套）· 价格（规格×品牌×单位）</span>
+          </div>
           <UnitSection
             units={units}
             onUnitsChange={handleUnitsChange}

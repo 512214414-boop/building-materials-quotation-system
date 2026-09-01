@@ -55,6 +55,7 @@ import type { RefundType, RefundStatus } from '../../../../../shared/types/index
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
 import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useViewLock } from '../../../../../shared/hooks/useViewLock.js';
 
 // ============================================================
 // 辅助
@@ -190,9 +191,19 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   ]);
   const [selectedSold, setSelectedSold] = useState<SoldLineHit | null>(null);
 
-  // 视图锁定（防误触，与行级 refund_status=closed 独立）
-  const [viewLocked, setViewLocked] = useState(false);
-  const [lockActioning, setLockActioning] = useState(false);
+  // 视图锁定（防误触，与行级 refund_status=closed 独立）：状态机收敛到 useViewLock
+  const {
+    locked: viewLocked,
+    actioning: lockActioning,
+    applyLocks,
+    toggle: toggleLock,
+  } = useViewLock({
+    key: 'refundAfterSale',
+    label: '退换售后视图',
+    unlockHint: '解锁后新建/编辑/删除将恢复可操作状态，确定要解锁吗？',
+    lock: () => lockRefundView(documentId),
+    unlock: () => unlockRefundView(documentId),
+  });
   const loadedOnceRef = useRef(false);
 
   // 新建表单
@@ -246,8 +257,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
       ]);
       setRefundLines(refundLists.flat());
       setDocDetail(doc);
-      const locks = doc?.viewLocks ?? {};
-      setViewLocked(!!locks['refundAfterSale']);
+      applyLocks(doc?.viewLocks);
       loadedOnceRef.current = true;
     } catch (e) {
       message.error((e as Error).message || '加载退换记录失败');
@@ -401,40 +411,6 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   // ----------------------------------------------------------
   // 锁定/解锁视图（防误触，与行级 refund_status=closed 独立）
   // ----------------------------------------------------------
-  const handleToggleLock = useCallback(() => {
-    if (viewLocked) {
-      modal.confirm({
-        title: '解锁退换售后视图',
-        content: '解锁后新建/编辑/删除将恢复可操作状态，确定要解锁吗？',
-        okText: '确认解锁',
-        cancelText: '取消',
-        onOk: async () => {
-          setLockActioning(true);
-          try {
-            await unlockRefundView(documentId);
-            setViewLocked(false);
-            message.success('已解锁', 0.8);
-          } catch (e) {
-            message.error((e as Error).message || '解锁失败');
-          } finally {
-            setLockActioning(false);
-          }
-        },
-      });
-    } else {
-      setLockActioning(true);
-      lockRefundView(documentId)
-        .then(() => {
-          setViewLocked(true);
-          message.success('已锁定', 0.8);
-        })
-        .catch((e) => {
-          message.error((e as Error).message || '锁定失败');
-        })
-        .finally(() => setLockActioning(false));
-    }
-  }, [viewLocked, documentId, message, modal]);
-
   // ----------------------------------------------------------
   // 操作：确认编辑
   // ----------------------------------------------------------
@@ -756,7 +732,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
             variant={viewLocked ? 'primary' : 'secondary'}
             size="sm"
             icon={viewLocked ? <UnlockOutlined /> : <LockOutlined />}
-            onClick={handleToggleLock}
+            onClick={toggleLock}
             loading={lockActioning}
           >
             {viewLocked ? '解锁编辑' : '锁定编辑'}

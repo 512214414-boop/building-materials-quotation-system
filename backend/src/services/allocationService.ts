@@ -28,7 +28,7 @@ import { lockView as lockViewGeneric, unlockView as unlockViewGeneric } from './
 import { tokenizeKeyword, segmentizeKeyword, scoreNameByWeights } from './search-scoring.js';
 // v1.7.0：配货确认核心（内部出库扣库存 / 外部等额落应付）复用库存服务（事务版）
 import { round2 } from '../engines/pricing-engine.js';
-import { decreaseInventoryTx, increaseInventoryTx, type InventoryChangeContext } from './inventoryService.js';
+import { decreaseInventoryTx, increaseInventoryTx, resolveSkuNameSnapshot, type InventoryChangeContext } from './inventoryService.js';
 // v1.7.0：超额部分同步待入库（方案 3.4，配货确认事务内调用）
 import { syncInboundForLineTx } from './inboundTaskService.js';
 // v1.7.0：成本分层落账（方案 5.4 / 9.7，配货确认事务内调用）
@@ -168,6 +168,8 @@ async function upsertShortageBackorder(input: {
     });
     return;
   }
+  // v28：写入时落 SKU 维度名称快照，删品牌/单位/规格后仍能读出
+  const snap = await resolveSkuNameSnapshot(input.specId, input.brandId, input.unitId);
   await prisma.backorders.create({
     data: {
       document_id: input.documentId,
@@ -176,6 +178,7 @@ async function upsertShortageBackorder(input: {
       spec_id: input.specId,
       brand_id: input.brandId,
       unit_id: input.unitId,
+      ...snap,
       qty: qtyNum,
       note: '配货库存不足，系统自动挂欠库',
       status: 'pending',

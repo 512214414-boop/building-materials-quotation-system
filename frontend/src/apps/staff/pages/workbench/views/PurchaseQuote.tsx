@@ -88,6 +88,7 @@ import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.j
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
 import { useStaffAuthStore } from '../../../../../shared/stores/auth.js';
 import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useViewLock } from '../../../../../shared/hooks/useViewLock.js';
 import { useArchiveTableSelection } from '../../../../../shared/hooks/useArchiveTableSelection.js';
 import { useDocumentLineCascadeFilter } from '../../../../../shared/hooks/useDocumentLineCascadeFilter.js';
 
@@ -172,7 +173,12 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
   const [loading, setLoading] = useState(false);
 
   const [pqStatus, setPqStatus] = useState<StageStatus>('pending');
-  const [viewLocked, setViewLocked] = useState(false);
+  // 采购报价没有自己的锁定开关（不传 lock/unlock），只读 viewLocks 状态；
+  // 业务侧另有 isVoided / salesArchived 两个冻结条件，在下面 isLocked 里叠加。
+  const { locked: viewLocked, applyLocks, setLocked } = useViewLock({
+    key: 'purchaseQuote',
+    label: '采购报价视图',
+  });
 
   // 业务条状态
   const [bizNeedInvoice, setBizNeedInvoice] = useState(false);
@@ -264,7 +270,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
       if (seq !== loadSeqRef.current) return;
       setLines((prev) => mergeLinesByVersion(prev, list));
       setPqStatus((doc.purchaseQuoteStatus as StageStatus) ?? 'pending');
-      setViewLocked(!!doc.viewLocks?.purchaseQuote);
+      applyLocks(doc.viewLocks);
       setBizNeedInvoice(!!doc.needInvoice);
       setBizTaxRate(String(toNum(doc.taxRate)));
       setBizDiscount(String(toNum(doc.orderDiscountAmount)));
@@ -284,7 +290,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
   useEffect(() => {
     if (!activeDocument || activeDocument.id !== documentId) return;
     setPqStatus((activeDocument.purchaseQuoteStatus as StageStatus) ?? 'pending');
-    setViewLocked(!!activeDocument.viewLocks?.purchaseQuote);
+    applyLocks(activeDocument.viewLocks);
   }, [activeDocument, documentId]);
 
   useWsAutoRefresh(load, ['document.lines_updated', 'quote.lines_updated', 'document.status_changed', 'archive.sales_archived', 'archive.sales_unarchived']);
@@ -490,12 +496,12 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
     if (isVoided) return;
     if (viewLocked) {
       unlockDemandConfirmView(documentId)
-        .then(async () => { setViewLocked(false); await refresh(); message.success('已解锁编辑', 0.8); })
+        .then(async () => { setLocked(false); await refresh(); message.success('已解锁编辑', 0.8); })
         .catch((e) => message.error((e as Error).message || '解锁失败'));
       return;
     }
     lockDemandConfirmView(documentId)
-      .then(async () => { setViewLocked(true); await refresh(); message.success('已锁定编辑', 0.8); })
+      .then(async () => { setLocked(true); await refresh(); message.success('已锁定编辑', 0.8); })
       .catch((e) => message.error((e as Error).message || '锁定失败'));
   }, [documentId, isVoided, message, refresh, viewLocked]);
 

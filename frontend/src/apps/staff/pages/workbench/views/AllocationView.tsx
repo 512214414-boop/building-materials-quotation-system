@@ -50,6 +50,7 @@ import { overlayModalContainer } from '../../../../../shared/utils/canvasStage.j
 import { useWsAutoRefresh } from '../../../../../shared/hooks/useWsAutoRefresh.js';
 import { useSafeAsyncEffect } from '../../../../../shared/hooks/useSafeAsyncEffect.js';
 import { useCanvasApp } from '../../../../../shared/hooks/useCanvasApp.js';
+import { useViewLock } from '../../../../../shared/hooks/useViewLock.js';
 import { useDocumentLineCascadeFilter } from '../../../../../shared/hooks/useDocumentLineCascadeFilter.js';
 
 // ============================================================
@@ -262,8 +263,20 @@ export default function AllocationView({ documentId }: { documentId: string }) {
   const [lines, setLines] = useState<AllocationDocumentLineView[]>([]);
   const lineFilter = useDocumentLineCascadeFilter(documentId);
   const [sources, setSources] = useState<AllocationSourcesResult | null>(null);
-  const [viewLocked, setViewLocked] = useState(false);
-  const [lockActioning, setLockActioning] = useState(false);
+  // 视图锁定（防误触）：状态机收敛到 useViewLock。
+  // 注：原实现锁定/解锁后无提示，收敛后统一带反馈（零反馈即违规）。
+  const {
+    locked: viewLocked,
+    actioning: lockActioning,
+    applyLocks,
+    toggle: toggleLock,
+  } = useViewLock({
+    key: 'allocation',
+    label: '配货视图',
+    unlockHint: '解锁后所有配货行将恢复可编辑状态，确定要解锁吗？',
+    lock: () => lockAllocationView(documentId),
+    unlock: () => unlockAllocationView(documentId),
+  });
 
   // 弹窗状态
   const [editingLine, setEditingLine] = useState<AllocationDocumentLineView | null>(null);
@@ -299,8 +312,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
       ]);
       setSources(srcList);
       setLines(lineList);
-      const locks = docDetail?.viewLocks ?? {};
-      setViewLocked(!!locks['allocation']);
+      applyLocks(docDetail?.viewLocks);
     } catch (e) {
       message.error((e as Error).message || '加载配货数据失败');
     } finally {
@@ -611,34 +623,6 @@ export default function AllocationView({ documentId }: { documentId: string }) {
   // ----------------------------------------------------------
   // 锁定/解锁视图
   // ----------------------------------------------------------
-  const handleToggleLock = () => {
-    if (viewLocked) {
-      modal.confirm({
-        title: '解锁配货视图',
-        content: '解锁后所有配货行将恢复可编辑状态，确定要解锁吗？',
-        okText: '确认解锁',
-        cancelText: '取消',
-        onOk: async () => {
-          setLockActioning(true);
-          try {
-            await unlockAllocationView(documentId);
-            setViewLocked(false);
-          } catch (e) {
-            message.error((e as Error).message || '解锁失败');
-          } finally {
-            setLockActioning(false);
-          }
-        },
-      });
-    } else {
-      setLockActioning(true);
-      lockAllocationView(documentId)
-        .then(() => setViewLocked(true))
-        .catch((e) => message.error((e as Error).message || '锁定失败'))
-        .finally(() => setLockActioning(false));
-    }
-  };
-
   // ----------------------------------------------------------
   // v9.4：来源选项（混合仓库+供应商）相关逻辑已迁移至 AllocationSourcePicker 组件
   //   - getSourceOptions / sourceSearchKeyword / handleSourceChange 已删除
@@ -1056,7 +1040,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
               variant={viewLocked ? 'primary' : 'secondary'}
               size="sm"
               icon={viewLocked ? <UnlockOutlined /> : <LockOutlined />}
-              onClick={handleToggleLock}
+              onClick={toggleLock}
               loading={lockActioning}
             >
               {viewLocked ? '解锁编辑' : '锁定编辑'}

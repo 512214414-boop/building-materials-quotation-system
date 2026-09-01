@@ -30,6 +30,7 @@ import { usePermission } from '../../hooks/usePermission.js';
 import { useCanvasApp } from '../../hooks/useCanvasApp.js';
 import { useArchiveTableSelection } from '../../hooks/useArchiveTableSelection.js';
 import { useSafeAsyncEffect } from '../../hooks/useSafeAsyncEffect.js';
+import CascadeSwitchRow from '../CascadeSwitchRow.js';
 import { permissionReadonlyTip } from '../../utils/permissionTips.js';
 import { runParallelLimit } from '../../utils/runParallelLimit.js';
 import type {
@@ -607,18 +608,22 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           className: filterOn ? 'ds-cascade-col' : undefined,
           align: slot.align ?? 'center',
           renderMode: 'custom',
-          render: (_val: unknown, row: T) => (
-            <ArchiveFieldCell
-              value={slot.get(row)}
-              placeholder={slot.placeholder ?? '—'}
-              title={slot.title ?? `修改${slot.label}`}
-              align={slot.align ?? 'center'}
-              input={slot.input}
-              dictConfig={slot.dictConfig}
-              disabled={!canWrite}
-              onApply={(v) => void patchRow(row.id, slot.toPatch(v))}
-            />
-          ),
+          render: (_val: unknown, row: T) => {
+            const ro = slot.readonlyWhen?.(row) ?? null;
+            return (
+              <ArchiveFieldCell
+                value={slot.get(row)}
+                placeholder={slot.placeholder ?? '—'}
+                title={slot.title ?? `修改${slot.label}`}
+                align={slot.align ?? 'center'}
+                input={slot.input}
+                dictConfig={slot.dictConfig}
+                disabled={!canWrite || Boolean(ro)}
+                disabledReason={ro ?? undefined}
+                onApply={(v) => void patchRow(row.id, slot.toPatch(v))}
+              />
+            );
+          },
         });
         continue;
       }
@@ -630,7 +635,7 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           minWidth: slot.minWidth ?? COL_WIDTHS.TAG_L,
           align: 'center',
           renderMode: 'picker',
-          isDisabled: () => !canWrite,
+          isDisabled: (row: T) => !canWrite || Boolean(slot.readonlyWhen?.(row)),
           render: (value: string) =>
             slot.renderValue ? slot.renderValue(value) : (
               <span style={{ color: 'var(--text-default)' }}>
@@ -646,6 +651,20 @@ export default function ArchiveSlotHost<T extends { id: string }>({
               onClose={() => onCancel()}
             />
           ),
+        });
+        continue;
+      }
+      // 只读展示列：只进列表，不进弹窗，不产生编辑态
+      if (slot.kind === 'readonly' && slot.list !== false) {
+        cols.push({
+          key: slot.key,
+          title: slot.label,
+          dataIndex: slot.key,
+          minWidth: slot.minWidth ?? COL_WIDTHS.DATETIME,
+          align: slot.align ?? 'left',
+          renderMode: 'custom',
+          render: (_v: unknown, row: T) =>
+            slot.render ? slot.render(row) : <span>{slot.get(row)}</span>,
         });
         continue;
       }
@@ -983,6 +1002,55 @@ function renderDialogSlot<T extends { id: string }>(
             style={{ width: '100%' }}
           />
         </div>
+      </div>
+    );
+  }
+  if (slot.kind === 'toggle' && slot.dialog !== false) {
+    const checked =
+      ctx.extras[slot.key] !== undefined
+        ? Boolean(ctx.extras[slot.key])
+        : Boolean(ctx.row && slot.get(ctx.row));
+    return (
+      <div key={slot.key} className="ds-dialog-field-row">
+        <span className="ds-dialog-field-label" />
+        <div
+          className="ds-dialog-field-body"
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={!canWrite}
+            onChange={(e) => ctx.setExtras({ ...ctx.extras, [slot.key]: e.target.checked })}
+            style={{ accentColor: 'var(--text-brand)', width: 14, height: 14 }}
+          />
+          {slot.hint ? (
+            <span style={{ fontSize: 'var(--body-xs-font-size)', color: 'var(--text-default)' }}>
+              {slot.hint}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+  // 级联切换行：中间层（下挂子记录且非叶子）。多行级联整体呈现挂载层级。
+  // 只进弹窗，不进列表——列表里放一条横排选项会挤掉其他列。
+  if (slot.kind === 'cascade' && slot.dialog !== false) {
+    return (
+      <div key={slot.key} className="ds-dialog-field-block">
+        <CascadeSwitchRow
+          label={slot.label}
+          options={slot.options(ctx)}
+          onSelect={(k) => slot.onSelect(ctx, k)}
+          addCell={slot.addCell?.(ctx)}
+          editRow={slot.editRow?.(ctx)}
+          disabled={!canWrite}
+        />
+        {slot.hint ? (
+          <p style={{ margin: '6px 0 0', fontSize: 'var(--body-xs-font-size)', color: 'var(--text-tertiary)' }}>
+            {slot.hint}
+          </p>
+        ) : null}
       </div>
     );
   }

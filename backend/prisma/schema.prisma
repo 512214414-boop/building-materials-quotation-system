@@ -1027,6 +1027,10 @@ model inventory {
   brand_id         BigInt
   /// SKU 维度：单位 ID（无物理外键）
   unit_id          BigInt
+  /// SKU 维度名称快照（v28 新增：删除品牌/单位/规格后仍能读出，对齐 document_lines 快照范式；写入时落库）
+  specModel  String? @db.VarChar(200)
+  brandName  String? @db.VarChar(100)
+  unitName   String? @db.VarChar(50)
   /// 当前库存数量
   qty              Decimal  @default(0) @db.Decimal(14, 3)
   /// 加权平均进价（本仓入库采购单价）
@@ -1059,6 +1063,10 @@ model inventory_ledger {
   brand_id         BigInt
   /// SKU 维度：单位 ID
   unit_id          BigInt
+  /// SKU 维度名称快照（v28 新增：删除品牌/单位/规格后仍能读出，对齐 document_lines 快照范式；写入时落库）
+  specModel  String? @db.VarChar(200)
+  brandName  String? @db.VarChar(100)
+  unitName   String? @db.VarChar(50)
   /// 变动类型：入 / 出 / 盘点调整
   movement_type    inventory_movement_type
   /// 变动数量（入正出负）
@@ -1550,6 +1558,10 @@ model backorders {
   /// SKU 维度：品牌 ID
   brand_id       BigInt
   unit_id        BigInt
+  /// SKU 维度名称快照（v28 新增：删除品牌/单位/规格后仍能读出，对齐 document_lines 快照范式；写入时落库）
+  specModel  String? @db.VarChar(200)
+  brandName  String? @db.VarChar(100)
+  unitName   String? @db.VarChar(50)
   /// 欠库数量（缺口）
   qty            Decimal  @db.Decimal(14, 3)
   /// 状态：待补 / 已补 / 已取消

@@ -1,13 +1,18 @@
-// 供应商地址矩阵 — 点值确认层 + useMatrixRecords（与 ArchiveContactMatrixEditor 同构）
-import MatrixTable, { type MatrixRowConfig } from '../MatrixTable.js';
-import RecordExpandPanel from '../RecordExpandPanel.js';
-import useMatrixRecords from '../../hooks/useMatrixRecords.js';
+// 供应商地址矩阵
+// 行为层（默认互斥 / 空行晋升 / 最后一条不可删 / 失焦即脏）已收进 ArchiveAddressMatrixShell，
+// 本文件只剩字段与文案：地址类型走字典、详细地址直接填、坐标需要经纬度解析。
+import type { MatrixRowConfig } from '../MatrixTable.js';
 import { normalizeDefaultRecords } from '../../utils/defaultRecord.js';
 import { addressTypeDict } from '../../config/addressTypeDict.js';
 import {
   ArchiveEmptyFieldCell,
   ArchiveFieldCell,
 } from '../product-picker/PickerInlineCells.js';
+import ArchiveAddressMatrixShell, {
+  type AddressMatrixApi,
+  type AddressBlankApi,
+  type AddressMatrixConfig,
+} from './ArchiveAddressMatrixShell.js';
 
 export interface ArchiveSupplierAddressRecord {
   addressText: string;
@@ -38,11 +43,8 @@ export function formatSupplierCoord(a: { lng?: number | null; lat?: number | nul
 }
 
 export function parseSupplierCoord(text: string): { lng?: number; lat?: number } {
-  const parts = text
-    .split(/[,，\s]+/)
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n));
-  if (parts.length >= 2) return { lng: parts[0], lat: parts[1] };
+  const parts = text.split(',').map((s) => s.trim());
+  if (parts.length >= 2) return { lng: Number(parts[0]), lat: Number(parts[1]) };
   return {};
 }
 
@@ -62,9 +64,7 @@ export function supplierAddressesForSave(
 
 function buildRows(
   addresses: ArchiveSupplierAddressRecord[],
-  onUpdate: (idx: number, patch: Partial<ArchiveSupplierAddressRecord>) => void,
-  onRemove: (idx: number) => void,
-  onSetDefault: (idx: number) => void,
+  api: AddressMatrixApi<ArchiveSupplierAddressRecord>,
   canWrite: boolean,
   deleteDisabled: (idx: number) => boolean,
 ): MatrixRowConfig[] {
@@ -77,7 +77,7 @@ function buildRows(
         disabled={!canWrite}
         title="修改地址类型"
         dictConfig={addressTypeDict}
-        onApply={(v) => onUpdate(idx, { addressTypeName: v })}
+        onApply={(v) => api.update(idx, { addressTypeName: v })}
       />
     ),
     midCells: [
@@ -87,7 +87,7 @@ function buildRows(
         placeholder="详细地址"
         disabled={!canWrite}
         title="修改详细地址"
-        onApply={(v) => onUpdate(idx, { addressText: v })}
+        onApply={(v) => api.update(idx, { addressText: v })}
       />,
     ],
     price: '',
@@ -100,7 +100,7 @@ function buildRows(
         title="修改坐标"
         onApply={(v) => {
           const { lng, lat } = parseSupplierCoord(v);
-          onUpdate(idx, {
+          api.update(idx, {
             lng: lng ?? null,
             lat: lat ?? null,
             coordSource: lng != null ? 'manual' : null,
@@ -109,14 +109,57 @@ function buildRows(
       />
     ),
     isDefault: Boolean(a.isDefault),
-    onIsDefaultChange: () => onSetDefault(idx),
+    onIsDefaultChange: () => api.setDefault(idx),
     defaultTitle: a.isDefault ? '当前默认地址' : '设为默认地址',
     defaultDisabled: !canWrite || !isSupplierAddressDataRow(a),
-    onDelete: () => onRemove(idx),
+    onDelete: () => api.remove(idx),
     deleteTitle: '删除该地址',
     deleteDisabled: deleteDisabled(idx),
   }));
 }
+
+const CFG: AddressMatrixConfig<ArchiveSupplierAddressRecord> = {
+  headerName: '类型',
+  headerPrice: '坐标',
+  midCols: ['详细地址'],
+  minWidth: 480,
+  template: '112px minmax(180px,1fr) 108px 28px 24px',
+  rowKeyPrefix: 'address_',
+  isDataRow: isSupplierAddressDataRow,
+  blank: blankAddress,
+  normalize: normalizeSupplierAddresses,
+  buildRows,
+  addNameCell: (api: AddressBlankApi<ArchiveSupplierAddressRecord>) => (
+    <ArchiveEmptyFieldCell
+      placeholder="地址类型"
+      title="新增地址类型"
+      dictConfig={addressTypeDict}
+      onApply={(v) => api.updateLastBlank({ addressTypeName: v })}
+    />
+  ),
+  addMidCells: (api: AddressBlankApi<ArchiveSupplierAddressRecord>) => [
+    <ArchiveEmptyFieldCell
+      key="addr"
+      placeholder="输入地址…"
+      title="新增详细地址"
+      onApply={(v) => api.updateLastBlank({ addressText: v })}
+    />,
+  ],
+  addPriceCell: (api: AddressBlankApi<ArchiveSupplierAddressRecord>) => (
+    <ArchiveEmptyFieldCell
+      placeholder="经度,纬度"
+      title="新增坐标"
+      onApply={(v) => {
+        const { lng, lat } = parseSupplierCoord(v);
+        api.updateLastBlank({
+          lng: lng ?? null,
+          lat: lat ?? null,
+          coordSource: lng != null ? 'manual' : null,
+        });
+      }}
+    />
+  ),
+};
 
 export default function ArchiveSupplierAddressMatrixEditor({
   value,
@@ -125,7 +168,7 @@ export default function ArchiveSupplierAddressMatrixEditor({
   selectedRowKey,
   onRowSelect,
   fill = false,
-  gridTemplate = '112px minmax(180px,1fr) 108px 28px 24px',
+  gridTemplate,
 }: {
   value: ArchiveSupplierAddressRecord[];
   canWrite: boolean;
@@ -135,69 +178,16 @@ export default function ArchiveSupplierAddressMatrixEditor({
   fill?: boolean;
   gridTemplate?: string;
 }) {
-  const matrix = useMatrixRecords({
-    value: value ?? [],
-    isDataRow: isSupplierAddressDataRow,
-    blank: blankAddress,
-    normalize: normalizeSupplierAddresses,
-    onDirty,
-  });
-
-  const rows = buildRows(
-    matrix.dataRows,
-    matrix.update,
-    matrix.remove,
-    (idx) => matrix.setDefault(idx, 'isDefault'),
-    canWrite,
-    (_idx) => !canWrite || matrix.dataRowCount <= 1,
-  );
-
   return (
-    <div className={fill ? 'ds-record-panel-fill' : undefined}>
-      <RecordExpandPanel minWidth={fill ? undefined : 480}>
-        <MatrixTable
-          headerName="类型"
-          headerPrice="坐标"
-          midCols={['详细地址']}
-          rows={rows}
-          selectedRowKey={selectedRowKey}
-          onRowSelect={onRowSelect}
-          rowSelectDisabled={(rk) => !rk.startsWith('address_')}
-          addNameCell={
-            <ArchiveEmptyFieldCell
-              placeholder="地址类型"
-              title="新增地址类型"
-              dictConfig={addressTypeDict}
-              onApply={(v) => matrix.updateLastBlank({ addressTypeName: v })}
-            />
-          }
-          addMidCells={[
-            <ArchiveEmptyFieldCell
-              key="addr"
-              placeholder="输入地址…"
-              title="新增详细地址"
-              onApply={(v) => matrix.updateLastBlank({ addressText: v })}
-            />,
-          ]}
-          addPriceCell={
-            <ArchiveEmptyFieldCell
-              placeholder="经度,纬度"
-              title="新增坐标"
-              onApply={(v) => {
-                const { lng, lat } = parseSupplierCoord(v);
-                matrix.updateLastBlank({
-                  lng: lng ?? null,
-                  lat: lat ?? null,
-                  coordSource: lng != null ? 'manual' : null,
-                });
-              }}
-            />
-          }
-          showAddButton={false}
-          template={gridTemplate}
-          disabled={!canWrite}
-        />
-      </RecordExpandPanel>
-    </div>
+    <ArchiveAddressMatrixShell
+      cfg={CFG}
+      value={value}
+      canWrite={canWrite}
+      onDirty={onDirty}
+      selectedRowKey={selectedRowKey}
+      onRowSelect={onRowSelect}
+      fill={fill}
+      gridTemplate={gridTemplate}
+    />
   );
 }
