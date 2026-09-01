@@ -79,6 +79,42 @@ export const entityMeta: Record<string, EntityMeta> = {
       { key: "status", label: "状态", dataType: "int", required: false, unique: undefined, defaults: 1, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
     ],
   },
+  product: {
+    key: "product",
+    label: "产品",
+    table: "product",
+    layer: "subject",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  customer: {
+    key: "customer",
+    label: "客户",
+    table: "customers",
+    layer: "subject",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  supplier: {
+    key: "supplier",
+    label: "供应商",
+    table: "supplier",
+    layer: "subject",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  inventory: {
+    key: "inventory",
+    label: "库存",
+    table: "inventory",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
   document_line: {
     key: "document_line",
     label: "单据行（快照）",

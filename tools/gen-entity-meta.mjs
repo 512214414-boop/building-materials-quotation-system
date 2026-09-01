@@ -133,6 +133,59 @@ be += '];\n';
 fs.mkdirSync(path.dirname(beOut), { recursive: true });
 fs.writeFileSync(beOut, be, 'utf8');
 
+// ---------- ③ 前端界面列登记表（entityRelations） ----------
+// 阶段 E：界面列（E 呈现维度）由 yml 的 columns 段驱动，手写 entityRelations.ts 改为 re-export。
+const relOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityRelations.generated.ts');
+let rel = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
+rel += '// 元模型运行时 · 阶段 E：界面列登记表由真相源驱动，手写 entityRelations.ts 已改为 re-export。\n\n';
+rel += "import { COL_WIDTHS } from '../components/table/colWidths.js';\n";
+rel += "import type { EntityRelation, EntityFieldSpec } from './entityRelations.types.js';\n\n";
+
+const colToTs = (c) => {
+  const parts = [`key: ${JSON.stringify(c.key)}`, `title: ${JSON.stringify(c.title ?? '')}`];
+  if (c.dataIndex != null) parts.push(`dataIndex: ${JSON.stringify(c.dataIndex)}`);
+  parts.push(`renderMode: ${JSON.stringify(c.renderMode ?? 'custom')}`);
+  if (c.minWidth != null) {
+    parts.push(`minWidth: ${typeof c.minWidth === 'number' ? String(c.minWidth) : `COL_WIDTHS.${c.minWidth}`}`);
+  }
+  if (c.align != null) parts.push(`align: ${JSON.stringify(c.align)}`);
+  if (c.className != null) parts.push(`className: ${JSON.stringify(c.className)}`);
+  if (c.fieldClass != null) parts.push(`fieldClass: ${JSON.stringify(c.fieldClass)}`);
+  if (c.dictKind != null) parts.push(`dictKind: ${JSON.stringify(c.dictKind)}`);
+  if (c.suggestField != null) parts.push(`suggestField: ${JSON.stringify(c.suggestField)}`);
+  if (c.confirmStrategy != null) parts.push(`confirmStrategy: ${JSON.stringify(c.confirmStrategy)}`);
+  if (c.scenes != null) parts.push(`scenes: ${JSON.stringify(c.scenes)}`);
+  if (c.fixed != null) parts.push(`fixed: ${JSON.stringify(c.fixed)}`);
+  if (c.slot != null) parts.push(`slot: ${JSON.stringify(c.slot)}`);
+  if (c.pickerGroup != null) parts.push(`pickerGroup: ${JSON.stringify(c.pickerGroup)}`);
+  parts.push(`order: ${c.order ?? 0}`);
+  return `{ ${parts.join(', ')} }`;
+};
+
+const relEntities = Object.entries(entities).filter(([, e]) => e.columns?.length);
+for (const [key, ent] of relEntities) {
+  rel += `const ${key}Fields: EntityFieldSpec[] = [\n`;
+  for (const c of ent.columns) rel += `  ${colToTs(c)},\n`;
+  rel += '];\n\n';
+}
+rel += 'export const entityRelations: Record<string, EntityRelation> = {\n';
+for (const [key, ent] of relEntities) {
+  const rels = (ent.relations || [])
+    .map((r) => `{ field: ${JSON.stringify(r.field)}, to: ${JSON.stringify(r.to)}, type: ${JSON.stringify(r.type)} }`)
+    .join(', ');
+  rel += `  ${key}: {\n`;
+  rel += `    name: ${JSON.stringify(key)},\n`;
+  rel += `    label: ${JSON.stringify(ent.label ?? key)},\n`;
+  rel += `    primaryKey: ${JSON.stringify(ent.primaryKey ?? 'id')},\n`;
+  rel += `    fields: ${key}Fields,\n`;
+  rel += `    relations: [${rels}],\n`;
+  rel += '  },\n';
+}
+rel += '};\n';
+fs.mkdirSync(path.dirname(relOut), { recursive: true });
+fs.writeFileSync(relOut, rel, 'utf8');
+
 console.log(`✓ 生成完成：${Object.keys(entities).length} 实体 + ${(src.auditActions || []).length} 审计 + ${(src.indicators || []).length} 指标 →`);
 console.log(`  前端 ${path.relative(root, feOut)}`);
+console.log(`  前端 ${path.relative(root, relOut)}`);
 console.log(`  后端 ${path.relative(root, beOut)}`);

@@ -1,9 +1,17 @@
-# entity-meta.yml — 实体 × 字段 × 行为维度的唯一真相源（v2）
+# entity-meta.yml — 实体 × 字段 × 行为维度的唯一真相源（v3）
 # 用法：node tools/gen-entity-meta.mjs
-# 元模型运行时阶段：A✅category → B✅gate → C 快照(document_line) → D 审计/统计 → E 字典实体扩展
-# 维度注释：A身份(layer/unique) B语义(required/defaults) C来源(dict/valueFrom)
-#          E呈现(confirmStrategy) F行为(gate) G检索(searchLayer) H历史(snapshotFrom)
-version: 2
+# 生成：前端 entityMeta.generated.ts（数据维度）+ entityRelations.generated.ts（界面列）
+#      后端 entityMeta.generated.ts（建档/快照/审计/统计）
+# 元模型运行时阶段：A✅ B✅ C✅ D✅ E✅（后端字典已切 + 前端界面列迁移）
+#
+# 结构说明：
+#   entities[].fields    —— 数据字段维度（B语义/C来源/F行为/G检索/H历史）
+#   entities[].columns   —— 界面列（E 呈现：key/title/dataIndex/renderMode/minWidth/align/
+#                           className/scenes/order/fieldClass/dictKind/suggestField/
+#                           confirmStrategy/fixed/slot/pickerGroup），生成前端 entityRelations
+#   entities[].relations —— 实体关系（field→to+type），生成前端 entityRelations.relations
+#   auditActions / indicators —— 审计目录与统计口径
+version: 3
 
 entities:
   category:
@@ -60,6 +68,81 @@ entities:
       sortOrder: { label: 排序, dataType: int, defaults: 0 }
       status: { label: 状态, dataType: int, defaults: 1 }
 
+  product:
+    label: 产品
+    table: product
+    layer: subject
+    primaryKey: id
+    columns:
+      - { key: productRef, title: 产品名, dataIndex: productRef, renderMode: custom, minWidth: NAME_PRODUCT, align: left, className: ds-cascade-col, order: 10, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
+      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: custom, minWidth: NAME_BRAND, align: left, className: ds-cascade-col, order: 20, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
+      - { key: spec, title: 规格, dataIndex: spec, renderMode: custom, minWidth: NAME_SPEC, align: left, className: ds-cascade-col, order: 30, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
+      - { key: unit, title: 单位, dataIndex: unit, renderMode: custom, minWidth: TAG_L, align: center, order: 40, scenes: [workbench], fieldClass: A, dictKind: unit, suggestField: unit, confirmStrategy: direct }
+      - { key: qty, title: 数量, dataIndex: qty, renderMode: custom, minWidth: AMOUNT, align: center, order: 50, scenes: [workbench], confirmStrategy: direct }
+      - { key: unitPrice, title: 单价, dataIndex: unitPrice, renderMode: custom, minWidth: AMOUNT, align: center, order: 60, scenes: [workbench], fieldClass: A, dictKind: priceType, suggestField: priceType, confirmStrategy: direct }
+      - { key: amount, title: 金额, renderMode: static, minWidth: AMOUNT, align: center, order: 70, scenes: [workbench] }
+      - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 80, scenes: [workbench], fieldClass: A, suggestField: remark, confirmStrategy: direct }
+      - { key: categoryName, title: 分类, dataIndex: categoryName, renderMode: custom, minWidth: TAG_L, align: center, order: 10, scenes: [archive], fieldClass: A, dictKind: category, suggestField: category, confirmStrategy: dialog }
+      - { key: mainImageUrl, title: 图, dataIndex: sku, renderMode: custom, minWidth: ICON, align: center, order: 20, scenes: [archive] }
+      - { key: productName, title: 产品名, dataIndex: productName, renderMode: custom, minWidth: NAME_QUOTE, align: left, className: ds-cascade-col, order: 30, scenes: [archive], fieldClass: B, confirmStrategy: dialog }
+      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 40, scenes: [archive], fieldClass: A, dictKind: brand, suggestField: brand, confirmStrategy: dialog }
+      - { key: specModel, title: 系列/规格, dataIndex: specModel, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 50, scenes: [archive], fieldClass: B, confirmStrategy: dialog }
+      - { key: __skuPriceSlot__, title: '', renderMode: custom, order: 60, scenes: [archive], slot: skuPrice }
+      - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 70, scenes: [archive], fieldClass: A, suggestField: remark, confirmStrategy: direct }
+      - { key: status, title: 状态, dataIndex: sku, renderMode: custom, minWidth: TAG_S, align: center, order: 80, scenes: [archive] }
+      - { key: updateTime, title: 更新时间, dataIndex: sku, renderMode: custom, minWidth: DATETIME, align: center, order: 90, scenes: [archive] }
+    relations:
+      - { field: brandId, to: brand, type: manyToOne }
+      - { field: specId, to: spec, type: manyToOne }
+      - { field: unitId, to: unit, type: manyToOne }
+      - { field: categoryId, to: category, type: manyToOne }
+
+  customer:
+    label: 客户
+    table: customers
+    layer: subject
+    primaryKey: id
+    columns:
+      - { key: name, title: 客户名称, dataIndex: name, renderMode: static, minWidth: NAME_M, align: left, order: 0 }
+      - { key: contact, title: 联系人, dataIndex: contact, renderMode: text, minWidth: NAME_S, align: left, order: 10, confirmStrategy: direct }
+      - { key: phone, title: 电话, dataIndex: phone, renderMode: text, minWidth: NAME_S, align: left, order: 20, confirmStrategy: direct }
+      - { key: addressType, title: 地址类型, dataIndex: addressType, renderMode: picker, minWidth: TAG_L, align: center, order: 30, fieldClass: A, dictKind: addressType, suggestField: remark, confirmStrategy: dialog }
+      - { key: address, title: 地址, dataIndex: address, renderMode: text, minWidth: NAME_L, align: left, order: 40, confirmStrategy: direct }
+      - { key: remark, title: 备注, dataIndex: remark, renderMode: text, minWidth: REMARK_S, align: left, order: 50, confirmStrategy: direct }
+    relations:
+      - { field: addressTypeId, to: addressType, type: manyToOne }
+
+  supplier:
+    label: 供应商
+    table: supplier
+    layer: subject
+    primaryKey: id
+    columns:
+      - { key: name, title: 供应商名称, dataIndex: name, renderMode: static, minWidth: NAME_M, align: left, order: 0 }
+      - { key: contact, title: 联系人, dataIndex: contact, renderMode: text, minWidth: NAME_S, align: left, order: 10, confirmStrategy: direct }
+      - { key: phone, title: 电话, dataIndex: phone, renderMode: text, minWidth: NAME_S, align: left, order: 20, confirmStrategy: direct }
+      - { key: businessScope, title: 经营范围, dataIndex: businessScope, renderMode: static, minWidth: NAME_L, align: left, order: 30, fieldClass: A, dictKind: category, suggestField: category, confirmStrategy: dialog }
+      - { key: remark, title: 备注, dataIndex: remark, renderMode: text, minWidth: REMARK_S, align: left, order: 40, confirmStrategy: direct }
+    relations:
+      - { field: categoryIds, to: category, type: oneToMany }
+
+  inventory:
+    label: 库存
+    table: inventory
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: op, title: 操作, dataIndex: op, renderMode: custom, minWidth: 120, align: center, order: 0, scenes: [inventory] }
+      - { key: product, title: 产品, dataIndex: productName, renderMode: custom, minWidth: 240, align: center, order: 10, scenes: [inventory] }
+      - { key: unit, title: 单位, dataIndex: unitName, renderMode: custom, minWidth: 60, align: center, order: 20, scenes: [inventory] }
+      - { key: warehouse, title: 仓库, dataIndex: warehouse_id, renderMode: custom, minWidth: 110, align: center, order: 30, scenes: [inventory] }
+      - { key: qty, title: 库存数量, dataIndex: qty, renderMode: custom, minWidth: 100, align: center, order: 40, scenes: [inventory] }
+      - { key: weighted_avg_cost, title: 加权平均进价, dataIndex: weighted_avg_cost, renderMode: custom, minWidth: 110, align: center, order: 50, scenes: [inventory] }
+      - { key: last_in_at, title: 最近入库, dataIndex: last_in_at, renderMode: custom, minWidth: 150, align: center, order: 60, scenes: [inventory] }
+    relations:
+      - { field: productId, to: product, type: manyToOne }
+      - { field: warehouseId, to: warehouse, type: manyToOne }
+
   document_line:
     label: 单据行（快照）
     table: document_lines
@@ -72,8 +155,7 @@ entities:
       specModel: { label: 规格（快照）, snapshotFrom: spec.specModel }
       unitName: { label: 单位（快照）, snapshotFrom: unit.unitName }
 
-# 阶段 D · 审计 action 目录（单一来源）：controller 只填 action 名，
-# 中间件从本目录校验（未登记 → 警告但仍记录，留痕优于审批）。
+# 审计 action 目录（82 个，全量）
 auditActions:
   - { action: document_create, resource: document, label: 建档 }
   - { action: document_update, resource: document, label: 改单 }
@@ -158,7 +240,7 @@ auditActions:
   - { action: purchase_quote_prices_update, resource: purchase_quote, label: 改开单价格 }
   - { action: purchase_quote_status, resource: purchase_quote, label: 开单状态变更 }
 
-# 阶段 D · 统计口径（区间汇总，与 summaryService/rangeSummary 同一口径）
+# 统计口径（区间汇总，与 summaryService/rangeSummary 一致）
 indicators:
   - { id: salesAmount, label: 销售额, aggregate: SUM(document_lines.amount) }
   - { id: paymentAmount, label: 回款, aggregate: SUM(payment_records.amount), filter: reconcile_status=reconciled }
