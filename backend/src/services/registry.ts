@@ -31,6 +31,7 @@
 
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Errors } from '../utils/errors.js';
+import { REGISTRY_GENERATED } from './generated/entityMeta.generated.js';
 
 /** 事务客户端 / 全局客户端通用（结构兼容） */
 export type RegistryDb = Prisma.TransactionClient | PrismaClient;
@@ -246,31 +247,20 @@ export const SUPPLIER_REGISTRY: RegistryDef = {
   },
 };
 
-/** 分类档案（A 类全局字典：name 全局唯一，v15.4 补唯一索引；
- *   v15.3 统一引用类语义：分类空 → 缺省名「未分类」，ensure 幂等 + 按名称唯一复用/建档，
- *   与品牌/供应商/价格类型完全同构；历史特例「categoryId=0 未分类不建记录」废除） */
-export const CATEGORY_REGISTRY: RegistryDef = {
-  model: 'category',
-  label: '分类',
-  uniqueKey: { type: 'global' },
-  defaults: () => ({ sortOrder: 0, status: 1 }),
+/**
+ * 元模型运行时 · 阶段 E：category / brand / price_type 建档常量已迁移到生成物
+ * （data-source/entity-meta.yml → REGISTRY_GENERATED），手写定义删除。
+ * 改建档语义只改 yml 再跑 gen-entity-meta.mjs，不碰这里。
+ */
+const registryFrom = (model: string): RegistryDef => {
+  const def = REGISTRY_GENERATED.find((r) => r.model === model);
+  if (!def) throw new Error(`REGISTRY_GENERATED 缺 ${model}，请先在 data-source/entity-meta.yml 登记`);
+  return def;
 };
 
-/** 品牌全局档案（A 类全局字典：name 全局唯一） */
-export const BRAND_REGISTRY: RegistryDef = {
-  model: 'brand',
-  label: '品牌',
-  uniqueKey: { type: 'global' },
-  defaults: () => ({ status: 1 }),
-};
-
-/** 价格类型字典（A 类全局字典：name 全局唯一；缺省注册表：售价类型可空 → 系统默认「零售价」） */
-export const PRICE_TYPE_REGISTRY: RegistryDef = {
-  model: 'price_type',
-  label: '价格类型',
-  uniqueKey: { type: 'global' },
-  defaults: () => ({ sortOrder: 0, status: 1 }),
-};
+export const CATEGORY_REGISTRY = registryFrom('category');
+export const BRAND_REGISTRY = registryFrom('brand');
+export const PRICE_TYPE_REGISTRY = registryFrom('price_type');
 
 /** 规格（B 类父级从属：productId + brandId + specModel 唯一；v22 已含品牌维度） */
 export const SPEC_REGISTRY: RegistryDef = {
