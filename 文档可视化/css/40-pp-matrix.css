@@ -171,3 +171,27 @@
 }
 .modal-table tr:last-child td { border-bottom: 0; }
 
+/* 字段两看法（业务字段 / 完整字段）：tab 复用 .view-tabs，不新建一套 */
+.modal-field-tabs { margin: 2px 0 6px; }
+.field-legend { font-size: 11px; color: var(--muted); margin: 0 0 8px; line-height: 1.5; }
+.fk-tag {
+  display: inline-block; font-size: 9.5px; letter-spacing: 0.04em; text-align: center;
+  margin-right: 6px; padding: 1px 4px; border-radius: 3px; vertical-align: 1px;
+}
+.tag-pk { color: #1f4d3a; background: #e7f0eb; }
+.tag-fk { color: #185fa5; background: #e6f1fb; }
+.tag-biz { color: #5f5e5a; background: #f1efe8; }
+.tag-unique { color: #854f0b; background: #faeeda; }
+.tag-absent { color: #993c1d; background: #faece7; }
+.tag-index, .tag-sys { color: #888780; background: #f1efe8; }
+.modal-table tr.is-fk .col-fk { color: #185fa5; font-weight: 500; }
+.modal-table tr.is-absent { background: #fdf6f3; }
+.modal-table tr.is-index td, .modal-table tr.is-sys td { color: var(--muted); }
+
+/* 中文名下挂英文原名：中文是给人扫的，英文是给确认类型/约束用的，不丢 */
+.field-cn { display: block; font-weight: 500; }
+.field-raw {
+  display: block; margin-top: 2px; font-size: 10.5px; line-height: 1.35;
+  color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+

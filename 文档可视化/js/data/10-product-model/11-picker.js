@@ -70,7 +70,7 @@ DOC_VIZ.picker = {
     ["product_category", "现网 product.categoryId"],
     ["product_brand", "v22 product_brand；名称视图仍按产品聚合品牌 N"],
     ["spec", "v22 spec(productId, brandId, specModel)；规格备注 spec.remark"],
-    ["spec_unit_conversion", "现网 brand_unit_conversion（specBrandId + unitId），粒度相同"],
+    ["spec_unit_conversion", "现网 brand_unit_conversion（specId + unitId，接口兼容名 specBrandId），粒度相同"],
     ["product_search", "现网 product_sku_search（一行一条规格；名称视图再聚成产品名）"]
   ]
 };

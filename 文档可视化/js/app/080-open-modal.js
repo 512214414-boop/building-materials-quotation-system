@@ -9,6 +9,53 @@
  *
  * 含 336 行渲染逻辑。
  */
+  // 字段分类：业务视图靠它筛选。规则只此一份，任何地方要判断字段类型都调它，
+  // 不要在各处各写一套正则——表一多，两套判断必然分叉。
+  function fieldKind(f) {
+    var raw = (f && f[0]) || "", fk = (f && f[2]) || "";
+    if (/^（不存）/.test(raw)) return "absent";        // 刻意不存，是关系的反面证据
+    if (/^UNIQUE/i.test(raw)) return "unique";         // 唯一约束 = 粒度，回答「一对几」
+    if (/^INDEX/i.test(raw)) return "index";           // 纯性能，不是业务事实
+    if (/createdAt|updatedAt/i.test(raw)) return "sys"; // 写入时自动行为，人不编辑
+    if (/^id\s/i.test(raw) || /\bPK\b/.test(raw)) return "pk";
+    if (fk.indexOf("→") === 0) return "fk";            // 第三列明确指向 = 外键
+    if (/\w+Id\b/.test(raw)) return "fk";              // 字段名以 Id 结尾 = 外键
+    return "biz";
+  }
+  // 字段中文名：先查表专属，再查通用（*）。没登记就返回空——调用方回退英文原名，
+  // 不按表名猜（supplier.name 的口语是「渠道名称」，猜就是「供应商名称」，错）。
+  function fieldCnOf(tableId, raw) {
+    var m = (raw || "").match(/^([A-Za-z_][A-Za-z0-9_]*)/);
+    var name = m ? m[1] : "";
+    var dict = (window.DOC_VIZ && DOC_VIZ.fieldCn) || {};
+    var own = dict[tableId];
+    if (own && own[name]) return own[name];
+    if (dict["*"] && dict["*"][name]) return dict["*"][name];
+    return "";
+  }
+  var FIELD_TAG = { pk: "PK", fk: "FK", biz: "值", unique: "粒度", absent: "不存", index: "索引", sys: "系统" };
+  var FIELD_LEGEND = "PK 主键 · FK 外键（第三列写明指向哪张表）· 值 用户可编辑 · 粒度 唯一约束（一对几）· 不存 本表刻意不存";
+
+  // 业务模式只留「关系证据 + 人能编辑的值」：ID、外键、业务值、粒度、不存说明。
+  // 索引是性能、系统时间是自动行为，都不是业务事实 → 排除。
+  var FIELD_MODES = [
+    {
+      id: "biz", label: "业务字段",
+      hint: "ID + 外键 + 业务值 + 粒度；去掉索引与系统时间",
+      keep: { pk: 1, fk: 1, biz: 1, unique: 1, absent: 1 }
+    },
+    { id: "full", label: "完整字段", hint: "建表原样：含索引与系统时间", keep: null }
+  ];
+  var FIELD_MODE_KEY = "fieldMode:table";
+  function fieldModeCurrent() {
+    var id = null;
+    try { id = localStorage.getItem(FIELD_MODE_KEY); } catch (e) {}
+    return FIELD_MODES.filter(function (m) { return m.id === id; })[0] || FIELD_MODES[0];
+  }
+  function fieldModeSet(v) {
+    try { localStorage.setItem(FIELD_MODE_KEY, v); } catch (e) {}
+  }
+
   function openModal(id) {
     var t = resolveTable(id);
     if (!t) return;
@@ -41,15 +88,60 @@
     ["数据库字段", "业务语义", "外键关联指向"].forEach(function (c) {
       head.appendChild(el("th", "", c));
     });
-    var body = $("#modal-body");
-    body.innerHTML = "";
-    t.fields.forEach(function (row) {
-      var tr = document.createElement("tr");
-      tr.appendChild(el("td", "col-db", row[0]));
-      tr.appendChild(el("td", "", row[1]));
-      tr.appendChild(el("td", "col-fk", row[2]));
-      body.appendChild(tr);
+
+    // 两个看法：业务字段（默认）只留「关系证据 + 用户能编辑的值」；完整字段是建表原样。
+    // tabs 动态建——弹窗骨架在 index.html（装配清单），不为了加两个按钮去手改它。
+    var table = document.querySelector(".modal-table");
+    var tabsWrap = $("#modal-field-tabs");
+    if (!tabsWrap) {
+      tabsWrap = el("div", "view-tabs modal-field-tabs");
+      tabsWrap.id = "modal-field-tabs";
+      table.parentNode.insertBefore(tabsWrap, table);
+      var legend = el("p", "field-legend");
+      legend.id = "modal-field-legend";
+      legend.textContent = FIELD_LEGEND;
+      table.parentNode.insertBefore(legend, table);
+    }
+    var mode = fieldModeCurrent();
+    tabsWrap.innerHTML = "";
+    FIELD_MODES.forEach(function (m) {
+      var btn = el("button", "view-tab" + (m.id === mode.id ? " is-active" : ""), m.label);
+      btn.type = "button";
+      btn.title = m.hint;
+      btn.addEventListener("click", function () {
+        mode = m;
+        fieldModeSet(m.id);
+        Array.prototype.forEach.call(tabsWrap.children, function (b) { b.className = "view-tab"; });
+        btn.className = "view-tab is-active";
+        paintFields();
+      });
+      tabsWrap.appendChild(btn);
     });
+
+    var body = $("#modal-body");
+    function paintFields() {
+      body.innerHTML = "";
+      (t.fields || []).forEach(function (row) {
+        var k = fieldKind(row);
+        if (mode.keep && !mode.keep[k]) return;
+        var tr = document.createElement("tr");
+        tr.className = "is-" + k;
+        var td = el("td", "col-db");
+        td.appendChild(el("span", "fk-tag tag-" + k, FIELD_TAG[k] || ""));
+        var cn = fieldCnOf(id, row[0]);
+        if (cn) {
+          td.appendChild(el("span", "field-cn", cn));
+          td.appendChild(el("span", "field-raw", row[0])); // 英文原名降级为灰小字，细节不丢
+        } else {
+          td.appendChild(document.createTextNode(row[0]));
+        }
+        tr.appendChild(td);
+        tr.appendChild(el("td", "", row[1]));
+        tr.appendChild(el("td", "col-fk", row[2]));
+        body.appendChild(tr);
+      });
+    }
+    paintFields();
     $("#modal").hidden = false;
   }
 

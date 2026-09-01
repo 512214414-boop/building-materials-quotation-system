@@ -70,7 +70,7 @@ DOC_VIZ.tables.spec_unit_conversion = {
     pick: "值",
     sub: "展开层 · 换算率列 · 品牌+规格+单位",
     dep: "数据表，人填换算率。粒度是 品牌 + 规格 + 单位，不是品牌+单位。规格已经含品牌，所以 UNIQUE(specId, unitId) 就是这三者。同品牌不同规格必须分行：伟星 dn20 一包=200米，伟星 dn25 一包=100米；如果按「伟星+包」只存一条，两条规格会串数。不同品牌同一型号也分行（伟星一根=4米、得亿一根=3米）。单位下拉里「单位」「换算率」各占一列。未录该单位面价时，用基准面价 × 换算率推算，不写库。",
-    code: "现网表名 brand_unit_conversion，键 specBrandId + unitId。粒度仍是品牌+规格+单位。选品规格行和单位层都有换算率列；单价槽单位已锁定，不显示这一列。写入：PATCH /staff/spec-brands/:specBrandId/units/:unitId/conversion。基准固定 1。",
+    code: "现网表名 brand_unit_conversion，键 specId + unitId（接口兼容名 specBrandId）。粒度仍是品牌+规格+单位。选品规格行和单位层都有换算率列；单价槽单位已锁定，不显示这一列。写入：PATCH /staff/spec-brands/:specBrandId/units/:unitId/conversion。基准固定 1。",
     fields: [
       ["id BigInt PK", "换算主键。", "—"],
       ["specId BigInt NOT NULL", "哪条规格。规格已含品牌，所以这里已经是品牌+规格。", "→ 规格系列表.id"],

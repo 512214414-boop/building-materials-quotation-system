@@ -61,8 +61,8 @@ DOC_VIZ.orderViews["order-allocation"] = {
         label: "来源确认层",
         note: "一框检索，两列分仓/渠道，各选各的。禁止混成一份名单。",
         children: [
-          { id: "wh", label: "内部仓", guest: "库房", guestModule: "warehouse-model", guestChapter: "picker" },
-          { id: "sup", label: "供应商", guest: "供应商", guestModule: "supplier-model", guestChapter: "picker" }
+          { id: "wh", label: "内部仓", guest: "库房", guestModule: "table-aggregate-warehouse", guestChapter: "picker" },
+          { id: "sup", label: "供应商", guest: "供应商", guestModule: "table-aggregate-supplier", guestChapter: "picker" }
         ]
       }
     }

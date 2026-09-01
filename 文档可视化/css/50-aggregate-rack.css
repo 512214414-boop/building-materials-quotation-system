@@ -1,0 +1,78 @@
+/* ============================================================
+   集合体架子 · 两层横向导航
+   第一层切集合体（维度不变，跨集合体对照同一段）
+   第二层切维度（集合体不变，翻同一个集合体的各个面）
+   ============================================================ */
+.agg-rack {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #e3e6ea);
+  border-radius: 10px;
+  background: #fbfcfd;
+}
+
+.agg-rack-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.agg-rack-row + .agg-rack-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line, #e3e6ea);
+}
+
+.agg-rack-label {
+  flex: 0 0 auto;
+  width: 48px;
+  font-size: 12px;
+  color: #8a94a0;
+  letter-spacing: 1px;
+}
+
+.agg-tab {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #4a5563;
+  background: #fff;
+  border: 1px solid var(--line, #e3e6ea);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.agg-tab:hover {
+  border-color: #b9c2cc;
+  background: #f4f7fa;
+}
+
+.agg-tab.is-active {
+  color: #fff;
+  background: #2f6feb;
+  border-color: #2f6feb;
+}
+
+/* 第二层（维度）视觉上轻一档，避免两排抢焦点 */
+.agg-tab-sub {
+  padding: 4px 11px;
+  font-size: 12.5px;
+  border-radius: 6px;
+}
+
+.agg-tab-sub.is-active {
+  background: #44546b;
+  border-color: #44546b;
+}
+
+/* 待补占位：明说没填，禁止静默留白 */
+.agg-pending {
+  margin: 0;
+  padding: 10px 0 2px;
+  font-size: 13px;
+  color: #98a2b3;
+  line-height: 1.7;
+}

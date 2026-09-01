@@ -14,7 +14,7 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
     ov.tables = DOC_VIZ.orderTables;
     return ov;
   }
-  if (moduleId === "product-model") {
+  if (moduleId === "table-aggregate-product") {
     return {
       kicker: "产品管理",
       title: "货与价",
@@ -79,7 +79,7 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
                           label: "查看可能渠道",
                           note: "只读查询槽",
                           guest: "供应商",
-                          guestModule: "supplier-model",
+                          guestModule: "table-aggregate-supplier",
                           guestChapter: "picker"
                         }
                       ]
@@ -93,10 +93,18 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
       }
     };
   }
-  if (moduleId === "supplier-model") return DOC_VIZ.supplierModel;
-  if (moduleId === "warehouse-model") return DOC_VIZ.warehouseModel;
-  if (moduleId === "customer-model") return DOC_VIZ.customerModel;
+  if (moduleId === "table-aggregate-supplier") return DOC_VIZ.supplierModel;
+  if (moduleId === "table-aggregate-warehouse") return DOC_VIZ.warehouseModel;
+  if (moduleId === "table-aggregate-customer") return DOC_VIZ.customerModel;
   if (moduleId === "canvas-ui-hierarchy") return DOC_VIZ.canvasUi;
   if (moduleId === "entity-slot-model") return DOC_VIZ.entitySlotModel;
+  if (moduleId === "table-framework") return DOC_VIZ.tableFramework;
+  if (moduleId === "table-features") return DOC_VIZ.tableFeatures;
+  if (moduleId === "table-aggregate-product") return DOC_VIZ.tableAggregateProduct;
+  if (moduleId === "table-aggregate-supplier") return DOC_VIZ.tableAggregateSupplier;
+  if (moduleId === "table-aggregate-customer") return DOC_VIZ.tableAggregateCustomer;
+  if (moduleId === "table-aggregate-warehouse") return DOC_VIZ.tableAggregateWarehouse;
+  if (moduleId === "table-aggregate-order") return DOC_VIZ.tableAggregateOrder;
+  if (moduleId === "table-aggregate-permission") return DOC_VIZ.tableAggregatePermission;
   return { kicker: DOC_VIZ.why.kicker, title: DOC_VIZ.why.title, lead: DOC_VIZ.why.lead };
 };

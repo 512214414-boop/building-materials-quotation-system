@@ -85,6 +85,118 @@ function svgEl(tag, attrs) {
   return n;
 }
 
+// 肘形：兄弟共用 x1→mx 那一段水平主干，到 mx 才垂直分开——分叉感来自这一段共享，
+// 不是来自「横过来」。同一父的子 x 相同，所以 mx 天然一致。
+function relElbowPath(a, b) {
+  var x1 = a.x + a.w, y1 = a.y + a.h / 2;
+  var x2 = b.x, y2 = b.y + b.h / 2;
+  var mx = x1 + (x2 - x1) * 0.45;
+  return "M" + x1 + "," + y1 + " H" + mx + " V" + y2 + " H" + x2;
+}
+
+// 分叉树布局（tidy tree 简化版）：与 layoutRelGraph 分工不同——
+// 那个按「层」排（看共享与跨层），这个按「父子」排（看分支与深度）。
+// 分叉感全在 slotOf 那一句：父永远坐在它首子与末子的正中间。
+function layoutForkTree(root) {
+  var PAD = 14, NODEW = 112, NODEH = 30, ROWH = 44, COLW = 152;
+  var pos = {}, slotOf = {}, seen = {}, slot = 0, maxSlot = 0, maxDepth = 0;
+  function walk(n, d) {
+    if (!n || seen[n.table]) return; // 一个节点被两个父引用时只排一次
+    seen[n.table] = true;
+    if (d > maxDepth) maxDepth = d;
+    var kids = n.children || [];
+    if (!kids.length) {
+      slotOf[n.table] = slot++;
+      if (slot - 1 > maxSlot) maxSlot = slot - 1;
+    } else {
+      kids.forEach(function (c) { walk(c, d + 1); });
+      var a = slotOf[kids[0].table], b = slotOf[kids[kids.length - 1].table];
+      slotOf[n.table] = (a == null || b == null) ? slot++ : (a + b) / 2;
+    }
+    pos[n.table] = { x: PAD + d * COLW, y: PAD + slotOf[n.table] * ROWH, w: NODEW, h: NODEH };
+  }
+  walk(root, 0);
+  return {
+    pos: pos,
+    // 高度多留 14：via 字典下挂小字要占一行
+    width: PAD * 2 + (maxDepth + 1) * COLW - (COLW - NODEW),
+    height: PAD * 2 + maxSlot * ROWH + NODEH + 14
+  };
+}
+
+// 收集节点与边（去重：多父只收一次，避免同一条结构边画两遍）
+function collectForkParts(root) {
+  var nodes = [], edges = [], seenN = {}, seenE = {};
+  (function walk(n) {
+    if (!n || seenN[n.table]) return;
+    seenN[n.table] = true;
+    nodes.push(n);
+    (n.children || []).forEach(function (c) {
+      var k = n.table + ">" + c.table;
+      if (!seenE[k]) { seenE[k] = true; edges.push([n.table, c.table]); }
+      walk(c);
+    });
+  })(root);
+  return { nodes: nodes, edges: edges };
+}
+
+// 投影一：结构树的横向分叉画法（只画 struct 边 = 纯树，共享字典不进这个视图）
+function renderForkTreeView(meta) {
+  var root = meta.treeRoot;
+  if (!root) return el("div");
+  var parts = collectForkParts(root);
+  var lay = layoutForkTree(root);
+  var formOf = {};
+  ((meta.relGraph && meta.relGraph.nodes) || []).forEach(function (n) { formOf[n.id] = n.form; });
+
+  var wrap = el("div", "rel-scroll");
+  // 不写 width/height，交给 .rel-svg.is-fit 按容器等比缩放：布局按可读字号定，显示自适应
+  var svg = svgEl("svg", {
+    "class": "rel-svg is-fit",
+    viewBox: "0 0 " + lay.width + " " + lay.height,
+    preserveAspectRatio: "xMinYMin meet"
+  });
+
+  var gE = svgEl("g", {});
+  parts.edges.forEach(function (e) {
+    var a = lay.pos[e[0]], b = lay.pos[e[1]];
+    if (!a || !b) return;
+    gE.appendChild(svgEl("path", { "class": "rel-edge edge-struct", d: relElbowPath(a, b) }));
+  });
+  svg.appendChild(gE);
+
+  var gN = svgEl("g", {});
+  parts.nodes.forEach(function (n) {
+    var p = lay.pos[n.table];
+    if (!p) return;
+    var lab = relNodeLabel(n.table);
+    var grp = svgEl("g", { "class": "rel-node form-" + (REL_FORM_CLS[formOf[n.table]] || "data") });
+    grp.appendChild(svgEl("rect", { x: p.x, y: p.y, width: p.w, height: p.h, rx: 5 }));
+    var cn = svgEl("text", {
+      x: p.x + 8, y: p.y + p.h / 2, "class": "n-cn", "dominant-baseline": "central"
+    });
+    cn.textContent = lab.cn;
+    grp.appendChild(cn);
+    if (n.via) {
+      var vl = relNodeLabel(n.via);
+      var vt = svgEl("text", { x: p.x + 8, y: p.y + p.h + 10, "class": "n-via" });
+      vt.textContent = "引用 " + vl.cn;
+      grp.appendChild(vt);
+    }
+    var ttl = svgEl("title", {});
+    ttl.textContent = lab.cn + " · " + lab.db + (n.via ? " · 引用 " + relNodeLabel(n.via).cn : "");
+    grp.appendChild(ttl);
+    grp.addEventListener("click", function () {
+      if (typeof openModal === "function") openModal(n.table);
+    });
+    gN.appendChild(grp);
+  });
+  svg.appendChild(gN);
+
+  wrap.appendChild(svg);
+  return wrap;
+}
+
 // 投影二：全关系图（三类边同图：结构实线 / 使用虚线 / 字典点线）
 function renderRelGraphView(meta) {
   var g = meta.relGraph;
@@ -150,7 +262,7 @@ function renderRelMatrixView(meta) {
       var hit = g.nodes.filter(function (n) { return n.layer === r && n.form === c; });
       var cell = el("div", "mx-cell" + (hit.length ? "" : " is-empty"));
       if (!hit.length) cell.appendChild(el("span", "mx-dash", "— 这一格还没有"));
-      else hit.forEach(function (n) { cell.appendChild(tblCard(n.id)); });
+      else hit.forEach(function (n) { cell.appendChild(tblCard(n.id, "is-compact")); });
       grid.appendChild(cell);
     });
   });

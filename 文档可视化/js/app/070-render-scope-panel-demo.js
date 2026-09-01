@@ -323,6 +323,7 @@
     }
     if (state.module === "archive-framework") {
       renderArchiveFrameworkContent(extra, meta, function () {});
+      appendRescuedBlocks(extra); // fill / law / archive 三块旧内容原先没接上渲染，挂在本页末尾
       return;
     }
     if (state.module === "order-framework") {
@@ -335,6 +336,18 @@
     }
     if (state.module === "entity-slot-model") {
       renderEntitySlotContent(extra, meta);
+      return;
+    }
+    if (state.module === "table-framework") {
+      renderTableFrameworkContent(extra, meta);
+      return;
+    }
+    if (state.module === "table-features") {
+      renderTableFeaturesContent(extra, meta);
+      return;
+    }
+    if (state.module.indexOf("table-aggregate-") === 0) {
+      renderTableAggregateContent(extra, meta);
       return;
     }
     if (isManage && meta.inventory && meta.tables) {
@@ -356,6 +369,53 @@
       }
       restoreScrollPosition();
       persistNavState();
+    }
+  }
+
+  /**
+   * 救活三块旧内容：16-fill（边用边建/空值补全）、19-law（槽位定律）、
+   * 24-archive（档案交互范式）。这三个键定义了内容，但对应的渲染函数
+   * （renderFill / renderLaw / renderArchiveUse）没有调用点，导致内容写了却永远
+   * 看不见。这里按数据形状分别渲染，挂到「档案管理 · 全局规则」页末尾。
+   * 内容本身有价值（空值补全规则、点值确认层范式），不是废弃物，所以救活不删。
+   */
+  function appendRescuedBlocks(parent) {
+    var arc = DOC_VIZ.archive;
+    if (arc && arc.rules) appendRuleLayer(parent, arc);
+
+    var law = DOC_VIZ.law;
+    if (law) {
+      var lSec = el("section", "layer");
+      lSec.appendChild(layerHead(law.kicker, law.title, { lead: law.hint || "" }));
+      if (law.line) {
+        var lb = el("div", "layer-body");
+        lb.appendChild(el("p", "agg-pending", law.line));
+        lSec.appendChild(lb);
+      }
+      parent.appendChild(lSec);
+    }
+
+    var fill = DOC_VIZ.fill;
+    if (fill) {
+      if (fill.steps) {
+        appendRuleLayer(parent, {
+          kicker: fill.kicker,
+          title: fill.title,
+          lead: fill.lead,
+          rules: fill.steps
+        });
+      }
+      if (fill.must && fill.must.length) {
+        appendGridSection(parent, {
+          kicker: fill.mustTitle || "树上必有 · 空了才补",
+          title: fill.mustTitle || "树上必有 · 空了才补",
+          lead: fill.mustLead || "",
+          headers: ["空了什么", "补什么", "落在哪张表", "经由", "怎么补"],
+          rows: fill.must.map(function (m) {
+            return [m.empty, m.fill, m.table, m.via || "—（直接写本表）", m.how];
+          })
+        });
+      }
     }
   }
 

@@ -12,7 +12,7 @@
 DOC_VIZ.orderFramework = {
   kicker: "订单中心 · 全局规则",
   title: "过程页走档案点值表；确认才写；行是槽",
-  lead: "工作台八个视图是一张单的不同看法，不是八类活。出发点指回指导思想对应那一类活。表格对齐档案品牌/规格那种值：格子只展示，点开 PickerEditGate。能打字的都进确认层。写入统一确认层行为：确认才落库，取消/点空白不写。废止表格失焦保存。选用检索挂在确认层输入上，不要格子常驻输入，也不要把选品面板当第一层。",
+  lead: "工作台八个视图是一张单的不同看法，不是八类活。出发点指回指导思想对应那一类活。表格对齐档案品牌/规格那种值：格子只展示，点开 PickerEditGate。能打字的都进确认层。写入统一确认层行为：确认才落库，取消/点空白不写。废止表格失焦保存。选用检索挂在确认层输入上，不要格子常驻输入，也不要把选品面板当第一层。**边界**：本页只管过程与交互；数据怎么组织（20 张表、快照语义、框架判定）见「表格功能框架模型 · 集合体 · 单据」，字段级表清单见数据层 orderTables——不复述表结构。",
   method: {
     kicker: "五段 · 每个过程页都走",
     title: "出发点 → 要支持到 → 关系 → 界面 · 槽 → 选用检索挂哪",
@@ -99,9 +99,9 @@ DOC_VIZ.orderFramework = {
             label: "确认层输入上的选用检索",
             note: "子层 · 不要当第一层",
             children: [
-              { id: "p-prod", label: "产品", note: "ProductPicker hideHostInput", guest: "产品选品", guestModule: "product-model", guestChapter: "picker" },
+              { id: "p-prod", label: "产品", note: "ProductPicker hideHostInput", guest: "产品选品", guestModule: "table-aggregate-product", guestChapter: "picker" },
               { id: "p-unit", label: "单位", note: "UnitPicker" },
-              { id: "p-cust", label: "客户", note: "CustomerPicker", guest: "客户", guestModule: "customer-model", guestChapter: "picker" }
+              { id: "p-cust", label: "客户", note: "CustomerPicker", guest: "客户", guestModule: "table-aggregate-customer", guestChapter: "picker" }
             ]
           }
         ]

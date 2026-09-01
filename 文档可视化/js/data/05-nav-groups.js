@@ -19,6 +19,7 @@ DOC_VIZ.navGroups = [
       { id: "know-brief", title: "下发文档范本", subtitle: "触发：新项目下发文档 · 范式+不变量+一个闭环", enabled: true },
       { id: "know-loop", title: "接到需求先归类", subtitle: "触发：接到功能需求 · 先打包归类共性差异再动手", enabled: true },
       { id: "know-table", title: "表功能方法论", subtitle: "触发：识别到表功能 · 画图→集合体→分层→插槽", enabled: true },
+      { id: "know-meta", title: "表功能元模型", subtitle: "触发：要新增一个表功能 · 九组视角填登记表→五面自动产出", enabled: true },
       { id: "know-layout", title: "文档项目怎么分层", subtitle: "触发：建/改文档站点 · 一章一文件", enabled: true },
       { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true }
     ]
@@ -40,44 +41,6 @@ DOC_VIZ.navGroups = [
       { id: "why-habit", title: "人习惯怎么干", subtitle: "表格即主体 · 插在当前行下", enabled: true },
       { id: "why-shared", title: "公共能力", subtitle: "几类活碰到同一类问题才抽", enabled: true },
       { id: "why-canon", title: "总纲领", subtitle: "方案两难时对照这里", enabled: true }
-    ]
-  },
-  {
-    id: "archive",
-    title: "基础数据管理",
-    hint: "每页五段：出发点 · 要支持到 · 关系 · 管理界面 · 选用检索",
-    defaultOpen: false,
-    items: [
-      {
-        id: "archive-framework",
-        title: "档案管理 · 全局规则",
-        subtitle: "五段怎么走 · 各页只写差异",
-        enabled: true
-      },
-      {
-        id: "product-model",
-        title: "产品管理",
-        subtitle: "本页宽表 · 选品展开",
-        enabled: true
-      },
-      {
-        id: "supplier-model",
-        title: "供应商管理",
-        subtitle: "本页档案 · 进价叶子",
-        enabled: true
-      },
-      {
-        id: "warehouse-model",
-        title: "库房管理",
-        subtitle: "本页区位 · 配货来源",
-        enabled: true
-      },
-      {
-        id: "customer-model",
-        title: "客户管理",
-        subtitle: "名称/类型 · 联系地址开票 N · 客户信息格",
-        enabled: true
-      }
     ]
   },
   {
@@ -166,6 +129,68 @@ DOC_VIZ.navGroups = [
         id: "entity-slot-model",
         title: "实体关系槽位模型",
         subtitle: "模型形状 · 示例表结构 · 关系怎么插 · 槽位机制",
+        enabled: true
+      }
+    ]
+  },
+  {
+    id: "table-framework",
+    title: "表格功能框架模型",
+    hint: "集合体接入框架 · 框架方面 · 槽位 · 共享组件 · 特征与组合 · 按集合体分章",
+    defaultOpen: false,
+    items: [
+      {
+        id: "table-framework",
+        title: "总纲 · 集合体接入框架",
+        subtitle: "框架方面 · 槽位清单 · 共享组件 · 理想状态",
+        enabled: true
+      },
+      {
+        id: "archive-framework",
+        title: "档案管理 · 全局规则",
+        subtitle: "五段怎么走 · 各页只写差异 · 边用边建 · 槽位定律 · 交互范式",
+        enabled: true
+      },
+      {
+        id: "table-features",
+        title: "特征表与特征组合",
+        subtitle: "特征维度 · 63 张表特征 · 唯一特征集合统计",
+        enabled: true
+      },
+      {
+        id: "table-aggregate-product",
+        title: "集合体 · 产品档案",
+        subtitle: "19 表 · 深树 · 唯一绕开框架的集合体",
+        enabled: true
+      },
+      {
+        id: "table-aggregate-supplier",
+        title: "集合体 · 供应商档案",
+        subtitle: "5 表 · 最标准的档案集合体",
+        enabled: true
+      },
+      {
+        id: "table-aggregate-customer",
+        title: "集合体 · 客户档案",
+        subtitle: "6 表 · 与供应商高度同构",
+        enabled: true
+      },
+      {
+        id: "table-aggregate-warehouse",
+        title: "集合体 · 库房档案",
+        subtitle: "5 表 · 五键库存的极端案例",
+        enabled: true
+      },
+      {
+        id: "table-aggregate-order",
+        title: "集合体 · 单据",
+        subtitle: "20 表 · 快照语义 · 形似神不似",
+        enabled: true
+      },
+      {
+        id: "table-aggregate-permission",
+        title: "集合体 · 系统权限",
+        subtitle: "8 表 · 对照组 · 哪些不该进框架",
         enabled: true
       }
     ]

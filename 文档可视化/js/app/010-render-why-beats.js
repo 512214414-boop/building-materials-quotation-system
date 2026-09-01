@@ -49,14 +49,14 @@
       row.appendChild(el("span", "card-n card-n-" + ncls, node.card));
     }
     var kind = tableKindInInventory(inventory, node.table);
-    var card = tblCard(node.table);
+    var card = tblCard(node.table, "is-compact");
     if (kind) card.insertBefore(kindBadge(kind), card.firstChild);
     row.appendChild(card);
     if (node.via) {
       var viaTbl = resolveTable(node.via);
       if (viaTbl) {
         row.appendChild(el("span", "tree-via", node.viaLabel || "引用字典"));
-        var d = tblCard(node.via, "is-via");
+        var d = tblCard(node.via, "is-via is-compact");
         d.insertBefore(kindBadge("dict"), d.firstChild);
         row.appendChild(d);
       }
@@ -181,10 +181,15 @@
     parent.appendChild(sec);
   }
 
-  // 结构树投影（树 + 圈组 side 区）：appendTreeLayer 与「关系 · 三种看法」共用，只此一份
+  // 结构树投影（横向分叉树 + 圈组 side 区）：appendTreeLayer 与「关系 · 三种看法」共用，只此一份
+  // 分叉树画法在 011（renderForkTreeView）；这里只兜底：011 没加载时退回缩进树，不白屏。
   function renderTreeBody(meta) {
     var body = el("div", "tree-body");
-    body.appendChild(renderModelTreeNode(meta.treeRoot, meta.inventory, true));
+    if (meta.treeRoot && typeof renderForkTreeView === "function") {
+      body.appendChild(renderForkTreeView(meta));
+    } else {
+      body.appendChild(renderModelTreeNode(meta.treeRoot, meta.inventory, true));
+    }
     if (meta.treeSide) {
       var side = el("div", "tree-side");
       side.appendChild(el("div", "kicker", meta.treeSide.kicker));
@@ -192,7 +197,7 @@
       if (meta.treeSide.hint) side.appendChild(el("p", "hint", meta.treeSide.hint));
       var sideRow = el("div", "card-row n-row");
       meta.treeSide.tables.forEach(function (item) {
-        var card = tblCard(item.table);
+        var card = tblCard(item.table, "is-compact");
         var kind = tableKindInInventory(meta.inventory, item.table);
         if (kind) card.insertBefore(kindBadge(kind), card.firstChild);
         if (item.group) card.appendChild(el("span", "en", "圈组 " + item.group));

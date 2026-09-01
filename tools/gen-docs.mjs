@@ -188,4 +188,27 @@ if (agentsForIdx.includes(IBEGIN) && agentsForIdx.includes(IEND)) {
   console.warn('! AGENTS.md 缺 GEN:INDEX 标记，跳过技能索引生成');
 }
 
+// ---------- ⑤ 侧栏完整性校验（真相源 → navGroups） ----------
+/**
+ * 侧栏是手写登记的（js/data/05-nav-groups.js），生成器不写它 —— 这是个漂移口子：
+ * 真相源加了条目，内容文件、执行卡、技能索引、加载清单都生成了，侧栏却没有入口，
+ * 用户在站点上「没看见」。这里只校验不改写：真相源每个 navId 必须在侧栏出现，缺了就报错。
+ * 不自动写入，是为了保住侧栏的人工排布顺序（那是阅读顺序，不等于真相源顺序）。
+ */
+const navFile = path.join(docViz, 'js', 'data', '05-nav-groups.js');
+if (fs.existsSync(navFile)) {
+  const navSrc = fs.readFileSync(navFile, 'utf8');
+  const navIds = new Set([...navSrc.matchAll(/\{\s*id:\s*"([^"]+)"/g)].map((m) => m[1]));
+  const missing = items.map((i) => i.navId).filter((id) => id && !navIds.has(id));
+  if (missing.length) {
+    console.error(`✗ 侧栏缺入口：${missing.join('、')}`);
+    console.error('  补法：在 文档可视化/js/data/05-nav-groups.js 对应分组加一行 { id: "…", title, subtitle, enabled: true }');
+    process.exitCode = 1;
+  } else {
+    console.log(`✓ 侧栏完整性：${items.length} 条在 05-nav-groups.js 均有入口`);
+  }
+} else {
+  console.warn('! 找不到 05-nav-groups.js，跳过侧栏校验');
+}
+
 console.log(`✓ 生成完成：${items.length} 条 → js/data/gen/ + AGENTS.md（GEN 节 + 技能索引）+ index.html 加载清单`);

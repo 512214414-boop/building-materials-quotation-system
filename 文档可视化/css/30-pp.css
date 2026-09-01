@@ -111,6 +111,25 @@
 }
 .view-switch-table th { color: var(--muted); font-weight: 650; }
 
+/* 宽表字段矩阵：字段横向、属性纵向 */
+.field-matrix { font-size: 12px; }
+.field-matrix .fm-field {
+  background: var(--blueBg);
+  color: var(--blue);
+  font-weight: 650;
+  white-space: nowrap;
+  border-bottom: 2px solid var(--blue);
+}
+.field-matrix td.fm-prop,
+.field-matrix th.fm-prop {
+  background: #FAFAF8;
+  font-weight: 600;
+  color: var(--ink2);
+  white-space: nowrap;
+  border-right: 1px solid var(--line);
+  min-width: 96px;
+}
+
 .dlg-sketch { min-width: 440px; }
 .dlg-spu {
   display: grid;

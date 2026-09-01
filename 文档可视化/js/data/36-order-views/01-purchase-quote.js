@@ -83,10 +83,10 @@ DOC_VIZ.orderViews["order-purchase-quote"] = {
         label: "确认层输入框",
         note: "点格之后才有",
         children: [
-          { id: "hang-prod", label: "品名格", note: "产品树 · 插入抄快照", guest: "产品选品", guestModule: "product-model", guestChapter: "picker" },
+          { id: "hang-prod", label: "品名格", note: "产品树 · 插入抄快照", guest: "产品选品", guestModule: "table-aggregate-product", guestChapter: "picker" },
           { id: "hang-unit", label: "单位格", note: "单位层 / UnitPicker" },
           { id: "hang-price", label: "单价格", note: "价格叶子" },
-          { id: "hang-cust", label: "客户信息", note: "单据头", guest: "客户", guestModule: "customer-model", guestChapter: "picker" }
+          { id: "hang-cust", label: "客户信息", note: "单据头", guest: "客户", guestModule: "table-aggregate-customer", guestChapter: "picker" }
         ]
       }
     }

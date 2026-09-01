@@ -12,7 +12,7 @@ DOC_VIZ.tables.sale_price = {
     pick: "下拉",
     sub: "第三层 · 展开层 · 售价列（下拉）",
     dep: "只存这一行的面价。面价挂在售价类型上。点位不存本表：先查售价规格点位表，没有再查售价点位规则表。",
-    code: "现网挂 specBrandId。选品点面价/点位打开确认层，只改当前这条。",
+    code: "现网挂 specId（接口兼容名 specBrandId）。选品点面价/点位打开确认层，只改当前这条。",
     fields: [
       ["id BigInt PK", "售价行主键。", "—"],
       ["specId BigInt NOT NULL", "哪条规格。", "→ 规格系列表.id"],
@@ -33,7 +33,7 @@ DOC_VIZ.tables.purchase_price = {
     pick: "下拉",
     sub: "第三层 · 展开层 · 进价列（下拉）",
     dep: "只存这一行的面价。面价挂在渠道上。点位不存本表：先查进价规格点位表，没有再查进价点位规则表。渠道无物理外键，留名称快照。",
-    code: "现网挂 specBrandId。供应商格子可改全局并档。",
+    code: "现网挂 specId（接口兼容名 specBrandId）。供应商格子可改全局并档。",
     fields: [
       ["id BigInt PK", "进价行主键。", "—"],
       ["specId BigInt NOT NULL", "哪条规格。", "→ 规格系列表.id"],
@@ -95,7 +95,7 @@ DOC_VIZ.tables.purchase_spec_point = {
     pick: "查询",
     sub: "挂规格 · 进价点位这一条",
     dep: "这一条规格在这个渠道上单独改过的点位。有行就盖过圈组。确认修改写本表；改全局不改本表。没有行表示跟圈组走。米和根共用这一条，点位不跟单位拆。",
-    code: "现网挂 specBrandId。确认修改写本表；改全局不改本表。",
+    code: "现网挂 specId（接口兼容名 specBrandId）。确认修改写本表；改全局不改本表。",
     fields: [
       ["id BigInt PK", "这一条主键。", "—"],
       ["specId BigInt NOT NULL", "哪条规格（已含品牌）。", "→ 规格系列表.id"],
@@ -113,7 +113,7 @@ DOC_VIZ.tables.sale_spec_point = {
     pick: "查询",
     sub: "挂规格 · 售价点位这一条",
     dep: "这一条规格在这个售价类型上单独改过的点位。有行就盖过圈组。确认修改写本表；改全局不改本表。没有行表示跟圈组走。",
-    code: "现网挂 specBrandId。确认修改写本表；改全局不改本表。",
+    code: "现网挂 specId（接口兼容名 specBrandId）。确认修改写本表；改全局不改本表。",
     fields: [
       ["id BigInt PK", "这一条主键。", "—"],
       ["specId BigInt NOT NULL", "哪条规格（已含品牌）。", "→ 规格系列表.id"],

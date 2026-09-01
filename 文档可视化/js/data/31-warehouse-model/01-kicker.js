@@ -92,7 +92,7 @@ DOC_VIZ.warehouseModel.pickerSurfaces = {
               label: "供应商",
               note: "另一棵树 · 不写进 warehouse",
               host: true,
-              hostModule: "supplier-model",
+              hostModule: "table-aggregate-supplier",
               hostChapter: "picker",
               guest: "供应商"
             }
