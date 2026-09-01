@@ -10,13 +10,13 @@ export const REGISTRY_GENERATED: RegistryDef[] = [
   { model: "price_type", label: "价格类型", uniqueKey: { type: 'global' }, defaults: () => ({"sortOrder":0,"status":1}) },
 ];
 
-export const SNAPSHOT_MAP: Record<string, Record<string, { entity: string; from: string }>> = {
+export const SNAPSHOT_MAP: Record<string, Record<string, { entity: string; from: string; via?: string }>> = {
   document_line: {
-    productName: { entity: "product", from: "name" },
-    brandName: { entity: "brand", from: "name" },
-    categoryName: { entity: "category", from: "name" },
-    specModel: { entity: "spec", from: "specModel" },
-    unitName: { entity: "unit", from: "unitName" },
+    productName: { entity: "product", from: "name", via: undefined },
+    brandName: { entity: "brand", from: "name", via: undefined },
+    categoryName: { entity: "category", from: "name", via: "product.categoryId" },
+    specModel: { entity: "spec", from: "specModel", via: undefined },
+    unitName: { entity: "unit", from: "unitName", via: undefined },
   },
 };
 

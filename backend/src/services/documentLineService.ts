@@ -30,6 +30,7 @@ import { Errors } from '../utils/errors.js';
 import { calcLineAmount, round2 } from '../engines/pricing-engine.js';
 import { broadcastLinesUpdated } from './documentService.js';
 import { syncDocumentTotals } from './purchaseQuoteService.js';
+import { resolveSnapshots } from './resolveSnapshots.js';
 
 function assertSalesLinesWritable(doc: { status: string; sales_archive_status: string }) {
   if (doc.status === 'archived' || doc.sales_archive_status === 'archived') {
@@ -103,66 +104,16 @@ interface LineSnapshots {
  */
 async function resolveLineSnapshots(input: DocumentLineInput): Promise<LineSnapshots> {
   const { brandId, productId, unitId, specId } = input;
-
-  // 待建档商品：无任何 SKU 关联，仅依赖 productRef 文本展示
-  if (!brandId && !productId && !unitId && !specId) {
-    return { productName: null, brandName: null, categoryName: null, specModel: null, unitName: null };
-  }
-
-  // v14.0：specId → spec（specModel + productId）→ product（name/categoryId）
-  const [brandRow, unitRow, specRow, productRowById] = await Promise.all([
-    brandId
-      ? prisma.brand.findUnique({
-          where: { id: brandId },
-          select: { name: true },
-        })
-      : Promise.resolve(null),
-    unitId
-      ? prisma.unit.findUnique({
-          where: { id: unitId },
-          select: { unitName: true },
-        })
-      : Promise.resolve(null),
-    specId
-      ? prisma.spec.findUnique({
-          where: { id: specId },
-          select: { specModel: true, productId: true },
-        })
-      : Promise.resolve(null),
-    productId
-      ? prisma.product.findUnique({
-          where: { id: productId },
-          select: { name: true, categoryId: true },
-        })
-      : Promise.resolve(null),
-  ]);
-
-  // v14.0：优先按 spec 解析产品（specId → productId），无 specId 时按 productId 兜底
-  const product =
-    (specRow?.productId
-      ? await prisma.product.findUnique({
-          where: { id: specRow.productId },
-          select: { name: true, categoryId: true },
-        })
-      : productRowById) ?? null;
-  const specModel = specRow?.specModel ?? null;
-
-  // 查分类名（category 表未解耦，仍可用 findUnique）
-  let categoryName: string | null = null;
-  if (product?.categoryId && product.categoryId > 0) {
-    const cat = await prisma.category.findUnique({
-      where: { id: product.categoryId },
-      select: { name: true },
-    });
-    categoryName = cat?.name ?? null;
-  }
-
+  // 元模型运行时 · 阶段 C：快照映射与查法唯一来源 = entity-meta.yml（SNAPSHOT_MAP），
+  // 解读器 resolveSnapshots 是唯一实现（product 经 spec 反查、category 经 product 反查、
+  // 待建档全 null、档案已删不阻断）。以后加快照字段只改 yml，不碰这里。
+  const snaps = await resolveSnapshots({ brandId, productId, unitId, specId }, prisma);
   return {
-    productName: product?.name ?? null,
-    brandName: brandRow?.name ?? null,
-    categoryName,
-    specModel,
-    unitName: unitRow?.unitName ?? null,
+    productName: snaps.productName ?? null,
+    brandName: snaps.brandName ?? null,
+    categoryName: snaps.categoryName ?? null,
+    specModel: snaps.specModel ?? null,
+    unitName: snaps.unitName ?? null,
   };
 }
 

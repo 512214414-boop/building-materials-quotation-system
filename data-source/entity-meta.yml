@@ -68,7 +68,7 @@ entities:
     fields:
       productName: { label: 产品名（快照）, snapshotFrom: product.name }
       brandName: { label: 品牌（快照）, snapshotFrom: brand.name }
-      categoryName: { label: 分类（快照）, snapshotFrom: category.name }
+      categoryName: { label: 分类（快照）, snapshotFrom: category.name, via: product.categoryId }
       specModel: { label: 规格（快照）, snapshotFrom: spec.specModel }
       unitName: { label: 单位（快照）, snapshotFrom: unit.unitName }
 

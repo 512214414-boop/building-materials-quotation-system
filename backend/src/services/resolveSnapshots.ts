@@ -40,24 +40,36 @@ export async function resolveSnapshots(
   if (!map) return {};
   const out: Record<string, string | null> = {};
 
-  // 按档案实体分组，一次查全（避免 N+1）
-  const groups = new Map<string, { from: string; field: string }[]>();
+  // 按档案实体分组，一次查全（避免 N+1）；字段带 via（级联取 id 声明）
+  const groups = new Map<string, { from: string; field: string; via?: string }[]>();
   for (const [field, spec] of Object.entries(map)) {
     if (!groups.has(spec.entity)) groups.set(spec.entity, []);
-    groups.get(spec.entity)!.push({ from: spec.from, field });
+    groups.get(spec.entity)!.push({ from: spec.from, field, via: spec.via });
+  }
+
+  // 前置解析 productId：product 特例——productId 空但 specId 有时，经 spec 反查。
+  // category 的 via（product.categoryId）依赖这个解析结果。
+  let resolvedProductId: bigint | number | null | undefined = refs.productId;
+  if (!resolvedProductId && refs.specId) {
+    const spec = await delegate(db, 'spec').findUnique({
+      where: { id: refs.specId },
+      select: { productId: true },
+    });
+    resolvedProductId = (spec?.productId as bigint | number | null | undefined) ?? null;
   }
 
   const groupEntries = Array.from(groups.entries());
   for (let gi = 0; gi < groupEntries.length; gi++) {
     const [entity, fields] = groupEntries[gi];
-    // 查询 id：product 特例——productId 空但 specId 有时，经 spec 反查 productId
-    let id: bigint | number | null | undefined = refs[`${entity}Id`];
-    if (!id && entity === 'product' && refs.specId) {
-      const spec = await delegate(db, 'spec').findUnique({
-        where: { id: refs.specId },
-        select: { productId: true },
+    // 解析查询 id：默认 refs[`${entity}Id`]；product 用前置解析结果；category 走 via 反查
+    let id: bigint | number | null | undefined = (refs as Record<string, bigint | number | null | undefined>)[`${entity}Id`];
+    if (entity === 'product') id = resolvedProductId;
+    if (!id && entity === 'category' && resolvedProductId) {
+      const p = await delegate(db, 'product').findUnique({
+        where: { id: resolvedProductId },
+        select: { categoryId: true },
       });
-      id = (spec?.productId as bigint | number | null | undefined) ?? null;
+      id = (p?.categoryId as bigint | number | null | undefined) ?? null;
     }
     if (id == null) {
       fields.forEach((f) => {

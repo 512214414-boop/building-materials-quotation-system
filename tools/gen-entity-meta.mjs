@@ -103,14 +103,14 @@ for (const [key, ent] of Object.entries(entities)) {
 be += '];\n\n';
 
 // ②-b 快照映射：含 snapshotFrom 字段的实体
-be += 'export const SNAPSHOT_MAP: Record<string, Record<string, { entity: string; from: string }>> = {\n';
+be += 'export const SNAPSHOT_MAP: Record<string, Record<string, { entity: string; from: string; via?: string }>> = {\n';
 for (const [key, ent] of Object.entries(entities)) {
   const snapFields = Object.entries(ent.fields || {}).filter(([, f]) => f.snapshotFrom);
   if (!snapFields.length) continue;
   be += `  ${key}: {\n`;
   for (const [fKey, f] of snapFields) {
     const [entity, from] = String(f.snapshotFrom).split('.');
-    be += `    ${fKey}: { entity: ${JSON.stringify(entity)}, from: ${JSON.stringify(from)} },\n`;
+    be += `    ${fKey}: { entity: ${JSON.stringify(entity)}, from: ${JSON.stringify(from)}, via: ${f.via ? JSON.stringify(f.via) : 'undefined'} },\n`;
   }
   be += '  },\n';
 }
