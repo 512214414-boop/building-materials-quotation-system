@@ -162,7 +162,7 @@
 | **后端资源引擎** | `controllers/resourceController.ts`（通用 CRUD + 快建 + 引用计数）+ `routes/staff/resource.ts`（动态权限中间件工厂） |
 | **前端页面装配器** | `shared/config/resourceConfig.ts` + `shared/config/pageAssembler.ts`；SupplierManage 接入 `assembleSlots('supplier', ...)` 验证列顺序与配置一致 |
 | **Meta Studio** | `tools/meta-studio.mjs`（本地 8898 端口：读 yml / 写 yml / 跑生成器 / 校验 / 6 个 API）；`frontend/.../MetaStudio/index.html` 自动生成（含 7 个交互功能） |
-| **字典重复治理·并档下沉（2026-09-03）** | SuggestList(C13) 行内改/删（仅 existing 项 hover）；SuggestInput(C12) 字典类字段默认「检索结果/完整字典」两档（PickerTreeViewBar C22），完整字典走全量 list；行内「改」复用 PickerEditGate 确认层走 dictMerge（无同名=改名/有同名=并档 preview→apply）；C15 管理面板改名口径对齐并档（去掉重名拦截，guard-exceptions.md 登记）；废弃 DictFieldInput(C16)（无使用方，contactMethodDict 类型迁 DictRecordConfig）。commit：0247b31 / 7083a33 / 0bec2be |
+| **字典重复治理·并档下沉（2026-09-03）** | SuggestList(C13) 行内改/删（仅 existing 项 hover，default/占位行不给）；PickerEditGate 确认层字典下拉接「检索结果/完整字典」两档（PickerTreeViewBar C22，全量 list）+ 行内改/删（改=该项装进确认层改名流程走 dictMerge「改全局」，删=单条 modal.confirm）；SuggestInput(C12) 字典类字段同能力（两档+行内改/删，内包 Provider）；C15 管理面板改名口径对齐并档（去掉重名拦截，guard-exceptions.md 登记）；废弃 DictFieldInput(C16)（无使用方，contactMethodDict 类型迁 DictRecordConfig）。e2e 全过（e2e_browser/shots-suggestdict/）。commit：0247b31 / 7083a33 / 0bec2be / 6732a14 / PickerEditGate 接线 |
 
 ---
 

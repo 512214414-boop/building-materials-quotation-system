@@ -1,7 +1,7 @@
 // 选品框架里改档案：点格子 → 够宽的输入浮层（看全文 + 影响范围 + 确认/取消）。
 // 取消即恢复原样，格子里不留半改状态。挂当前层，不叠模态、不关选品。
 // 确认修改 = 只改当前。改全局才列出本次会动到的档案；字典格检索下拉，输入旁 ▾ 打开字典管理。
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { SettingOutlined, UnorderedListOutlined, LeftOutlined, RightOutlined, UpOutlined, DownOutlined } from '@ant-design/icons';
 import FloatPanel from '../FloatPanel.js';
@@ -9,6 +9,7 @@ import DsButton from '../DsButton.js';
 import DsInput from '../DsInput.js';
 import { DsNumberInput } from '../DsNumberInput.js';
 import DsInputDropdown from '../DsInputDropdown.js';
+import PickerTreeViewBar from '../PickerTreeViewBar.js';
 import ValueChangePair from '../ValueChangePair.js';
 import type { CellSwitchDir, CellSwitchGrid } from './cellSwitch.js';
 import SuggestList from '../SuggestList.js';
@@ -26,6 +27,13 @@ import {
   previewDictChange,
   type DictChangeKind,
 } from '../../services/api/baseDataApi.js';
+import {
+  DICT_ENTRY_VIEWS,
+  DICT_LIST_FN,
+  isDictEntryField,
+  toSuggestOption,
+  type DictEntryItem,
+} from '../../config/dictEntryViews.js';
 import {
   catalogHasGlobal,
   describeCatalogImpact,
@@ -136,7 +144,7 @@ function canSubmit(req: PickerCatalogEditReq, draft: string): string | null {
 }
 
 export function PickerEditGateProvider({ children }: { children: ReactNode }) {
-  const { message } = useCanvasApp();
+  const { message, modal } = useCanvasApp();
   const [req, setReq] = useState<PickerCatalogEditReq | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -193,6 +201,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     setReq(next);
     setSuggestOpen(!!((next.dictField || next.dictConfig) && next.input === 'text'));
     setDictOpen(false);
+    setDictViewMode('suggest');
     setListExpanded(true);
     setHostReady(false);
     // 确认层 FloatPanel 在 useLayoutEffect 里定位（commit 前完成）；下一帧再放行子层，
@@ -363,11 +372,83 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     (el as HTMLInputElement | null)?.select?.();
   }, [req]);
 
+  // ---- 确认层字典下拉的两档（检索结果/完整字典）+ 行内改/删 ----
+  const [dictViewMode, setDictViewMode] = useState<'suggest' | 'dict'>('suggest');
+  const [gateDictItems, setGateDictItems] = useState<DictEntryItem[]>([]);
+  const [gateDictLoading, setGateDictLoading] = useState(false);
+  const gateDictField = req?.dictField;
+  const gateDictListFn = gateDictField ? DICT_LIST_FN[gateDictField] : undefined;
+
+  const refreshGateDict = useCallback(async () => {
+    if (!gateDictListFn) return;
+    setGateDictLoading(true);
+    try {
+      setGateDictItems(await gateDictListFn());
+    } catch {
+      setGateDictItems([]);
+    } finally {
+      setGateDictLoading(false);
+    }
+  }, [gateDictListFn]);
+
+  useEffect(() => {
+    if (suggestOpen && dictViewMode === 'dict' && gateDictListFn) void refreshGateDict();
+  }, [suggestOpen, dictViewMode, gateDictListFn, refreshGateDict]);
+
+  /** 完整字典档按 draft 关键词前端过滤 */
+  const gateDictOptions = useMemo(() => {
+    const kw = draft.trim().toLowerCase();
+    const list = gateDictItems.map(toSuggestOption);
+    if (!kw) return list;
+    return list.filter((o) => o.value.toLowerCase().includes(kw));
+  }, [gateDictItems, draft]);
+
   const dictSearch = !!((req?.dictField || req?.dictConfig) && req.input === 'text');
   const dictCfg = req?.dictConfig ?? (req?.dictField ? dictConfigFor(req.dictField) : undefined);
   // 边用边建：A 类字典录入/挂载场景 allowCreate=true（按名称确保幂等 → 直接建即选）。
   // 系统预置只读字典（quickCreate=false）不出快建行。列表列筛不在此路径。
   const dictQuickCreate = !!(dictCfg?.create && (dictCfg.quickCreate ?? true));
+
+  // 行内「改」：把该字典项装进确认层改名流程——draft 填该项名、收起下拉，
+  // 用户改完 draft 走「改全局」（applyDictChange：无同名=改名，有同名=并档）。
+  const handleGateDictRename = useCallback(
+    (opt: { value: string }) => {
+      setDraft(opt.value);
+      setSuggestOpen(false);
+      setDictOpen(false);
+    },
+    [],
+  );
+
+  // 行内「删」：单条 modal.confirm（历史值作为字符串保留；被引用由后端拦截）
+  const handleGateDictDelete = useCallback(
+    (opt: { value: string; id?: string | number }) => {
+      if (opt.id == null || opt.id === '') return;
+      const name = opt.value;
+      modal.confirm({
+        title: `删除「${name}」？`,
+        content: '已使用的历史值作为字符串保留在业务数据中，不受影响。',
+        okText: '删除',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: async () => {
+          if (!dictCfg?.remove) {
+            message?.error?.('该字典不支持删除');
+            return;
+          }
+          try {
+            await dictCfg.remove(String(opt.id));
+            void refreshGateDict();
+            if (draft.trim() === name) setDraft('');
+            message?.success?.(`已删除「${name}」`);
+          } catch {
+            message?.error?.('删除失败，该项可能仍被引用');
+          }
+        },
+      });
+    },
+    [modal, message, dictCfg, refreshGateDict, draft],
+  );
   const suggestKw = useDebounce(dictSearch ? draft : '', 250);
   const { options: dictOptions, loading: dictLoading } = useSuggest({
     field: req?.suggestField ?? dictCfg?.suggestField ?? req?.dictField ?? 'category',
@@ -611,9 +692,16 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                     onClose={() => setSuggestOpen(false)}
                     minWidth={COL_WIDTHS.NAME_M}
                   >
+                    {req.dictField && isDictEntryField(req.dictField) && (
+                      <PickerTreeViewBar
+                        views={DICT_ENTRY_VIEWS}
+                        value={dictViewMode}
+                        onChange={setDictViewMode}
+                      />
+                    )}
                     <SuggestList
-                      options={dictOptions}
-                      loading={dictLoading}
+                      options={dictViewMode === 'dict' ? gateDictOptions : dictOptions}
+                      loading={dictViewMode === 'dict' ? gateDictLoading : dictLoading}
                       keyword={draft}
                       allowCreate={dictQuickCreate}
                       onCreate={dictQuickCreate ? handleDictQuickCreate : undefined}
@@ -623,6 +711,8 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                         setDraft(name);
                         setSuggestOpen(false);
                       }}
+                      onRename={handleGateDictRename}
+                      onDelete={handleGateDictDelete}
                     />
                   </FloatPanel>
                 )}
