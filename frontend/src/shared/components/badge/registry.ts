@@ -40,7 +40,6 @@ export const SHARED_BADGES: Record<string, SharedBadgeInfo> = {
   SuggestList: { id: 'C13', cn: '匹配列表', group: '录入选择' },
   DictRefCell: { id: 'C14', cn: '档案引用单元格', group: '录入选择' },
   DictRefField: { id: 'C15', cn: '档案引用输入', group: '录入选择' },
-  DictFieldInput: { id: 'C16', cn: '字典行内输入', group: '录入选择' },
   DictListPanel: { id: 'C17', cn: '字典管理面板', group: '录入选择' },
   UnitDropdown: { id: 'C18', cn: '单位切换下拉', group: '录入选择' },
   UnitManagePanel: { id: 'C19', cn: '单位管理面板', group: '录入选择' },

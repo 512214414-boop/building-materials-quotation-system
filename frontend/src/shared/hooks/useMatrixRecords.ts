@@ -8,7 +8,7 @@
 // 组成关系：
 //   useMatrixRecords（状态机）← 多记录矩阵面板（联系信息/售价/进价…）
 //     + MatrixTable（矩阵渲染）
-//     + 列渲染构成元素（SuggestInput / DsInput / DictFieldInput…）
+//     + 列渲染构成元素（SuggestInput / DsInput / ArchiveFieldCell…）
 //     + RecordExpandPanel（外壳）
 //
 // 与 defaultRecord（默认规则工具）配合：normalize 未指定默认时取第一条（落库）。

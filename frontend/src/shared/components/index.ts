@@ -160,10 +160,8 @@ export type { UnitManagePanelProps, UnitManageItem } from './UnitManagePanel';
 export { default as EntityPanel } from './EntityPanel';
 export type { EntityPanelProps, EntityPanelRow } from './EntityPanel';
 
-// C16：供应商联系方式「方式」列仍走此组件（SuggestInput + DictListPanel）。
-// 不要改成 C15 DictRefField，呈现不同；也不要删。
-export { default as DictFieldInput } from './DictFieldInput';
-export type { DictFieldItem, DictFieldConfig } from './DictFieldInput';
+// C16 DictFieldInput 已废弃（2026-09）：无页面使用方，矩阵格统一走 ArchiveFieldCell +
+// PickerEditGate 确认层，字典/档案管理统一走 C15 DictRefField 体系。
 
 // 预置快速选项条（v1.9：数据补全·预置快速选项，通用 quickOptions 配置——不传不渲染）
 export { default as QuickOptionsBar } from './QuickOptionsBar';
