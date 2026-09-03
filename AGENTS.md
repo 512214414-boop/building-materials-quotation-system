@@ -68,10 +68,23 @@
 | 想看方法做通的实样 | 对照本项目 | `15-know-cause.js` |
 | 新项目下发文档 | 下发文档范本 | `16-know-brief.js` |
 | 接到任意功能需求 | 接到需求先归类 | `17-know-loop.js` |
-| 建/改文档站点、往里加一章 | 文档项目怎么分层 | `18-know-layout.js` |
-| 文档改动记账 / 出问题回滚 | 版本记录与恢复 | `19-know-recover.js` |
-| 每轮任务对话开工前 / 判完类型判产物后 | 对话分流 | `20-know-route.js` |
-| 同类问题第二次出现 / 高代价教训 | 怎么沉淀方法论 | `21-know-precipitate.js` |
+| 要填登记表（entity-meta.yml）、要新增一个表功能 | 登记表填写口径 | `18-know-metaschema.js` |
+| 建/改文档站点、往里加一章 | 文档项目怎么分层 | `19-know-layout.js` |
+| 文档改动记账 / 出问题回滚 | 版本记录与恢复 | `20-know-recover.js` |
+| 每轮任务对话开工前 / 判完类型判产物后 | 对话分流 | `21-know-route.js` |
+| 设计/评审格子点击交互、接到『点一下要几层』『这个按钮要不要』类问题 | 格子点击 → 确认层 | `22-cell-gate-path.js` |
+| 同类问题第二次出现 / 高代价教训 | 怎么沉淀方法论 | `23-know-precipitate.js` |
+| 采购入库、囤货补货、不绑订单的进货 | 采购入库 | `24-order-inbound-purchase.js` |
+| 待入库管理、超额调货待入、一键确认入库 | 待入库管理 | `25-order-inbound-pending.js` |
+| 库存台账、查库存、期初建档、盘点调整 | 库存台账 | `26-order-inbound-inventory.js` |
+| 欠库台账、库存缺口、挂欠库、补货清单 | 欠库台账 | `27-order-backorder.js` |
+| 供应商应付、欠供应商多少钱、结算、对账单、账龄 | 供应商应付 | `28-order-payable.js` |
+| 经营报表、看数、毛利、周转、账龄、绩效 | 经营报表 | `29-ops-report.js` |
+| 角色权限、配谁能看谁能改、三档矩阵 | 角色权限 | `30-sys-role.js` |
+| 审计日志、谁干了什么、留痕、操作记录 | 审计日志 | `31-sys-audit.js` |
+| 授权码、客户准入、发码、吊销 | 授权码 | `32-sys-auth-code.js` |
+| 访问申请、客户申请准入、审核通过驳回 | 访问申请 | `33-sys-access-request.js` |
+| 用户管理、员工账号、停用启用、重置密码 | 用户管理 | `34-sys-user.js` |
 <!-- GEN:INDEX:END -->
 
 本卡的上游全文：对话分流见 `js/data/gen/19-know-route.js`（序号由真相源顺序决定，重跑后以本表为准）。
@@ -223,6 +236,14 @@
 - 改前先查同类：改任何功能前先查项目有没有同类公共能力，有就改公共槽位。这是杜绝各改各的根。
 - 提炼差异与共性摆给用户：抽象完把差异点和共性摆出来，让用户一眼看清，帮他理清需求。
 
+### 登记表填写口径（L1）
+- 触发：要填登记表
+- 顺序是配置值：pages.slots 数组顺序 = 列表列顺序，不推导、不在页面里手写第二份。
+- 禁止第二套手写列 / 第二套确认：有就是绕过登记表，违规。
+- 边界：判定数据能描述为「字段/行数/状态/角色」→ 声明化；依赖多请求时序、多表联合对账 → 例外，代码写 + 登记在案。
+- 自检：填完跑 node tools/gen-entity-meta.mjs → 前后端 npx tsc --noEmit → node tools/check-docs.mjs。
+- 自检：禁止第二套手写列 / 第二套确认：有就是绕过登记表，违规。
+
 ### 文档项目怎么分层（L0）
 - 触发：建/改文档站点
 - 导航范式按体量选：先数小节再选范式：3–6 节顶部 tab 切换；7 节以上侧边目录+滚动联动；20 节以上加分组折叠与搜索。拿现成的硬套=把长文切碎。
@@ -249,6 +270,15 @@
 - 文档已规定不重生成：台账显示已规定未实现就按代码任务走，不重复生成文档。重复生成=分流失败。
 - 自检：操作不中断该做的全部做完，禁止做完一段停下来问「要不要继续」。需要用户决策的先记下、继续干，最后用 IDE 选项提问面板一次性给出让用户点选，不占对话回合。能自己决定的按裁决链自行决定并在验收清单说明。
 
+### 格子点击 → 确认层（L0）
+- 触发：设计格子交互
+- 路径对表不拍脑袋：新格子先在路径表里找到值来源行，按行取路径。同一值来源出现第二种路径=违规。
+- 确认层检索默认展开、按钮可收：进入即展开检索下拉（快速检索），收/展按钮全站同形态同位置；禁止只自动展开不给收起（遮确认层其他信息），禁止默认收起（多一步才能检索）。
+- 管理能力跟字典走、参数位控制：值指向独立字典表 → 检索下拉带「完整字典」档 + 行内改/删（改走改名/并档预览，删走单条确认）；参数位空 → 不显示任何管理入口。管理能力由参数驱动，格子侧零分支。
+- 禁止第二套管理面板：同一确认层里不许并存两个字典管理入口；旧面板与新能力重叠时删旧的。确认层之外的管理面板（多选面板等）要单独说明存在理由，说不出就收。
+- 行内操作常驻不悬停：列表行内的改/删按钮常驻渲染，不靠 hover 出现——移动端没有 hover，hover 态格局不稳。
+- 自检：路径对表不拍脑袋新格子先在路径表里找到值来源行，按行取路径。同一值来源出现第二种路径=违规。
+
 ### 怎么沉淀方法论（L0）
 - 触发：什么时候沉淀什么：从重复里长出方法论，登记进真相源才算存在
 - 重复才沉淀，重坑例外：一次是案例，两次是模式；但高代价教训出现一次就立即沉淀。没有信号不开新方法论。
@@ -257,6 +287,39 @@
 - 去项目化：方法论剥离本项目专名，换现场通用语。带专名的方法论传到别的项目会被照套。
 - 可证伪：每条规则硬到能否决一种实现。删掉它现场会断，才算规则；删掉不断的是废话。
 - 自检：先保住体感再定问题用户的抱怨原句（划很久/找不到/分不清）是最高优先级信号。翻译成技术任务前先复述体感，禁止把体验问题窄化成「加个组件」。
+
+### 采购入库（L1）
+- 触发：囤货补货
+
+### 待入库管理（L1）
+- 触发：配货超额调货
+
+### 库存台账（L1）
+- 触发：看库存与成本
+
+### 欠库台账（L1）
+- 触发：出库缺口兜底
+
+### 供应商应付（L1）
+- 触发：该付供应商多少钱
+
+### 经营报表（L1）
+- 触发：看经营数据
+
+### 角色权限（L1）
+- 触发：配谁能看谁能改
+
+### 审计日志（L1）
+- 触发：查谁干了什么
+
+### 授权码（L1）
+- 触发：客户要进门
+
+### 访问申请（L1）
+- 触发：客户申请进门
+
+### 用户管理（L1）
+- 触发：管员工账号
 
 ### 组件资产清单（L1 项目级 · 查同类先查这里）
 
@@ -269,6 +332,8 @@
 | 字典引用单元格 | `PickerNameCell / PickerNumCell` · shared/components/product-picker/PickerInlineCells.tsx（-）· kind/scope/fromId/onApply/onApplyGlobal |
 | 只读 / 门禁占位格 | `DisplayCell` · shared/components/product-picker/PickerInlineCells.tsx（-）· text/placeholder/rejectReason（门禁提示） |
 | 多记录状态机（空行晋升/追加/默认互斥） | `useMatrixRecords` · shared/hooks/useMatrixRecords.ts（-）· value/isDataRow/blank/normalize/onDirty |
-| 枚举记录矩阵（单位 + 换算率） | `UnitManagePanel` · shared/components/UnitManagePanel.tsx（C19）· units/conversions/extensions{showBase,onSetBase,priceColumns} |
+| 枚举记录矩阵（单位 + 换算率，列表侧） | `UnitManagePanel` · shared/components/UnitManagePanel.tsx（C19）· units/conversions/extensions{showBase,onSetBase,priceColumns}（编辑矩阵内的单位区已改用 MatrixTable，本组件用于列表侧独立单位管理） |
+| 集合编辑矩阵（集合体编辑弹窗统一形态：§A 根实体信息 → 中间层切换行 → 叶子挂载子表矩阵 → 价格展开面板） | `集合编辑矩阵（实例：ProductEditDialog）` · apps/staff/pages/product-manage/ProductEditDialog.tsx（-）· 描述时加集合体前缀（产品集合编辑矩阵 / 供应商集合编辑矩阵）；组装式：CascadeSwitchRow（中间层）+ MatrixTable（叶子挂载子表）+ ArchiveFieldCell（确认层格）+ UnitPriceExpandPanel（价格展开面板） |
+| 中间层级联切换行（品牌/规格：下挂子记录 → 行切换） | `CascadeSwitchRow` · shared/components/CascadeSwitchRow.tsx（-）· label/options{key,label,active,editCell}/onSelect/addCell/editRow（仅中间层用；叶子挂载子表一律 MatrixTable，禁止误用行切换） |
 
 <!-- GEN:END -->

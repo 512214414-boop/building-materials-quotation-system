@@ -18,8 +18,10 @@ DOC_VIZ.navGroups = [
       { id: "know-cause", title: "对照本项目", subtitle: "触发：要看方法做通的实样 · 只参照不复制", enabled: true },
       { id: "know-brief", title: "下发文档范本", subtitle: "触发：新项目下发文档 · 范式+不变量+一个闭环", enabled: true },
       { id: "know-loop", title: "接到需求先归类", subtitle: "触发：接到功能需求 · 先打包归类共性差异再动手", enabled: true },
+      { id: "cell-gate-path", title: "格子点击 → 确认层", subtitle: "触发：设计格子交互 · 路径由值来源层级定 · 确认层检索一套收/展", enabled: true },
       { id: "know-table", title: "表功能方法论", subtitle: "触发：识别到表功能 · 画图→集合体→分层→插槽", enabled: true },
       { id: "know-meta", title: "表功能元模型", subtitle: "触发：要新增一个表功能 · 九组视角填登记表→五面自动产出", enabled: true },
+      { id: "know-metaschema", title: "登记表填写口径", subtitle: "触发：要填登记表 · 一份口径三处共用 · 三段填完前后端自动产出", enabled: true },
       { id: "know-layout", title: "文档项目怎么分层", subtitle: "触发：建/改文档站点 · 一章一文件", enabled: true },
       { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true }
     ]
@@ -101,6 +103,88 @@ DOC_VIZ.navGroups = [
         id: "order-archive",
         title: "定档归档",
         subtitle: "看数 · 结清只读",
+        enabled: true
+      },
+      {
+        id: "order-inbound-purchase",
+        title: "采购入库",
+        subtitle: "囤货补货 · 不绑订单 · 一次确认动三笔账",
+        enabled: true
+      },
+      {
+        id: "order-inbound-pending",
+        title: "待入库管理",
+        subtitle: "配货超额生成 · 不阻塞主线 · 一键确认入账",
+        enabled: true
+      },
+      {
+        id: "order-inbound-inventory",
+        title: "库存台账",
+        subtitle: "仓库×SKU 成本底账 · 期初建档 · 盘点调整",
+        enabled: true
+      },
+      {
+        id: "order-backorder",
+        title: "欠库台账",
+        subtitle: "出库缺口兜底 · 挂账等补 · 到货自动冲抵",
+        enabled: true
+      },
+      {
+        id: "order-payable",
+        title: "供应商应付",
+        subtitle: "三类来源 · 一次结算留名 · 账龄四桶",
+        enabled: true
+      }
+    ]
+  },
+  {
+    id: "sys-admin",
+    title: "系统管理",
+    hint: "平台层不是业务表功能 · 先认表归属再谈规则 · 删除行为逐条关系判定",
+    defaultOpen: true,
+    items: [
+      {
+        id: "sys-role",
+        title: "角色权限",
+        subtitle: "系统配置 · 三档矩阵 · user_roles 是 cascade",
+        enabled: true
+      },
+      {
+        id: "sys-audit",
+        title: "审计日志",
+        subtitle: "业务记录 · decouple 留快照 · 留痕优于审批",
+        enabled: true
+      },
+      {
+        id: "sys-auth-code",
+        title: "授权码",
+        subtitle: "客户进门凭证 · 激活即绑定 · 过期/吊销",
+        enabled: true
+      },
+      {
+        id: "sys-access-request",
+        title: "访问申请",
+        subtitle: "人审一道 · 通过才发码 · 驳回必填原因",
+        enabled: true
+      },
+      {
+        id: "sys-user",
+        title: "用户管理",
+        subtitle: "员工档案本体 · 被别人快照的那方",
+        enabled: true
+      }
+    ]
+  },
+  {
+    id: "ops-analysis",
+    title: "经营分析",
+    hint: "看数不是干活 · 口径写死才能复现 · 范围一律收窄",
+    defaultOpen: true,
+    items: [
+      {
+        id: "ops-report",
+        title: "经营报表",
+        subtitle: "七类看数 · 口径写死 · 范围收窄",
         enabled: true
       }
     ]

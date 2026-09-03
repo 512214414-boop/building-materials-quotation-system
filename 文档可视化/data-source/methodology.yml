@@ -50,11 +50,21 @@ assets:
     path: shared/hooks/useMatrixRecords.ts
     badge: '-'
     params: 'value/isDataRow/blank/normalize/onDirty'
-  - use: 枚举记录矩阵（单位 + 换算率）
+  - use: 枚举记录矩阵（单位 + 换算率，列表侧）
     name: UnitManagePanel
     path: shared/components/UnitManagePanel.tsx
     badge: C19
-    params: 'units/conversions/extensions{showBase,onSetBase,priceColumns}'
+    params: 'units/conversions/extensions{showBase,onSetBase,priceColumns}（编辑矩阵内的单位区已改用 MatrixTable，本组件用于列表侧独立单位管理）'
+  - use: 集合编辑矩阵（集合体编辑弹窗统一形态：§A 根实体信息 → 中间层切换行 → 叶子挂载子表矩阵 → 价格展开面板）
+    name: '集合编辑矩阵（实例：ProductEditDialog）'
+    path: apps/staff/pages/product-manage/ProductEditDialog.tsx
+    badge: '-'
+    params: '描述时加集合体前缀（产品集合编辑矩阵 / 供应商集合编辑矩阵）；组装式：CascadeSwitchRow（中间层）+ MatrixTable（叶子挂载子表）+ ArchiveFieldCell（确认层格）+ UnitPriceExpandPanel（价格展开面板）'
+  - use: 中间层级联切换行（品牌/规格：下挂子记录 → 行切换）
+    name: CascadeSwitchRow
+    path: shared/components/CascadeSwitchRow.tsx
+    badge: '-'
+    params: 'label/options{key,label,active,editCell}/onSelect/addCell/editRow（仅中间层用；叶子挂载子表一律 MatrixTable，禁止误用行切换）'
 
 items:
   - id: table-feature-pipeline
@@ -197,7 +207,7 @@ items:
             - - 子集区块必须显示父级路径（面包屑）
               - 下层矩阵（单位/价格等）是「当前选中父级」的子集——区块标题必须显示父级路径（品牌 X → 规格 Y → 单位与价格），切换父级时路径跟着变。禁止平级独立区块不标注归属——挂载关系一眼可见才叫「看清谁挂在谁下面」
             - - 父实体切换（多对一引用，切上下文）
-              - 横向切换条，不是表格行（产品编辑弹窗的品牌标签）
+              - 横向切换条，不是表格行（编辑矩阵的品牌标签）
             - - 挂载子表（一对多，行=一条记录）
               - 多记录矩阵：表格行 + 确认层单元格 + 空行晋升（供应商联系/地址、产品规格同款）
             - - 子表的行级数（挂叶子行上的值）
@@ -1716,6 +1726,87 @@ items:
         - - 每轮都跑同一个循环
           - 不管第几轮对话，AI 都先抽象归类再动手，保证项目演进里同类功能始终走同一套。
     card: {}
+  - id: meta-schema-fill
+    layer: L1
+    navId: know-metaschema
+    index:
+      hear: "要填登记表（entity-meta.yml）、要新增一个表功能"
+    nav:
+      title: 登记表填写口径
+      subtitle: 触发：要填登记表 · 一份口径三处共用 · 三段填完前后端自动产出
+    page:
+      kicker: 项目规范 · 元模型
+      title: 登记表三段填完，前后端自动产出：口径只有一份，填错就有报错等着
+      lead: 新增一个表功能，落点只有登记表（data-source/entity-meta.yml）——entities 段说清字段与列，resources 段说清后端接口，pages 段说清前端页面。三段填完跑一次生成器，列表、检索、门禁、守卫、建档、审计、接口、页面列全部自动产出，零代码侵入。口径写在 data-source/meta-schema.md，同时是 Meta Studio 配置界面的字段定义来源——一份口径三处共用，不各写一份。
+      factsKicker: 这份口径管什么
+      factsTitle: 三段填空驱动全栈，填错立刻有报错
+      factsLead: 登记表不是备注，是运行时输入。写错了不是「文档说得不对」，是接口直接 500 或列顺序错。
+      facts:
+        - label: entities 段定字段与列
+          note: '九视角（A身份 B语义 C来源 D关系 E呈现 F行为 G检索 H历史 I权限）。值来源（C）与关系方向（D）不能空——空了就是没想清楚，后面的形态推不出来。'
+        - label: resources 段驱动后端接口
+          note: 'permission/writable/include/audit/search 声明后，资源引擎（/api/staff/r/:resource）自动提供列表、详情、新建、改、删、快建、引用计数，权限叶子也来自配置，不用手写路由与 handler。'
+        - label: pages 段驱动前端页面
+          note: 'slots 的数组顺序 = 列表列顺序。顺序是配置值不是推导——改列顺序改 yml，不改页面代码。'
+        - label: 填错立刻报错，不静默
+          note: 'include 写了不存在的 Prisma 关联 → 接口 500；audit 动作未登记 → 审计告警；writable 越界 → 新建被拒。报错是好事，说明登记表在管事。'
+      tables:
+        - kicker: 三段填空
+          navLabel: 怎么填
+          title: 新增一个表功能的最小填空，就这三段
+          lead: 三段填完跑生成器，前后端自动产出。
+          colA: 段
+          colB: 驱动什么 · 必填维度
+          rows:
+            - - entities
+              - 字段与列（九视角）· 必填 A身份 / B语义 / C来源 / E呈现 / F行为
+            - - resources
+              - 后端通用接口 · 必填 label / table / permission / writable
+            - - pages
+              - 前端页面装配 · 必填 list / slots（数组顺序 = 列顺序）
+        - kicker: 踩过的坑
+          navLabel: 自检
+          title: 三个真踩过的坑，填完对照一遍
+          lead: 都是「看着对、跑起来炸」的类型，写进表里是为了不再踩第二遍。
+          colA: 坑
+          colB: 现象 · 正确做法
+          rows:
+            - - include 写了前端概念名
+              - '接口 500（Prisma 无此关联）· 必须核对 schema.prisma 的 relation 名。例：经营范围的前端概念叫 businessScope，真实关联是 businessCategories + businessBrands。'
+            - - slots 顺序写错
+              - 列表列顺序与预期不符 · 数组顺序即列顺序，改 yml 不改页面。
+            - - audit 动作没登记
+              - 审计日志告警「action 未登记」· 动作名必须先登记在 auditActions 段。
+        - kicker: 关系·删除行为
+          navLabel: 删除行为
+          title: 删除行为是关系的属性，不是表的属性
+          lead: 这是最容易搞混的一条：同是「引用」，档案删了以后记录还该不该读得出来，答案不同，取值就不同。
+          colA: 取值
+          colB: 语义 · 什么时候用
+          rows:
+            - - cascade
+              - 随父删 · 配置子表/从属明细，父没了子无意义（如 user_roles → users）
+            - - restrict
+              - 有引用禁删（默认）· 被引用时不能删
+            - - decouple
+              - 解耦留快照 · 业务记录引用业务档案，档案删了记录仍靠名称快照读得出
+        - kicker: 怎么判断
+          navLabel: 判据
+          title: 一句话判据，不用记名词
+          lead: 拿不准就取 restrict，它是默认值，也是代价最小的选择。
+          colA: 自问
+          colB: 取值
+          rows:
+            - - 档案删了，这条记录还该读得出来吗
+              - 该 → decouple · 不该（父没了子无意义）→ cascade · 不确定 → restrict
+            - - 本项目已定的实例
+              - 业务记录（单据/付款/成本/配货/审计日志）→ 业务档案：decouple；user_roles → users：cascade
+      rules:
+        - 顺序是配置值：pages.slots 数组顺序 = 列表列顺序，不推导、不在页面里手写第二份。
+        - 禁止第二套手写列 / 第二套确认：有就是绕过登记表，违规。
+        - '边界：判定数据能描述为「字段/行数/状态/角色」→ 声明化；依赖多请求时序、多表联合对账 → 例外，代码写 + 登记在案。'
+        - 自检：填完跑 node tools/gen-entity-meta.mjs → 前后端 npx tsc --noEmit → node tools/check-docs.mjs。
+    card: {}
   - id: know-layout
     layer: L0
     navId: know-layout
@@ -2143,6 +2234,58 @@ items:
             - - 后技能（后面七页）
               - 对话 → 指导思想 / 对照本项目 / 下发文档范本 / 接到需求先归类 / 表功能 / 文档项目怎么分层 / 版本记录与恢复。标题即触发信号，命中后按步骤执行。
     card: {}
+  - id: cell-gate-path
+    layer: L0
+    navId: cell-gate-path
+    kind: carry
+    index:
+      hear: "设计/评审格子点击交互、接到『点一下要几层』『这个按钮要不要』类问题"
+    nav:
+      title: 格子点击 → 确认层
+      subtitle: 触发：设计格子交互 · 路径由值来源层级定 · 确认层检索一套收/展
+    page:
+      kind: carry
+      kicker: 方法论 · 交互形态
+      title: 格子点一下走几层，由值的来源层级决定，不由页面顺手定
+      lead: 同一个系统里，有的格子点值直接进确认层，有的要先展开子记录列表再进确认层，有的要走多级选品树——这不是各页面各写各的，是值的来源层级在决定路径。确认层内部的检索收/展、字典管理边界也是同一套推导。新格子先对着表定路径，禁止另造形态。
+      factsKicker: 这一页解决什么
+      factsTitle: 怕的不是形态多，是同一个决策各处各拍——路径靠猜、按钮靠感觉、管理入口重复
+      factsLead: 三张可查表：路径表（点几下进确认层）、检索表（收/展怎么统一）、管理表（谁可管理）。新格子逐行对表，答不上就是没归类。
+      facts:
+        - label: 路径由值来源定
+          note: 单值点值直进确认层；挂子记录先列表再进确认层；复合体走选品树。路径是推导，不是设计偏好——同一个值来源，全站必须同一条路径。
+        - label: 检索收/展全站一套
+          note: 确认层输入框旁统一配收/展按钮：默认展开（快速检索），可手动收起（看确认层其他信息不遮挡）。展开/收起按钮形态全站同一款，不新造。
+        - label: 有独立字典表才可管理
+          note: 格子的值指向独立字典表 → 检索下拉内可改/删（并档优先于删除）；值是直接字段或复合体 → 参数位空=不管理。管理入口全站唯一，禁止第二套管理面板。
+      tables:
+        - kicker: 路径表
+          title: 点几下进确认层，看值从哪来
+          colA: 值来源
+          colB: 路径
+          rows:
+            - - 单值（直接字段/单值引用）
+              - 点值 → 直接进确认层
+            - - 挂子记录（一对多）
+              - 点值 → 先展开子记录列表 → 在列表里点某条 → 再进确认层
+            - - 复合体（多表树）
+              - 点值 → 选品树逐层进，叶子上的值再进确认层
+            - - 字典名+引用层（名称全局唯一，引用挂关系/换算）
+              - 名称按单值走确认层；引用与换算按挂子记录走——同一抽象的又一层，不是新范式
+      rulesKicker: 不管什么格子
+      rulesTitle: 最终都要达到
+      rules:
+        - - 路径对表不拍脑袋
+          - 新格子先在路径表里找到值来源行，按行取路径。同一值来源出现第二种路径=违规。
+        - - 确认层检索默认展开、按钮可收
+          - 进入即展开检索下拉（快速检索），收/展按钮全站同形态同位置；禁止只自动展开不给收起（遮确认层其他信息），禁止默认收起（多一步才能检索）。
+        - - 管理能力跟字典走、参数位控制
+          - 值指向独立字典表 → 检索下拉带「完整字典」档 + 行内改/删（改走改名/并档预览，删走单条确认）；参数位空 → 不显示任何管理入口。管理能力由参数驱动，格子侧零分支。
+        - - 禁止第二套管理面板
+          - 同一确认层里不许并存两个字典管理入口；旧面板与新能力重叠时删旧的。确认层之外的管理面板（多选面板等）要单独说明存在理由，说不出就收。
+        - - 行内操作常驻不悬停
+          - 列表行内的改/删按钮常驻渲染，不靠 hover 出现——移动端没有 hover，hover 态格局不稳。
+    card: {}
   - id: know-precipitate
     layer: L0
     navId: know-precipitate
@@ -2269,3 +2412,485 @@ items:
             - - 淘汰也走本篇
               - 方法论被证伪或被合并时，从篇章、侧栏、路由表三处同时下架，不留死链接。
     card: {}
+  - id: inbound-purchase
+    layer: L1
+    navId: order-inbound-purchase
+    index:
+      hear: "采购入库、囤货补货、不绑订单的进货"
+    nav:
+      title: 采购入库
+      subtitle: 触发：囤货补货 · 不绑订单 · 一次确认即入账
+    page:
+      kicker: 订单中心 · 进货管货
+      title: 采购入库是不绑订单的囤货入口：选品填价，一次确认把库存、应付、欠库三笔账一起记完
+      lead: 采购入库解决的是「先囤货再卖」——不绑客户订单，自己选品、填数量与进价，确认一次就完成入库落账。它和待入库的分工是：采购入库是主动补货（人发起），待入库是配货超额调货的被动产物（系统生成）。两者最终都汇进库存台账，都用同一套加权平均计价，都要冲抵欠库。不让采购动作阻塞开单主线，是这个入口存在的全部理由。
+      factsKicker: 这一页定什么
+      factsTitle: 无草稿态，确认即终态；一次确认动三笔账
+      factsLead: 没有草稿是因为囤货场景不需要来回改——填完就入账，错了走盘点调整或反向单据，不在单据上养草稿态。
+      facts:
+        - label: 无草稿，提交即完成
+          note: '状态直接落 done（复用 inbound_task_status：pending/done/cancelled）。单号 PO + 年月日 + 8 位序列。'
+        - label: 一次确认动三笔账
+          note: '加库存并按加权平均重算进价、写 in 流水；金额大于 0 的生成供应商应付（biz_type=purchase，pending）；再按「仓库+SKU 先进先出」冲抵欠库。'
+        - label: 必填与数值校验
+          note: '供应商、仓库（须存在且启用）、至少 1 行；行数量大于 0、进价不小于 0。行金额 = 数量 × 进价（round2），单头汇总总量与总额。'
+      tables:
+        - kicker: 确认时联动什么
+          navLabel: 联动
+          title: 一次确认写进去的账，三笔
+          lead: 三笔账必须同事务完成，缺一笔就是对不上账。
+          colA: 账
+          colB: 写什么 · 后续影响
+          rows:
+            - - 库存账
+              - 加库存 + 按加权平均重算进价 + 写 in 流水 · 决定后续出库成本
+            - - 应付账
+              - 生成 supplier_payable_lines（purchase，pending）· 收付款往来页据此付款
+            - - 欠库账
+              - 按仓库+SKU 先进先出冲抵 backorders · 冲抵掉的欠库自动结清
+    card: {}
+  - id: inbound-pending
+    layer: L1
+    navId: order-inbound-pending
+    index:
+      hear: "待入库管理、超额调货待入、一键确认入库"
+    nav:
+      title: 待入库管理
+      subtitle: 触发：配货超额调货 · 系统生成 · 空闲时一键确认
+    page:
+      kicker: 订单中心 · 进货管货
+      title: 待入库是配货超额的产物：主线不等它，货到了一键确认入账
+      lead: 配货确认时若外部调货超过需求量，系统自动生成待入库单——它不阻塞配货主线，等人空闲时再确认入库。这一页的全部设计围绕「不阻塞」：默认只看待处理、确认即入账、取消即作废，没有草稿、没有审批。确认后同样动三笔账（库存、应付、欠库），并回填成本行的外部超额段作追溯锚点，让后来查成本时能追到这批货是哪次外部调货进来的。
+      factsKicker: 这一页定什么
+      factsTitle: 系统生成的单，只走三步：确认 / 改仓 / 取消
+      factsLead: 人是被动处理方，所以交互要短——列表默认只查待处理，一键即完成。
+      facts:
+        - label: 状态机三步
+          note: 'pending → done（确认）/ cancelled（取消）。仅 pending 可改仓、确认、取消；行同步流转。'
+        - label: 无明细自动清理
+          note: '确认后若无 pending 明细，任务自动删除，不留空单占位。列表默认只查 pending，status=all 才查全部。'
+        - label: 来源固定
+          note: '行取自配货行 allocation_lines 的超额量（over_qty）与单价（unit_cost），不手工录入。单号前缀 IB。'
+      tables:
+        - kicker: 与采购入库的分工
+          navLabel: 分工
+          title: 两个入库入口，别做成两个系统
+          lead: 入口不同、来源不同，但落账逻辑共用一套。
+          colA: 维度
+          colB: 采购入库 · 待入库
+          rows:
+            - - 谁发起
+              - 人主动补货 · 系统按超额自动生成
+            - - 行从哪来
+              - 手工选品填价 · 取自配货超额行（不可改）
+            - - 落账方式
+              - 共用：加库存（加权平均）+ 增应付 + FIFO 冲抵欠库
+            - - 成本追溯
+              - 应付带 purchase 来源 · 回填 cost_lines 的 external_excess 段
+    card: {}
+  - id: inbound-inventory
+    layer: L1
+    navId: order-inbound-inventory
+    index:
+      hear: "库存台账、查库存、期初建档、盘点调整"
+    nav:
+      title: 库存台账
+      subtitle: 触发：看库存与成本 · 期初建档 · 盘点调整 · 流水追溯
+    page:
+      kicker: 订单中心 · 进货管货
+      title: 库存台账是仓库×SKU 的成本底账：回答有多少货、成本多少、怎么变的
+      lead: 所有入库（采购入库、待入库确认）和出库（配货出库）最终都汇到这一张底账上。它按「仓库 + 规格 + 品牌 + 单位」唯一，存数量与加权平均进价，任何变动都写流水可双向追溯。入出库的成本口径只有一处——pricing-engine 的加权平均计算，出库按当前均价扣减，不足部分返回缺口交给欠库或外部补齐，不在出库处另算一套价。
+      factsKicker: 这一页定什么
+      factsTitle: 唯一键四元组，成本一口价，变动全留痕
+      factsLead: 底账的价值在于「可追溯」——数量错了能盘、成本错了能查流水，不是一坨数字。
+      facts:
+        - label: 唯一键与字段
+          note: '（仓库 + 规格 + 品牌 + 单位）唯一。存数量 qty、加权平均进价 weighted_avg_cost、最近入库时间 last_in_at。'
+        - label: 入库计价一口径
+          note: '入库均价 = calcWeightedAvgCost（旧量、旧均价、入库量、进价，round2），来自 pricing-engine，不在各入口重算。'
+        - label: 出库扣减与缺口
+          note: '按当前加权平均价扣减；库存不足时已有库存全额扣除，返回 shortage 缺口，交欠库台账或外部补齐。'
+        - label: 盘点与期初
+          note: '盘点差额 = 目标 - 当前；差额为正按新价加权、差额为负且目标大于 0 直接取新价，写 adjust 流水。期初仅在该仓无库存行时允许（已有须走盘点）。'
+      tables:
+        - kicker: 流水类型
+          navLabel: 流水
+          title: 凭单号双向追溯，任何变动都对得上
+          lead: 数量对不上时，查流水而不是猜。
+          colA: 维度
+          colB: 取值 · 说明
+          rows:
+            - - movement_type
+              - in / out / adjust · 进、出、调整三类
+            - - biz_type
+              - purchase / inbound_task / allocation_out / adjust · 变动来源
+            - - biz_no
+              - 关联单号 · 凭它双向追溯（调整单 ADJ，期初 OPENING）
+    card: {}
+  - id: backorder-ledger
+    layer: L1
+    navId: order-backorder
+    index:
+      hear: "欠库台账、库存缺口、挂欠库、补货清单"
+    nav:
+      title: 欠库台账
+      subtitle: 触发：出库缺口兜底 · 挂账等补 · 到货自动冲抵
+    page:
+      kicker: 订单中心 · 欠库
+      title: 欠库是「先欠着、到货自动还」的兜底账：不在出库处卡住主线
+      lead: 配货出库时库存不够，系统不拦着不让走，而是把缺口挂成欠库——主线照常推进，货到了由入库侧自动冲抵。这一页就是这本欠账：谁欠的（来源单据行）、欠多少、欠哪个仓哪个 SKU，导出即采购补货清单。设计要点是「缺口有处去」：没有欠库台账，库存不足要么卡住开单、要么默默少发货主不知道。
+      factsKicker: 这一页定什么
+      factsTitle: 只记缺口，不记货；冲抵按仓库+SKU 先进先出
+      factsLead: 欠库不是库存的负数，是一条待办——它等着被某次入库还上。
+      facts:
+        - label: 状态三种
+          note: 'pending（待补）/ fulfilled（已补）/ cancelled（已取消）。取消是人为放弃，不是系统清理。'
+        - label: 缺口维度与快照
+          note: '记来源订单与单据行、仓库、SKU（规格+品牌+单位），并落名称快照——品牌或规格被删了，欠库记录仍读得出欠的是什么。'
+        - label: 冲抵规则
+          note: '入库（采购入库 / 待入库确认）时按「仓库 + SKU 先进先出」自动冲抵，先挂的先还，冲完置 fulfilled 并记录冲抵人与时间。'
+      tables:
+        - kicker: 缺口从哪来、到哪去
+          navLabel: 来去
+          title: 欠库的入口只有一个，出口有两个
+          lead: 入口收窄是为了不产生来路不明的欠账。
+          colA: 方向
+          colB: 怎么发生
+          rows:
+            - - 进（挂账）
+              - 内部出库缺口，弹窗双处置选「挂欠库」· 须填数量大于 0，可带备注
+            - - 出（冲抵）
+              - 入库时自动 FIFO 冲抵，无需人工配对
+            - - 出（取消）
+              - 人为放弃这笔缺口，置 cancelled
+        - kicker: 导出
+          navLabel: 补货
+          title: 台账导出即采购补货清单
+          lead: 导出的意义是可以直接拿着去进货，不是拿来看。
+          colA: 维度
+          colB: 说明
+          rows:
+            - - 范围
+              - 仅 pending（已补/已取消的不进补货清单）
+            - - 字段
+              - 产品 / 规格 / 品牌 / 单位 / 欠库数量 / 所在仓库 / 来源单据行 / 备注 / 生成时间
+    card: {}
+  - id: supplier-payable
+    layer: L1
+    navId: order-payable
+    index:
+      hear: "供应商应付、欠供应商多少钱、结算、对账单、账龄"
+    nav:
+      title: 供应商应付
+      subtitle: 触发：该付供应商多少钱 · 按来源分三类 · 结算留痕
+    page:
+      kicker: 收付款往来 · 应付
+      title: 应付是「进货欠的钱」：三类来源各自留凭证，结算只做一次且留名
+      lead: 进货有三个入口（等额直发、超额入库、独立采购），每一笔都可能形成应付。应付行不带自己的业务含义，只回答三件事：欠谁的、欠多少、从哪笔业务来的——凭 biz_no 回查源头单据。结算是不可逆动作（只做一次，记录结算人与时间），所以不提供批量结算，防止手滑一次结掉一批。
+      factsKicker: 这一页定什么
+      factsTitle: 三类来源、两个状态、一次结算
+      factsLead: 来源字段不是为了统计好看，是为了对不上账时能回查到源头。
+      facts:
+        - label: 三类来源
+          note: 'allocation_external（等额直发）/ inbound_task（超额入库）/ purchase（独立采购）。都带 biz_no 与可选的来源订单与单据行。'
+        - label: 状态与结算
+          note: 'pending → settled。仅 pending 可结算；已结算再点会被拒。结算写结算人与结算时间到 remark，不删行、不留糊涂账。'
+        - label: 金额口径
+          note: '应付金额 = 数量 × 约定进价，落库即定，不随后续价格变动重算。'
+        - label: 供应商名是快照
+          note: '存 supplierName 快照（来自 supplier.name），供应商改名不影响历史应付对账。'
+      tables:
+        - kicker: 账龄
+          navLabel: 账龄
+          title: 按生成日分四桶，只看未结算
+          lead: 账龄回答的是「哪笔拖太久了」，不是总额。
+          colA: 桶
+          colB: 含义 · 用途
+          rows:
+            - - '0-30'
+              - 一个月内新增 · 正常账期
+            - - '31-60 / 61-90'
+              - 中期 · 需要关注
+            - - '90+'
+              - 超三个月 · 该催该结
+        - kicker: 导出与边界
+          navLabel: 导出
+          title: 对账单按供应商分组，只导未结算
+          lead: 导出是给对账用的，不是给记账用的。
+          colA: 维度
+          colB: 说明
+          rows:
+            - - 对账单范围
+              - 仅 pending，按供应商分组、按生成时间升序
+            - - 聚合上限
+              - 账龄聚合取前 2000 行（禁全表 N+1 查询）
+            - - 不做什么
+              - 不做批量结算、不做部分结算、不做抹零——结算是不可逆动作，一次一行人为确认
+    card: {}
+  - id: ops-report
+    layer: L1
+    navId: ops-report
+    index:
+      hear: "经营报表、看数、毛利、周转、账龄、绩效"
+    nav:
+      title: 经营报表
+      subtitle: 触发：看经营数据 · 七类报表 · 口径写死不临时算
+    page:
+      kicker: 经营分析 · 报表
+      title: 报表不是临时算出来的：七类看数各有写死的口径，谁查都一样
+      lead: 报表最容易出的问题不是算错，是「这次这么算、下次那么算」——收款算不算未对账的、退款算不算换货的，口径一变数字就对不上。所以七类报表每一类的取数条件都写死在服务里（哪些状态计入、取多少行、怎么舍入），页面只负责展示。范围一律收窄（几百到两千行上限），不为看一个数扫全表。
+      factsKicker: 这一页定什么
+      factsTitle: 七类看数，口径各写死，范围各收窄
+      factsLead: 报表的核心约束是「可复现」——同一个查询条件，今天查和明天查口径一致。
+      facts:
+        - label: 区间汇总
+          note: '按创建时间区间 + 状态过滤。销售额取单据行金额、收款只认已对账（reconciled）、成本取成本行、退款只认退款类型为 refund。'
+        - label: 库存周转
+          note: '取有库存的行（上限 300），配最近一次出库流水（上限 800）。无出库记录按 999 天计；滞销判定为闲置不少于 60 天。'
+        - label: 应收账龄
+          note: '仅未结算，按生成日分四桶：0-30 / 31-60 / 61-90 / 90+，聚合上限 2000 行。'
+        - label: 范围一律收窄
+          note: '所有报表都带上取数上限（300 / 800 / 2000），避免为看一个数扫全表。'
+      tables:
+        - kicker: 七类报表
+          navLabel: 七类
+          title: 一张表看清七类看数各自回答什么
+          lead: 报表之间是并列关系，不是一份大表的七个筛选项。
+          colA: 报表
+          colB: 回答什么 · 关键口径
+          rows:
+            - - 区间汇总
+              - 这段时间生意怎么样 · 收款只认已对账、退款只认退款类型
+            - - 分类毛利
+              - 哪个品类赚钱 · 按分类聚合销售额与成本
+            - - 业务员绩效
+              - 谁做得多 · 按业务员聚合
+            - - 采购汇总
+              - 进了多少货、花了多少 · 按供应商/区间聚合
+            - - 应收账龄
+              - 客户欠的钱拖多久了 · 四桶分龄，仅未结算
+            - - 库存周转
+              - 哪些货压着不动 · 闲置天数，不少于 60 天判滞销
+            - - 退款统计
+              - 退了多少、为什么退 · 按退款类型区分
+        - kicker: 边界
+          navLabel: 边界
+          title: 报表不做的事
+          lead: 报表是看数的，不是干活的。
+          colA: 不做
+          colB: 原因 · 该去哪
+          rows:
+            - - 不做写操作
+              - 报表只读 · 要改数据去对应业务页
+            - - 不做实时秒级刷新
+              - 看数是决策用，不是监控用 · 需要即时数据查对应台账
+            - - 不导出明细对账
+              - 对账有专门的对账单导出 · 见供应商应付 / 收款对账
+    card: {}
+  - id: sys-role
+    layer: L1
+    navId: sys-role
+    index:
+      hear: "角色权限、配谁能看谁能改、三档矩阵"
+    nav:
+      title: 角色权限
+      subtitle: 触发：配谁能看谁能改 · 三档矩阵 · 系统角色不可删
+    page:
+      kicker: 系统管理 · 权限
+      title: 权限挂在角色上不挂在人上：改权限改角色，不挨个人改
+      lead: 表归属：**系统配置**（roles + user_roles）。注意它和别的页不同——user_roles 到 users 的删除行为是 cascade（配置子表跟随员工档案），不是业务记录那种 decouple 解耦留快照。判断依据就一句话：员工档案没了，他绑的角色关系本来就没意义，所以该跟着删；而审计日志不一样，员工删了日志还得读得出是谁干的。这一页是系统管理里唯一的 cascade 例子，别拿别的页的惯例往这套。
+      factsKicker: 这一页定什么
+      factsTitle: 三档矩阵、系统角色保护、两种无权限提示
+      factsLead: 权限最容易出的乱子是「同一个人这里能改那里不能改」，根因是权限挂在了多处。这里只挂一处。
+      facts:
+        - label: 三档矩阵
+          note: '角色存 view_permissions（JSON）：每个视图叶子三档 none（不可见）/ ro（只读）/ rw（可读可写）。人绑角色，继承矩阵。'
+        - label: 系统角色保护
+          note: 'is_system 为真的角色禁止删除——删了可能没人能进系统。展示名与说明可改，编码不可改（代码判断认编码不认名字）。'
+        - label: 有绑定不许删
+          note: '自定义角色若仍有人绑定，禁止删除。先改人再删角色，避免留下无权限的孤儿账号。'
+        - label: 提示区分两种
+          note: '有只读却点写 → 提示「只能查看」；完全没这个叶子 → 提示「暂不能使用」。不笼统报无权限，让人知道差在哪一档。'
+      tables:
+        - kicker: 权限怎么生效
+          navLabel: 生效
+          title: 从角色到接口，四层各做一件事
+          lead: 每一层只做一件事，不跨层兜底——跨层兜底就是权限散落的开始。
+          colA: 层
+          colB: 做什么
+          rows:
+            - - 人 → 角色
+              - 用户绑定角色，继承该角色的权限矩阵
+            - - 角色 → 矩阵
+              - 每个视图叶子一个三档值，落在 roles.view_permissions
+            - - 接口 → 声明
+              - 路由用 requireViewPermission(叶子, ro/rw) 声明自己要哪一档
+            - - 拒绝 → 提示
+              - 按缺的是读还是写，给两种不同提示
+        - kicker: 本页的关系删除行为
+          navLabel: 归属
+          title: 先说归属，再说规则
+          lead: 系统管理里 5 页的归属各不相同，标清楚才不会互相套错规则。
+          colA: 表
+          colB: 归属 · 删除行为
+          rows:
+            - - roles
+              - 系统配置 · 系统角色禁删，自定义角色有绑定禁删
+            - - user_roles
+              - 配置子表 · **cascade 跟随 users**（父没了子无意义）
+    card: {}
+  - id: sys-audit
+    layer: L1
+    navId: sys-audit
+    index:
+      hear: "审计日志、谁干了什么、留痕、操作记录"
+    nav:
+      title: 审计日志
+      subtitle: 触发：查谁干了什么 · 留痕优于审批 · 档案删了仍读得出
+    page:
+      kicker: 系统管理 · 审计
+      title: 审计的原则是「留痕优于审批」：不拦业务，但每笔都记，且档案删了还认得出人
+      lead: 表归属：**业务记录**（audit_logs）。它对 users / customers 的删除行为是 decouple——不建物理外键，改存名称快照（userName / customerName）。所以员工离职删了档案，历史日志照样显示「张三」而不是一串失效的 ID。这里和角色权限页正好相反：那是 cascade（配置跟随），这是 decouple（记录留痕）。同一个项目里两种取值都有，判据是「档案删了这条记录还该不该读得出来」。
+      factsKicker: 这一页定什么
+      factsTitle: 记四要素、动作要先登记、按时间索引分页
+      factsLead: 审计的价值在事后能查清，所以「记什么」和「怎么查」同样重要。
+      facts:
+        - label: 留痕四要素
+          note: '谁（user_id + userName 快照）、何时（created_at）、对什么资源（resource_type + resource_id）、做了什么（action + detail）。'
+        - label: 动作先登记
+          note: 'action 必须先登记在 entity-meta.yml 的 auditActions 段；未登记只告警不阻断业务——宁可记了再说，也不因为没登记就丢失痕迹。'
+        - label: 快照而非外键
+          note: '不建物理外键，靠 userName / customerName 快照读档案。档案删除不影响日志展示，这是 decouple 的直接收益。'
+        - label: 规模基线
+          note: '按几千万行设计：列表默认按 created_at 倒序 + 索引分页，不做全表扫描。'
+      tables:
+        - kicker: 边界
+          navLabel: 边界
+          title: 审计只记录，不拦业务
+          lead: 审计是事后凭证，不是事前闸门。要拦业务用操作守卫，不是审计。
+          colA: 不做
+          colB: 原因 · 该用什么
+          rows:
+            - - 不拦业务
+              - 未登记的 action 只告警不阻断 · 要拦用操作守卫（actions 段）
+            - - 不改日志
+              - 日志只增不改不删 · 错了补一条，不擦掉旧的
+            - - 不依赖档案当前状态
+              - 全靠快照 · 档案改了删了都不影响历史
+    card: {}
+  - id: sys-auth-code
+    layer: L1
+    navId: sys-auth-code
+    index:
+      hear: "授权码、客户准入、发码、吊销"
+    nav:
+      title: 授权码
+      subtitle: 触发：客户要进门 · 发码 → 激活 → 过期/吊销
+    page:
+      kicker: 系统管理 · 准入
+      title: 授权码是客户的进门凭证：一次一码，激活即绑定，过期失效
+      lead: 表归属：**业务记录**（authorization_codes）。它对 users 的删除行为是 decouple——创建者存 creatorName 快照，员工档案删了码照样显示谁发的。客户端注册要凭码进场，码的生命周期就是客户准入的生命周期：生成 → 发放 → 客户激活 → 到期或吊销。
+      factsKicker: 这一页定什么
+      factsTitle: 一次一码、激活即绑定、两条终态
+      factsLead: 码是凭证不是账号——它只负责把人放进来，进来之后的事归账号管。
+      facts:
+        - label: 生命周期
+          note: '生成（source=manual）→ 发放给客户 → 客户端注册时激活（记 activatedAt）→ 到期（expiresAt）或被吊销（revoke）。'
+        - label: 创建者留快照
+          note: 'createdBy + creatorName 快照（decouple）· 发码的人离职删档后，仍查得出这码是谁发的。'
+        - label: 统计口径
+          note: '按状态统计（未激活/已激活/已过期/已吊销），用于看准入转化与存量码健康度。'
+      tables:
+        - kicker: 与访问申请的关系
+          navLabel: 关系
+          title: 申请通过后才有码
+          lead: 两个页面是前后道工序，不是两准入方式。
+          colA: 环节
+          colB: 做什么
+          rows:
+            - - 客户提交申请
+              - 留手机号，状态 pending
+            - - 审核通过
+              - 发码，并定下这个码的有效期
+            - - 客户激活
+              - 客户端凭码注册，码记 activatedAt
+            - - 终态
+              - 到期自动失效，或管理员提前吊销
+    card: {}
+  - id: sys-access-request
+    layer: L1
+    navId: sys-access-request
+    index:
+      hear: "访问申请、客户申请准入、审核通过驳回"
+    nav:
+      title: 访问申请
+      subtitle: 触发：客户申请进门 · pending → 通过/驳回 · 通过即发码
+    page:
+      kicker: 系统管理 · 准入
+      title: 访问申请是准入的闸门：人审一道，通过才发码
+      lead: 表归属：**业务记录**（access_requests）。它对 users 的删除行为是 decouple——审核人存 reviewerName 快照。客户留手机号提交申请，管理员人工审一道：通过则发授权码并定有效期，驳回则记原因。这一道人工审核是刻意的——准入关系后续所有数据的归属，不接受自动放行。
+      factsKicker: 这一页定什么
+      factsTitle: 三个状态，一次审核，驳回必填原因
+      factsLead: 驳回不填原因，客户不知道为什么被拒，会反复提交——原因是流程的一部分，不是备注。
+      facts:
+        - label: 状态三种
+          note: 'pending（待审）→ approved（通过）/ rejected（驳回）。审核是终态，不来回改。'
+        - label: 驳回记原因
+          note: 'rejectReason 记驳回理由，供客户查看与后续申诉，也让审核口径可追溯。'
+        - label: 审核人留快照
+          note: 'reviewedBy + reviewerName 快照（decouple）· 审核人离职删档后，仍查得出这笔是谁审的。'
+        - label: 通过即发码
+          note: '审核通过同时确定要发的授权码有效期（issuedAuthCodeExpiresAt），不用二次操作。'
+      tables:
+        - kicker: 审核动作
+          navLabel: 审核
+          title: 一次审核决定两件事
+          lead: 通过或驳回，以及后续凭证的有效期。
+          colA: 结果
+          colB: 发生什么
+          rows:
+            - - approved
+              - 发放授权码 + 记下有效期 · 客户凭码激活
+            - - rejected
+              - 记 rejectReason · 客户可看原因
+            - - 审计
+              - 审核动作记 access_request_review，带审核结果
+    card: {}
+  - id: sys-user
+    layer: L1
+    navId: sys-user
+    index:
+      hear: "用户管理、员工账号、停用启用、重置密码"
+    nav:
+      title: 用户管理
+      subtitle: 触发：管员工账号 · 档案本体 · 被别人快照的那方
+    page:
+      kicker: 系统管理 · 账号
+      title: 用户管理管的是员工档案本体：它是被快照引用的那方，不是引用别人的那方
+      lead: 表归属：**业务档案本体**（users）。这一页和系统管理其他页的方向正好相反——别的页是「引用档案」（用 decouple 留快照），这一页是**被别人引用的档案**。所以员工档案删了，那些单据、日志、授权码靠名称快照照样读得出「张三」。这个方向感很重要：改动 users 的结构，影响面是外散的，不是内聚的。
+      factsKicker: 这一页定什么
+      factsTitle: 档案本体、状态机、配置子表跟随
+      factsLead: 档案和记录的区别就一句：档案是主体，记录是关于它的事。
+      facts:
+        - label: 档案字段
+          note: '员工编码 user_code、登录名 username、姓名 real_name、手机 phone、状态 status、最后登录时间 last_login_at。密码只存哈希，不存明文、不可读回。'
+        - label: 状态机
+          note: 'active / 停用。停用后不可登录，但历史记录全部保留——停用不是删除，档案还在，别人引用的快照就还对得上。'
+        - label: 配置子表跟随
+          note: 'user_roles 是配置子表，删除行为为 cascade（跟随员工档案）。员工删了，角色绑定跟着没——因为父没了子无意义。'
+        - label: 被引用是外散的
+          note: '单据、付款、成本、配货、审计日志、授权码、访问申请都引用它，且都是 decouple + 名称快照。改档案结构前先看这张引用网。'
+      tables:
+        - kicker: 方向对比
+          navLabel: 方向
+          title: 这一页和别的页，方向是反的
+          lead: 弄清方向，才知道改动的影响往哪散。
+          colA: 页
+          colB: 谁引用谁 · 删除行为
+          rows:
+            - - 用户管理（本页）
+              - 档案本体，被别人引用 · 自己不引用别人
+            - - 审计日志 / 授权码 / 访问申请
+              - 它们引用 users · decouple + 名称快照
+            - - 角色权限
+              - user_roles 引用 users · **cascade 跟随删**

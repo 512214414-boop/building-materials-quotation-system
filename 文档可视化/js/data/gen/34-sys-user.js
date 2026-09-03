@@ -1,0 +1,57 @@
+/**
+ * whyBiz["sys-user"] — 由 tools/gen-docs.mjs 生成，禁止手改
+ * 真相源：data-source/methodology.yml → items[sys-user]
+ * 分层：L1（项目规范）
+ */
+DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};
+DOC_VIZ.whyBiz["sys-user"] = {
+  "kind": "carry",
+  "kicker": "系统管理 · 账号",
+  "title": "用户管理管的是员工档案本体：它是被快照引用的那方，不是引用别人的那方",
+  "lead": "表归属：**业务档案本体**（users）。这一页和系统管理其他页的方向正好相反——别的页是「引用档案」（用 decouple 留快照），这一页是**被别人引用的档案**。所以员工档案删了，那些单据、日志、授权码靠名称快照照样读得出「张三」。这个方向感很重要：改动 users 的结构，影响面是外散的，不是内聚的。",
+  "factsKicker": "这一页定什么",
+  "factsTitle": "档案本体、状态机、配置子表跟随",
+  "factsLead": "档案和记录的区别就一句：档案是主体，记录是关于它的事。",
+  "facts": [
+    {
+      "label": "档案字段",
+      "note": "员工编码 user_code、登录名 username、姓名 real_name、手机 phone、状态 status、最后登录时间 last_login_at。密码只存哈希，不存明文、不可读回。"
+    },
+    {
+      "label": "状态机",
+      "note": "active / 停用。停用后不可登录，但历史记录全部保留——停用不是删除，档案还在，别人引用的快照就还对得上。"
+    },
+    {
+      "label": "配置子表跟随",
+      "note": "user_roles 是配置子表，删除行为为 cascade（跟随员工档案）。员工删了，角色绑定跟着没——因为父没了子无意义。"
+    },
+    {
+      "label": "被引用是外散的",
+      "note": "单据、付款、成本、配货、审计日志、授权码、访问申请都引用它，且都是 decouple + 名称快照。改档案结构前先看这张引用网。"
+    }
+  ],
+  "tables": [
+    {
+      "kicker": "方向对比",
+      "navLabel": "方向",
+      "title": "这一页和别的页，方向是反的",
+      "lead": "弄清方向，才知道改动的影响往哪散。",
+      "colA": "页",
+      "colB": "谁引用谁 · 删除行为",
+      "rows": [
+        [
+          "用户管理（本页）",
+          "档案本体，被别人引用 · 自己不引用别人"
+        ],
+        [
+          "审计日志 / 授权码 / 访问申请",
+          "它们引用 users · decouple + 名称快照"
+        ],
+        [
+          "角色权限",
+          "user_roles 引用 users · **cascade 跟随删**"
+        ]
+      ]
+    }
+  ]
+};

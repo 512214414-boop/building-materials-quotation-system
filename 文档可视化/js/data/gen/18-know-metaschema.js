@@ -1,0 +1,125 @@
+/**
+ * whyBiz["know-metaschema"] — 由 tools/gen-docs.mjs 生成，禁止手改
+ * 真相源：data-source/methodology.yml → items[meta-schema-fill]
+ * 分层：L1（项目规范）
+ */
+DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};
+DOC_VIZ.whyBiz["know-metaschema"] = {
+  "kind": "carry",
+  "kicker": "项目规范 · 元模型",
+  "title": "登记表三段填完，前后端自动产出：口径只有一份，填错就有报错等着",
+  "lead": "新增一个表功能，落点只有登记表（data-source/entity-meta.yml）——entities 段说清字段与列，resources 段说清后端接口，pages 段说清前端页面。三段填完跑一次生成器，列表、检索、门禁、守卫、建档、审计、接口、页面列全部自动产出，零代码侵入。口径写在 data-source/meta-schema.md，同时是 Meta Studio 配置界面的字段定义来源——一份口径三处共用，不各写一份。",
+  "factsKicker": "这份口径管什么",
+  "factsTitle": "三段填空驱动全栈，填错立刻有报错",
+  "factsLead": "登记表不是备注，是运行时输入。写错了不是「文档说得不对」，是接口直接 500 或列顺序错。",
+  "facts": [
+    {
+      "label": "entities 段定字段与列",
+      "note": "九视角（A身份 B语义 C来源 D关系 E呈现 F行为 G检索 H历史 I权限）。值来源（C）与关系方向（D）不能空——空了就是没想清楚，后面的形态推不出来。"
+    },
+    {
+      "label": "resources 段驱动后端接口",
+      "note": "permission/writable/include/audit/search 声明后，资源引擎（/api/staff/r/:resource）自动提供列表、详情、新建、改、删、快建、引用计数，权限叶子也来自配置，不用手写路由与 handler。"
+    },
+    {
+      "label": "pages 段驱动前端页面",
+      "note": "slots 的数组顺序 = 列表列顺序。顺序是配置值不是推导——改列顺序改 yml，不改页面代码。"
+    },
+    {
+      "label": "填错立刻报错，不静默",
+      "note": "include 写了不存在的 Prisma 关联 → 接口 500；audit 动作未登记 → 审计告警；writable 越界 → 新建被拒。报错是好事，说明登记表在管事。"
+    }
+  ],
+  "tables": [
+    {
+      "kicker": "三段填空",
+      "navLabel": "怎么填",
+      "title": "新增一个表功能的最小填空，就这三段",
+      "lead": "三段填完跑生成器，前后端自动产出。",
+      "colA": "段",
+      "colB": "驱动什么 · 必填维度",
+      "rows": [
+        [
+          "entities",
+          "字段与列（九视角）· 必填 A身份 / B语义 / C来源 / E呈现 / F行为"
+        ],
+        [
+          "resources",
+          "后端通用接口 · 必填 label / table / permission / writable"
+        ],
+        [
+          "pages",
+          "前端页面装配 · 必填 list / slots（数组顺序 = 列顺序）"
+        ]
+      ]
+    },
+    {
+      "kicker": "踩过的坑",
+      "navLabel": "自检",
+      "title": "三个真踩过的坑，填完对照一遍",
+      "lead": "都是「看着对、跑起来炸」的类型，写进表里是为了不再踩第二遍。",
+      "colA": "坑",
+      "colB": "现象 · 正确做法",
+      "rows": [
+        [
+          "include 写了前端概念名",
+          "接口 500（Prisma 无此关联）· 必须核对 schema.prisma 的 relation 名。例：经营范围的前端概念叫 businessScope，真实关联是 businessCategories + businessBrands。"
+        ],
+        [
+          "slots 顺序写错",
+          "列表列顺序与预期不符 · 数组顺序即列顺序，改 yml 不改页面。"
+        ],
+        [
+          "audit 动作没登记",
+          "审计日志告警「action 未登记」· 动作名必须先登记在 auditActions 段。"
+        ]
+      ]
+    },
+    {
+      "kicker": "关系·删除行为",
+      "navLabel": "删除行为",
+      "title": "删除行为是关系的属性，不是表的属性",
+      "lead": "这是最容易搞混的一条：同是「引用」，档案删了以后记录还该不该读得出来，答案不同，取值就不同。",
+      "colA": "取值",
+      "colB": "语义 · 什么时候用",
+      "rows": [
+        [
+          "cascade",
+          "随父删 · 配置子表/从属明细，父没了子无意义（如 user_roles → users）"
+        ],
+        [
+          "restrict",
+          "有引用禁删（默认）· 被引用时不能删"
+        ],
+        [
+          "decouple",
+          "解耦留快照 · 业务记录引用业务档案，档案删了记录仍靠名称快照读得出"
+        ]
+      ]
+    },
+    {
+      "kicker": "怎么判断",
+      "navLabel": "判据",
+      "title": "一句话判据，不用记名词",
+      "lead": "拿不准就取 restrict，它是默认值，也是代价最小的选择。",
+      "colA": "自问",
+      "colB": "取值",
+      "rows": [
+        [
+          "档案删了，这条记录还该读得出来吗",
+          "该 → decouple · 不该（父没了子无意义）→ cascade · 不确定 → restrict"
+        ],
+        [
+          "本项目已定的实例",
+          "业务记录（单据/付款/成本/配货/审计日志）→ 业务档案：decouple；user_roles → users：cascade"
+        ]
+      ]
+    }
+  ],
+  "rules": [
+    "顺序是配置值：pages.slots 数组顺序 = 列表列顺序，不推导、不在页面里手写第二份。",
+    "禁止第二套手写列 / 第二套确认：有就是绕过登记表，违规。",
+    "边界：判定数据能描述为「字段/行数/状态/角色」→ 声明化；依赖多请求时序、多表联合对账 → 例外，代码写 + 登记在案。",
+    "自检：填完跑 node tools/gen-entity-meta.mjs → 前后端 npx tsc --noEmit → node tools/check-docs.mjs。"
+  ]
+};
