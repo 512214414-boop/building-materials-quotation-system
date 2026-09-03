@@ -25,7 +25,13 @@ import DictListPanel, { type DictListPanelItem } from './DictListPanel.js';
 import DsButton from './DsButton.js';
 import { smartPopupContainer } from '../utils/smartPopupContainer.js';
 import type { SuggestField } from '../services/api/baseDataApi.js';
+import {
+  applyDictChange,
+  previewDictChange,
+} from '../services/api/baseDataApi.js';
 import { useCanvasApp } from '../hooks/useCanvasApp.js';
+import { resolveGuard } from '../config/resolveGuard.js';
+import { dictChangeKindOfField, isDictEntryField } from '../config/dictEntryViews.js';
 
 // ============================================================
 // §1 档案记录 / 管理面板配置
@@ -161,8 +167,12 @@ export function DictRecordManagePanel<T extends { id: string | number; name: str
     async (name: string) => {
       const trimmed = name.trim();
       if (!trimmed) return;
-      if (items.some((it) => it.name === trimmed)) {
-        message.warning(`${entityName}「${trimmed}」已存在`);
+      const block = resolveGuard('dict_item_add', {
+        collections: { items },
+        form: { trimmed, entityName },
+      });
+      if (block) {
+        message.warning(block);
         return;
       }
       try {
@@ -176,15 +186,60 @@ export function DictRecordManagePanel<T extends { id: string | number; name: str
     [items, dict, entityName, message],
   );
 
-  // ---- 保存编辑（改名 = 修改全局档案，所有引用方跟随）----
+  // ---- 保存编辑（改名口径全站统一：字典类同名 → dictMerge 并档；无同名 → 直接改名）----
+  // 用户拍板（2026-09）：字典项改名输入已有同名不再报「已存在」，而是并档——
+  // preview 影响行数 → 确认 → applyDictChange（引用归并，单据快照不受影响）。
+  // 非字典类（无 dictMerge 支持）同名仍按声明化守卫拦截。
   const handleRename = useCallback(
     async (item: DictListPanelItem, newName: string) => {
       const it = item.data as T;
       const trimmed = newName.trim();
       if (!trimmed || trimmed === it.name) return;
-      if (items.some((x) => x.name === trimmed)) {
-        message.warning(`${entityName}「${trimmed}」已存在`);
-        throw new Error('duplicate');
+      const dup = items.find((x) => String(x.id) !== String(it.id) && x.name === trimmed);
+      const canMerge =
+        !!dup && !!dict.suggestField && isDictEntryField(dict.suggestField) && !!it.id && dup.id != null;
+      if (dup && !canMerge) {
+        // 非字典类：保留声明化 rowUnique 守卫（entity-meta.yml dict_item_rename）
+        const block = resolveGuard('dict_item_rename', {
+          collections: { items },
+          form: { trimmed, entityName },
+        });
+        if (block) {
+          message.warning(block);
+          throw new Error('duplicate');
+        }
+      }
+      if (canMerge) {
+        const kind = dictChangeKindOfField(dict.suggestField!);
+        let preview;
+        try {
+          preview = await previewDictChange({ kind, fromId: String(it.id), toName: trimmed });
+        } catch (e) {
+          message.error((e as { message?: string })?.message || '无法计算并档影响');
+          throw e;
+        }
+        try {
+          await modal.confirm({
+            title: `并档：${entityName}「${trimmed}」已存在`,
+            content: `${preview.summary}（影响 ${preview.total} 处引用）。确认把「${it.name}」并到「${trimmed}」？`,
+            okText: '并档',
+            cancelText: '取消',
+          });
+        } catch {
+          throw new Error('cancelled');
+        }
+        try {
+          await applyDictChange({ kind, fromId: String(it.id), toName: trimmed });
+          setItems((prev) => prev.filter((x) => String(x.id) !== String(it.id)));
+          if (currentId != null && String(it.id) === String(currentId)) {
+            onSelect(dup.id, dup.name);
+          }
+          message.success(`已把「${it.name}」并到「${trimmed}」，所有引用同步归并`);
+        } catch {
+          message.error('并档失败，请重试');
+          throw new Error('merge failed');
+        }
+        return;
       }
       try {
         await dict.update(String(it.id), { name: trimmed });
@@ -199,7 +254,7 @@ export function DictRecordManagePanel<T extends { id: string | number; name: str
         throw new Error('update failed');
       }
     },
-    [items, dict, currentId, entityName, message, onSelect],
+    [items, dict, currentId, entityName, message, modal, onSelect],
   );
 
   // ---- 删除档案（被引用时禁止删除，先解除引用）----
