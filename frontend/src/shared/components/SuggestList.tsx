@@ -92,9 +92,9 @@
 //     default（默认）→ var(--text-tertiary)（灰色）
 //     existing（已有）→ var(--text-quaternary)（浅灰色）
 
-import { Fragment, type CSSProperties } from 'react';
+import { Fragment, useMemo, useState, type CSSProperties } from 'react';
 import { Spin } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { ValueChip } from './ValueChangePair.js';
 import type { SuggestOption } from '../services/api/baseDataApi.js';
 
@@ -137,6 +137,14 @@ export interface SuggestListProps<T = SuggestOption> {
   allowCreateWhenEmpty?: boolean;
   /** 新建行文案。默认「新建「关键词」」 */
   createLabel?: string;
+  /**
+   * 行内改名回调：仅 existing 项 hover 显示「改」。点击后由调用方打开确认层
+   * （PickerEditGate 同款：preview 影响行数 → 改名/并档 → apply）。
+   * 不传则不渲染按钮，其余 8 个使用方行为不变。
+   */
+  onRename?: (item: T) => void;
+  /** 行内删除回调：仅 existing 项 hover 显示「删」。调用方负责 modal.confirm 保护。 */
+  onDelete?: (item: T) => void;
 }
 
 // ============================================================
@@ -199,16 +207,43 @@ const TYPE_TAG_MAP: Record<SuggestOption['type'], { text: string; color: string 
 // §3 默认行渲染（单列模式）
 // ============================================================
 
+/** 行内管理小按钮（改/删）通用样式：hover 行时出现，浅底不抢焦点 */
+const ROW_ACTION_BTN_STYLE: CSSProperties = {
+  flexShrink: 0,
+  width: 18,
+  height: 18,
+  padding: 0,
+  lineHeight: '16px',
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  color: 'var(--text-tertiary)',
+  fontSize: 12,
+};
+
 function DefaultRow({
   opt,
   onSelect,
+  onRename,
+  onDelete,
 }: {
   opt: SuggestOption;
   onSelect: (opt: SuggestOption) => void;
+  onRename?: (opt: SuggestOption) => void;
+  onDelete?: (opt: SuggestOption) => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   const tag = TYPE_TAG_MAP[opt.type] ?? TYPE_TAG_MAP.existing;
   const tagText = opt.badge?.trim() || tag.text;
   const tagColor = opt.badge?.trim() ? 'var(--text-brand)' : tag.color;
+  // 行内改/删：仅 existing 项、且调用方传入回调时渲染。stopPropagation 防误触 onSelect；
+  // onMouseDown preventDefault 防下拉失焦关闭（AutoComplete 基于 Select，mousedown 会抢焦点）。
+  const showActions = opt.type === 'existing' && (!!onRename || !!onDelete) && hovered;
+  const stop = (fn?: () => void) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn?.();
+  };
   return (
     <div
       role="button"
@@ -223,9 +258,11 @@ function DefaultRow({
       }}
       style={DEFAULT_ROW_STYLE}
       onMouseEnter={(e) => {
+        setHovered(true);
         e.currentTarget.style.background = 'var(--bg-overlay-l2)';
       }}
       onMouseLeave={(e) => {
+        setHovered(false);
         e.currentTarget.style.background = 'transparent';
       }}
     >
@@ -240,6 +277,34 @@ function DefaultRow({
       >
         {opt.label}
       </span>
+      {showActions && (
+        <>
+          {onRename && (
+            <button
+              type="button"
+              aria-label={`改名「${opt.label}」`}
+              title="改名（字典里已有同名则并档）"
+              style={ROW_ACTION_BTN_STYLE}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={stop(() => onRename(opt))}
+            >
+              <EditOutlined />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              aria-label={`删除「${opt.label}」`}
+              title="删除（历史值作为字符串保留）"
+              style={{ ...ROW_ACTION_BTN_STYLE, color: 'var(--text-danger, var(--text-tertiary))' }}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={stop(() => onDelete!(opt))}
+            >
+              <DeleteOutlined />
+            </button>
+          )}
+        </>
+      )}
       <span style={{ fontSize: 10, color: tagColor, flexShrink: 0 }}>{tagText}</span>
     </div>
   );
@@ -279,17 +344,78 @@ export default function SuggestList<T = SuggestOption>({
   idleText,
   allowCreateWhenEmpty = false,
   createLabel,
+  onRename,
+  onDelete,
 }: SuggestListProps<T>) {
   const trimmedKw = keyword.trim();
+
+  /**
+   * 【一致性改造 · 防重复】100% 匹配判定。
+   *   字典具唯一性：检索结果里若已有「归一化后完全相同」的项，就不该再给「新建」入口。
+   *   快建的目的是让用户快速确认已有项，不是造重复——后端唯一性校验只是兜底，不是主要手段。
+   *   归一化口径：去首尾空白 + 全角转半角 + 大小写不敏感
+   *   （防肉眼分不出的重复：「金牛␠」「ＡＢＣ」这类，建进去就是两条看起来一样的数据）。
+   */
+  const exactMatch = useMemo(() => {
+    if (!trimmedKw) return undefined;
+    const norm = (s: string) =>
+      s
+        .trim()
+        .replace(/[\uFF01-\uFF5E]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+        .toLowerCase();
+    const target = norm(trimmedKw);
+    return options.find(
+      (o) => isSuggestOption(o) && o.type === 'existing' && norm(String(o.value)) === target,
+    ) as SuggestOption | undefined;
+  }, [options, trimmedKw]);
+
   const showCreate = allowCreate && !!onCreate && (trimmedKw !== '' || allowCreateWhenEmpty);
+  /** 有 100% 匹配 → 新建项降级为「已存在」占位：保持布局稳定，不给可点的新建入口 */
+  const showExistingInsteadOfCreate = showCreate && !!exactMatch;
   const showEmpty = !loading && options.length === 0 && !showCreate && trimmedKw !== '';
   const showIdle = !loading && options.length === 0 && trimmedKw === '' && !!idleText;
   const showList = !loading && options.length > 0;
 
   return (
     <div data-shared-badge="C13" style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
-      {/* 新建项 */}
-      {showCreate && (
+      {/* 100% 匹配 →「已存在」占位项：占位不消失（布局稳定），点击 = 选中已存在的那项而非新建 */}
+      {showExistingInsteadOfCreate && exactMatch && (
+        <div
+          role="button"
+          tabIndex={0}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onSelect(exactMatch as unknown as T)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelect(exactMatch as unknown as T);
+            }
+          }}
+          style={{
+            ...CREATE_ROW_STYLE,
+            background: 'var(--bg-base-secondary)',
+            cursor: 'pointer',
+          }}
+          title="字典里已有同名项，直接选用即可，不必新建"
+        >
+          <CheckOutlined style={{ fontSize: 12, flexShrink: 0, color: 'var(--text-brand)' }} />
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
+              color: 'var(--text-secondary)',
+              whiteSpace: 'nowrap',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            已有「{trimmedKw}」· 直接选用
+          </span>
+        </div>
+      )}
+
+      {/* 新建项（无 100% 匹配时才给入口） */}
+      {showCreate && !showExistingInsteadOfCreate && (
         <div
           role="button"
           tabIndex={0}
@@ -389,7 +515,15 @@ export default function SuggestList<T = SuggestOption>({
           }
           // 默认行渲染：仅当 T = SuggestOption 时使用
           if (isSuggestOption(item)) {
-            return <DefaultRow key={key} opt={item} onSelect={onSelect as (opt: SuggestOption) => void} />;
+            return (
+              <DefaultRow
+                key={key}
+                opt={item}
+                onSelect={onSelect as (opt: SuggestOption) => void}
+                onRename={onRename as ((opt: SuggestOption) => void) | undefined}
+                onDelete={onDelete as ((opt: SuggestOption) => void) | undefined}
+              />
+            );
           }
           return null;
         })}

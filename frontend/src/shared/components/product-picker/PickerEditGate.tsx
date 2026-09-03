@@ -50,7 +50,11 @@ export interface PickerCatalogEditReq {
   placeholder?: string;
   /** 确认层允许写成空（备注、地址等可清空） */
   allowEmpty?: boolean;
-  apply: (next: string) => void | Promise<void>;
+  /**
+   * 只改当前。字典检索列表行内改名（SuggestInput）不传 apply：
+   * 字典项改名本身就是全局动作，确认层只出「改全局」一个按钮，不重复出「确认修改」。
+   */
+  apply?: (next: string) => void | Promise<void>;
   applyGlobal?: (next: string) => void | Promise<void>;
   /** 非字典类（点位）改全局时，自己提供影响清单 */
   previewGlobal?: (to: string) => Promise<CatalogImpactPreview>;
@@ -266,7 +270,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     }
     setBusy(true);
     try {
-      await Promise.resolve(global ? req.applyGlobal!(nextValue) : req.apply(nextValue));
+      await Promise.resolve(global ? req.applyGlobal!(nextValue) : req.apply?.(nextValue));
       close();
     } catch {
       setBusy(false);
@@ -283,7 +287,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
       setBusy(true);
       try {
         if (nextValue !== null) {
-          await Promise.resolve(req.apply(nextValue));
+          await Promise.resolve(req.apply?.(nextValue));
         }
         // 不走 close()：close 会清 req；直接打开下一格，复用同一确认层槽位。
         const reopen = target.reopen;
@@ -474,15 +478,17 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                     改全局
                   </DsButton>
                 )}
-                <DsButton
-                  variant="primary"
-                  size="sm"
-                  loading={busy}
-                  disabled={nextValue === null || busy}
-                  onClick={() => void confirm(false)}
-                >
-                  确认修改
-                </DsButton>
+                {req.apply && (
+                  <DsButton
+                    variant="primary"
+                    size="sm"
+                    loading={busy}
+                    disabled={nextValue === null || busy}
+                    onClick={() => void confirm(false)}
+                  >
+                    确认修改
+                  </DsButton>
+                )}
               </div>
             </div>
           }

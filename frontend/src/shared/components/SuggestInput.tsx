@@ -70,7 +70,7 @@
 //   选中默认项 → onSelect({id:'', name, type:'default'})
 //   选中新建项 → onCreate 建档后 onSelect({id, name, type:'create'})
 
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AutoComplete } from 'antd';
 import type { SuggestField, SuggestOption } from '../services/api/baseDataApi.js';
 import {
@@ -81,8 +81,20 @@ import {
 } from '../services/api/baseDataApi.js';
 import { useDebounce } from '../hooks/useDebounce.js';
 import { useSuggest } from '../hooks/useSuggest.js';
+import { useCanvasApp } from '../hooks/useCanvasApp.js';
 import { smartPopupContainer } from '../utils/smartPopupContainer.js';
 import SuggestList from './SuggestList.js';
+import PickerTreeViewBar from './PickerTreeViewBar.js';
+import { PickerEditGateProvider, usePickerEditGate } from './product-picker/PickerEditGate.js';
+import {
+  DICT_DELETE_FN,
+  DICT_ENTRY_VIEWS,
+  dictChangeKindOfField,
+  isDictEntryField,
+  renameDictEntry,
+  toSuggestOption,
+  type DictEntryItem,
+} from '../config/dictEntryViews.js';
 
 // ============================================================
 // §1 类型定义
@@ -231,7 +243,7 @@ const ANTD_SIZE_MAP: Record<'sm' | 'md' | 'lg', 'small' | 'middle' | 'large'> = 
 // §4 通用 SuggestInput 组件
 // ============================================================
 
-export function SuggestInput({
+function SuggestInputInner({
   field,
   value,
   onChange,
@@ -260,6 +272,100 @@ export function SuggestInput({
   const [open, setOpen] = useState(() => Boolean(autoFocus && searchWhenEmpty));
   const [createLoading, setCreateLoading] = useState(false);
   const debouncedKw = useDebounce(searchKw, 250);
+  const { message, modal } = useCanvasApp();
+  const gate = usePickerEditGate();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // ---- 字典类字段：两档入口（检索结果 / 完整字典）+ 行内改/删 ----
+  // 表头级联（fetcher）与未登录 public 接口不走全局字典，不出现切换条
+  const showDictEntry = isDictEntryField(field) && !fetcher && !isPublic;
+  const [viewMode, setViewMode] = useState<'suggest' | 'dict'>('suggest');
+  const [dictItems, setDictItems] = useState<DictEntryItem[]>([]);
+  const [dictLoading, setDictLoading] = useState(false);
+
+  const refreshDict = useCallback(async () => {
+    const listFn = DICT_LIST_FN[field];
+    if (!listFn) return;
+    setDictLoading(true);
+    try {
+      setDictItems(await listFn());
+    } catch {
+      setDictItems([]);
+    } finally {
+      setDictLoading(false);
+    }
+  }, [field]);
+
+  useEffect(() => {
+    if (showDictEntry && open && viewMode === 'dict') void refreshDict();
+  }, [showDictEntry, open, viewMode, refreshDict]);
+
+  const dictOptions = useMemo(
+    () => dictItems.map(toSuggestOption),
+    [dictItems],
+  );
+  const filteredDictOptions = useMemo(() => {
+    const kw = searchKw.trim().toLowerCase();
+    if (!kw) return dictOptions;
+    return dictOptions.filter((o) => o.value.toLowerCase().includes(kw));
+  }, [dictOptions, searchKw]);
+
+  // 行内「改」→ PickerEditGate 确认层（preview 影响行数 → 改名/并档 → apply）。
+  // 不传 apply：字典项改名本身就是全局动作，确认层只出「改全局」。
+  const openRenameGate = useCallback(
+    (opt: SuggestOption) => {
+      if (opt.id == null || opt.id === '' || !rootRef.current) return;
+      const fromId = String(opt.id);
+      const kind = dictChangeKindOfField(field);
+      setOpen(false);
+      gate.open(
+        {
+          kind,
+          from: opt.value,
+          fromId,
+          dictField: kind,
+          input: 'text',
+          applyGlobal: async (next) => {
+            const result = await renameDictEntry(field, fromId, next);
+            void refreshDict();
+            if (value.trim() === opt.value) {
+              onChange(next);
+              onSelect?.({ id: result.toId, name: result.toName, type: 'existing' });
+            }
+          },
+        },
+        rootRef.current,
+        { allowRoot: true },
+      );
+    },
+    [field, gate, onChange, onSelect, refreshDict, value],
+  );
+
+  // 行内「删」→ 单条 modal.confirm（历史值作为字符串保留；被引用由后端拦截）
+  const confirmDelete = useCallback(
+    (opt: SuggestOption) => {
+      const deleteFn = DICT_DELETE_FN[field];
+      if (opt.id == null || opt.id === '' || !deleteFn) return;
+      modal.confirm({
+        title: `删除「${opt.value}」？`,
+        content: '已使用的历史值作为字符串保留在业务数据中，不受影响。',
+        okText: '删除',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            await deleteFn(String(opt.id));
+            void refreshDict();
+            if (value.trim() === opt.value) onChange('');
+            message.success(`已删除「${opt.value}」`);
+          } catch {
+            message.error('删除失败，该项可能仍被引用');
+          }
+        },
+      });
+    },
+    [field, modal, message, refreshDict, value, onChange],
+  );
 
   // 默认 allowCreate 按 field 判定
   const finalAllowCreate = allowCreate ?? DEFAULT_CREATABLE_FIELDS.includes(field);
@@ -341,6 +447,7 @@ export function SuggestInput({
     .join(' ');
 
   return (
+    <div ref={rootRef} style={{ width: '100%' }}>
     <AutoComplete
       className={rootClass}
       data-shared-badge={badge}
@@ -363,6 +470,9 @@ export function SuggestInput({
         if (visible) {
           // 表头级联：打开时按空词拉「当前结果里的下级」，展示值仍是已选项
           setSearchKw(searchWhenEmpty ? '' : value);
+        } else {
+          // 每次进来先看「检索结果」档，不保留上次的「完整字典」档
+          setViewMode('suggest');
         }
       }}
       placeholder={placeholder}
@@ -389,15 +499,28 @@ export function SuggestInput({
       popupMatchSelectWidth={false}
       // v9.5：列表渲染统一由 SuggestList 组件负责（与 ProductPicker 共用同一列表实现）
       popupRender={() => (
-        <SuggestList
-          options={filteredOptions}
-          loading={loading}
-          keyword={searchKw}
-          allowCreate={finalAllowCreate}
-          onSelect={handleSelect}
-          onCreate={handleCreate}
-          createLoading={createLoading}
-        />
+        <>
+          {showDictEntry && (
+            <PickerTreeViewBar
+              views={DICT_ENTRY_VIEWS}
+              value={viewMode}
+              onChange={setViewMode}
+            />
+          )}
+          <SuggestList
+            options={viewMode === 'dict' ? filteredDictOptions : filteredOptions}
+            loading={viewMode === 'dict' ? dictLoading : loading}
+            keyword={searchKw}
+            allowCreate={finalAllowCreate}
+            onSelect={handleSelect}
+            onCreate={handleCreate}
+            createLoading={createLoading}
+            // 行内管理（仅 existing 项 hover 显示）：改=确认层并档，删=单条确认
+            onRename={showDictEntry ? openRenameGate : undefined}
+            onDelete={showDictEntry ? confirmDelete : undefined}
+            idleText={viewMode === 'dict' ? '字典为空' : undefined}
+          />
+        </>
       )}
       allowClear={allowClear}
       suffixIcon={null}
@@ -405,6 +528,20 @@ export function SuggestInput({
       onKeyDown={handleKeyDownInternal}
       onClick={onClick}
     />
+    </div>
+  );
+}
+
+/**
+ * 对外导出：内包 PickerEditGateProvider——
+ * 字典类字段的行内「改」在任何宿主（Modal/弹层/表格）都能打开确认层，
+ * 不依赖外层是否已挂选品确认层框架。非字典字段该 Provider 零渲染成本。
+ */
+export function SuggestInput(props: SuggestInputProps) {
+  return (
+    <PickerEditGateProvider>
+      <SuggestInputInner {...props} />
+    </PickerEditGateProvider>
   );
 }
 
