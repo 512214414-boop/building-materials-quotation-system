@@ -163,6 +163,7 @@
 | **前端页面装配器** | `shared/config/resourceConfig.ts` + `shared/config/pageAssembler.ts`；SupplierManage 接入 `assembleSlots('supplier', ...)` 验证列顺序与配置一致 |
 | **Meta Studio** | `tools/meta-studio.mjs`（本地 8898 端口：读 yml / 写 yml / 跑生成器 / 校验 / 6 个 API）；`frontend/.../MetaStudio/index.html` 自动生成（含 7 个交互功能） |
 | **字典重复治理·并档下沉（2026-09-03）** | SuggestList(C13) 行内改/删（仅 existing 项 hover，default/占位行不给）；PickerEditGate 确认层字典下拉接「检索结果/完整字典」两档（PickerTreeViewBar C22，全量 list）+ 行内改/删（改=该项装进确认层改名流程走 dictMerge「改全局」，删=单条 modal.confirm）；SuggestInput(C12) 字典类字段同能力（两档+行内改/删，内包 Provider）；C15 管理面板改名口径对齐并档（去掉重名拦截，guard-exceptions.md 登记）；废弃 DictFieldInput(C16)（无使用方，contactMethodDict 类型迁 DictRecordConfig）。e2e 全过（e2e_browser/shots-suggestdict/）。commit：0247b31 / 7083a33 / 0bec2be / 6732a14 / PickerEditGate 接线 |
+| **确认层收敛·通用槽位沉淀（2026-09-03 第二轮）** | 确认层字典检索区删齿轮旧管理面板（与两档重叠），齿轮位换统一收/展按钮（对齐 DsInputDropdown 形态，默认展开）；行内改/删改常驻（不依赖 hover）；C14/C15 组件停止导出（DictRecordManagePanel 仅剩 C66 多选面板内部用，类型导出保留）；参数化核查：gate.open 全站 7 处全 req 驱动、无第二套确认层（遗留观察：UnitPriceExpandPanel/UnitManagePanel 面板行删除按钮未并入 gate.onDelete）；真相源新增 cell-gate-path 篇（路径由值来源层级决定/检索收展一套/管理跟字典走），gen-docs 34 条同步。commit：suggestlist 常驻 / edit-gate 收敛 / cell-gate-path 沉淀 |
 
 ---
 
