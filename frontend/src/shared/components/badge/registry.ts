@@ -38,8 +38,8 @@ export const SHARED_BADGES: Record<string, SharedBadgeInfo> = {
   // 五、录入/选择组件
   SuggestInput: { id: 'C12', cn: '检索输入', group: '录入选择' },
   SuggestList: { id: 'C13', cn: '匹配列表', group: '录入选择' },
-  DictRefCell: { id: 'C14', cn: '档案引用单元格', group: '录入选择' },
-  DictRefField: { id: 'C15', cn: '档案引用输入', group: '录入选择' },
+  // C14 DictRefCell / C15 DictRefField 已废弃（2026-09）：确认层字典管理统一走 PickerEditGate 两档
+
   DictListPanel: { id: 'C17', cn: '字典管理面板', group: '录入选择' },
   UnitDropdown: { id: 'C18', cn: '单位切换下拉', group: '录入选择' },
   UnitManagePanel: { id: 'C19', cn: '单位管理面板', group: '录入选择' },

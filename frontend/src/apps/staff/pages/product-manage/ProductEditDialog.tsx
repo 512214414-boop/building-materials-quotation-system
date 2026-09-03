@@ -30,6 +30,7 @@
 //   - Popover getPopupContainer 使用 smartPopupContainer 统一挂载策略（v11.2）
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { resolveGuard } from '../../../../shared/config/resolveGuard.js';
 import {
   Spin,
   Tooltip,
@@ -698,8 +699,8 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
   // 品牌操作
   // ============================================================
 
-  // v14.2：品牌引用解析回调（DictRefCell 三件套：选择复用/快捷新建/失焦解析统一带 id）
-  //   语义：输入框 = 匹配复用/快捷新建（换引用），改全局档案名走 DictRefField 管理面板（管理下拉按钮）
+  // v14.2：品牌引用解析回调（选择复用/快捷新建/失焦解析统一带 id）
+  //   语义：输入框 = 匹配复用/快捷新建（换引用），改全局档案名走确认层「改全局」（dictMerge 改名/并档）
   const handleBrandResolve = useCallback(
     (idx: number, item: { id: string; name: string }) => {
       setBrands((prev) =>
@@ -918,8 +919,11 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
 
     // ---- 校验 ----
     const trimmedName = productName.trim();
-    if (!trimmedName) {
-      message.warning('请输入产品名称');
+    const block = resolveGuard('product_save', {
+      form: { productName: trimmedName },
+    });
+    if (block) {
+      message.warning(block);
       savingRef.current = false;
       return;
     }

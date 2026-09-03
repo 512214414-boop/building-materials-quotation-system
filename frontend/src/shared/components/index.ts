@@ -92,9 +92,6 @@ export type { DsSegmentedProps } from './DsSegmented';
 export { default as SuggestInput } from './SuggestInput';
 export type { SuggestInputProps, SuggestSelectItem } from './SuggestInput';
 
-export { default as DictRefCell } from './DictRefCell';
-export type { DictRefCellProps } from './DictRefCell';
-
 // 配货来源选择器（C26：一框检索 + 两列分区，仓/渠道各选各的）
 export { default as AllocationSourcePicker } from './AllocationSourcePicker';
 export type { AllocationSourcePickerProps } from './AllocationSourcePicker';
@@ -123,10 +120,9 @@ export type { DictMultiSelectPanelProps } from './DictMultiSelectPanel';
 export { default as DictListPanel } from './DictListPanel';
 export type { DictListPanelProps, DictListPanelItem } from './DictListPanel';
 
-// 档案引用输入 + 管理面板一体化（v14.3：同质同构根上收敛，brand/supplier/category/priceType 共用）
-export { default as DictRefField } from './DictRefField';
+// v17.0：DictRefField/DictRefCell 组件停止对外导出（确认层字典管理统一走 PickerEditGate 两档，
+// DictRecordManagePanel 仅剩 C66 DictMultiSelectPanel 内部管理区在用）；类型仍从此文件出。
 export {
-  DictRecordManagePanel,
   type DictRecordConfig,
   type DictRecord,
 } from './DictRefField';
@@ -160,8 +156,9 @@ export type { UnitManagePanelProps, UnitManageItem } from './UnitManagePanel';
 export { default as EntityPanel } from './EntityPanel';
 export type { EntityPanelProps, EntityPanelRow } from './EntityPanel';
 
-// C16 DictFieldInput 已废弃（2026-09）：无页面使用方，矩阵格统一走 ArchiveFieldCell +
-// PickerEditGate 确认层，字典/档案管理统一走 C15 DictRefField 体系。
+// C16 DictFieldInput、C14 DictRefCell、C15 DictRefField 组件已废弃/内部化（2026-09）：无页面使用方，
+// 矩阵格统一走 ArchiveFieldCell + PickerEditGate 确认层，字典管理统一走确认层「检索结果/完整字典」两档
+// （检索下拉行内改/删 + dictMerge 并档）。DictRecordConfig/DictRecord 类型仍由 DictRefField.tsx 提供。
 
 // 预置快速选项条（v1.9：数据补全·预置快速选项，通用 quickOptions 配置——不传不渲染）
 export { default as QuickOptionsBar } from './QuickOptionsBar';

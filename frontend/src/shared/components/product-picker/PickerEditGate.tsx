@@ -1,9 +1,9 @@
 // 选品框架里改档案：点格子 → 够宽的输入浮层（看全文 + 影响范围 + 确认/取消）。
 // 取消即恢复原样，格子里不留半改状态。挂当前层，不叠模态、不关选品。
-// 确认修改 = 只改当前。改全局才列出本次会动到的档案；字典格检索下拉，输入旁 ▾ 打开字典管理。
+// 确认修改 = 只改当前。改全局才列出本次会动到的档案；字典格检索下拉，输入旁 ▾ 收/展检索（默认展开）。
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { SettingOutlined, UnorderedListOutlined, LeftOutlined, RightOutlined, UpOutlined, DownOutlined } from '@ant-design/icons';
+import { UnorderedListOutlined, LeftOutlined, RightOutlined, UpOutlined, DownOutlined } from '@ant-design/icons';
 import FloatPanel from '../FloatPanel.js';
 import DsButton from '../DsButton.js';
 import DsInput from '../DsInput.js';
@@ -13,7 +13,7 @@ import PickerTreeViewBar from '../PickerTreeViewBar.js';
 import ValueChangePair from '../ValueChangePair.js';
 import type { CellSwitchDir, CellSwitchGrid } from './cellSwitch.js';
 import SuggestList from '../SuggestList.js';
-import { DictRecordManagePanel, type DictRecordConfig } from '../DictRefField.js';
+import type { DictRecordConfig } from '../DictRefField.js';
 import { dictConfigFor } from '../../config/recordDicts.js';
 import { useDebounce } from '../../hooks/useDebounce.js';
 import { useSuggest } from '../../hooks/useSuggest.js';
@@ -153,7 +153,6 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   const [previewing, setPreviewing] = useState(false);
   const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [dictOpen, setDictOpen] = useState(false);
   // 选用检索列表显隐（确认层输入框旁的展开/收起钮控制）。默认常开，保持原行为。
   const [listExpanded, setListExpanded] = useState(true);
   // 确认层定位稳定后子层才展开，避免跳动。
@@ -163,7 +162,6 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   // 只包输入框那一行：选用检索/字典检索都锚到这里，紧贴输入框展开，
   // 而不是锚到整个确认层内容（否则列表会弹到面板很下方，移动端上下距离过长）。
   const inputFieldRef = useRef<HTMLDivElement>(null);
-  const dictBtnRef = useRef<HTMLButtonElement>(null);
   const confirmPanelIdRef = useRef(allocPanelId());
 
   const close = useCallback(() => {
@@ -176,7 +174,6 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     setPreviewing(false);
     setPreviewErr(null);
     setSuggestOpen(false);
-    setDictOpen(false);
     setListExpanded(true);
     setHostReady(false);
   }, []);
@@ -200,7 +197,6 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     setPreviewErr(null);
     setReq(next);
     setSuggestOpen(!!((next.dictField || next.dictConfig) && next.input === 'text'));
-    setDictOpen(false);
     setDictViewMode('suggest');
     setListExpanded(true);
     setHostReady(false);
@@ -415,7 +411,6 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     (opt: { value: string }) => {
       setDraft(opt.value);
       setSuggestOpen(false);
-      setDictOpen(false);
     },
     [],
   );
@@ -653,11 +648,9 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                   onChange={(e) => {
                     setDraft(e.target.value);
                     setSuggestOpen(true);
-                    setDictOpen(false);
                   }}
                   onFocus={() => {
                     setSuggestOpen(true);
-                    setDictOpen(false);
                   }}
                   onKeyDown={(e) => {
                     handleSwitchKey(e);
@@ -670,18 +663,16 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                   }}
                   style={{ flex: 1, minWidth: 0 }}
                 />
+                {/* 统一收/展按钮：默认展开（快速检索），点一下收起看确认层其他信息，再点展开。
+                    形态对齐 DsInputDropdown 的「收起/展开选用检索」，全站确认层一个交互。 */}
                 {dictCfg ? (
                   <DsButton
-                    ref={dictBtnRef}
                     size="sm"
                     variant="ghost"
-                    className={`ds-addon-btn${dictOpen ? ' ds-addon-btn-active' : ''}`}
-                    icon={<SettingOutlined />}
-                    title="管理字典（增删改）"
-                    onClick={() => {
-                      setDictOpen((v) => !v);
-                      setSuggestOpen(false);
-                    }}
+                    className={`ds-addon-btn${suggestOpen ? ' ds-addon-btn-active' : ''}`}
+                    icon={suggestOpen ? <UpOutlined /> : <DownOutlined />}
+                    title={suggestOpen ? '收起字典检索' : '展开字典检索'}
+                    onClick={() => setSuggestOpen((v) => !v)}
                   />
                 ) : null}
                 {suggestOpen && (
@@ -713,26 +704,6 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                       }}
                       onRename={handleGateDictRename}
                       onDelete={handleGateDictDelete}
-                    />
-                  </FloatPanel>
-                )}
-                {dictOpen && dictCfg && (
-                  <FloatPanel
-                    open
-                    parentId={confirmPanelIdRef.current}
-                    anchorRef={dictBtnRef}
-                    onClose={() => setDictOpen(false)}
-                    title={`管理${dictCfg.entityName ?? '字典'}`}
-                    minWidth={COL_WIDTHS.NAME_M}
-                    maxHeight={320}
-                  >
-                    <DictRecordManagePanel
-                      dict={dictCfg as DictRecordConfig<any>}
-                      currentId={req.fromId}
-                      onSelect={(_id, name) => {
-                        setDraft(name);
-                        setDictOpen(false);
-                      }}
                     />
                   </FloatPanel>
                 )}
