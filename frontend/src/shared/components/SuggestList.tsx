@@ -92,7 +92,7 @@
 //     default（默认）→ var(--text-tertiary)（灰色）
 //     existing（已有）→ var(--text-quaternary)（浅灰色）
 
-import { Fragment, useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useMemo, type CSSProperties } from 'react';
 import { Spin } from 'antd';
 import { CheckOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { ValueChip } from './ValueChangePair.js';
@@ -232,13 +232,13 @@ function DefaultRow({
   onRename?: (opt: SuggestOption) => void;
   onDelete?: (opt: SuggestOption) => void;
 }) {
-  const [hovered, setHovered] = useState(false);
   const tag = TYPE_TAG_MAP[opt.type] ?? TYPE_TAG_MAP.existing;
   const tagText = opt.badge?.trim() || tag.text;
   const tagColor = opt.badge?.trim() ? 'var(--text-brand)' : tag.color;
-  // 行内改/删：仅 existing 项、且调用方传入回调时渲染。stopPropagation 防误触 onSelect；
+  // 行内改/删：仅 existing 项、且调用方传入回调时渲染，**常驻**（不依赖 hover——格局稳定，
+  // 移动端没有 hover；宽度换稳定性）。stopPropagation 防误触 onSelect；
   // onMouseDown preventDefault 防下拉失焦关闭（AutoComplete 基于 Select，mousedown 会抢焦点）。
-  const showActions = opt.type === 'existing' && (!!onRename || !!onDelete) && hovered;
+  const showActions = opt.type === 'existing' && (!!onRename || !!onDelete);
   const stop = (fn?: () => void) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -258,11 +258,9 @@ function DefaultRow({
       }}
       style={DEFAULT_ROW_STYLE}
       onMouseEnter={(e) => {
-        setHovered(true);
         e.currentTarget.style.background = 'var(--bg-overlay-l2)';
       }}
       onMouseLeave={(e) => {
-        setHovered(false);
         e.currentTarget.style.background = 'transparent';
       }}
     >
