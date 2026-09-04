@@ -1,14 +1,17 @@
 #!/usr/bin/env node
 /**
- * 项目掌控台生成器 —— 给不懂代码的人「掌控项目」用
+ * 项目掌控台生成器 —— 给不懂代码的人「掌控项目」，并直接驱动开发用的「开发驱动台」
  *
- * 设计第一性（用户原话）：每条信息必须能改变用户的行动，否则就是冗余。
- * 信息架构五层，每层回答「看到后做什么」：
- *   1 现在能不能用   → 服务健康 + 智能入口（自动探测当前设备能打开哪个）
- *   2 项目在哪       → 业务块能力矩阵（能用/在做/没动）
- *   3 接下来         → 按优先级排的待办（可对话下达）
- *   4 等你拍板       → 需要用户决策的事项
- *   5 异常与明细     → 未提交/未推送提醒 + 折叠的 AI 明细
+ * 设计第一性（用户原话：中控台应当对项目有指导开发的意义）：
+ *   每条信息必须能改变行动，否则冗余。定位从「状态播报」升到「开发驱动」——
+ *   首屏只放三件能驱动开发的事，完成度/分组/历史下沉为「项目全景」折叠区。
+ *   信息架构三区（首屏）+ 全景（折叠），每层回答「看到后做什么」：
+ *     区1 下一步      → 最该让 AI 干的具体一步 + 口令（对 AI 说 X 直接开干）
+ *     区2 待你拍板    → 卡住开发的决策（点开看「不决卡住什么」），清了开发线才流动
+ *     区3 已拍板待开发 → 已规定未实施（🕐）+ 待补清单 P1/P2，按优先级排，带「为什么做 / 做完解锁什么」
+ *     全景(折叠)      → 业务块能力矩阵（能用/在做/没动）+ 完成度统计 + 最近做了什么 + 术语对照
+ *     异常            → 未提交/未推送提醒 + 当前 AI 对话（跨对话一致性）
+ *   入口区（现在能用的页面）保留在首屏之后：让用户点开去用，与「开发驱动」互补。
  *
  * 智能入口：同一服务生成 本机/同热点/公网 三套候选，页面加载时 JS 实时
  * 探测当前设备能打开哪个，只亮可达的——用户不需要知道自己在什么网络。
@@ -120,6 +123,10 @@ function pickStatus(text) {
   if (text.includes('🕐')) return STATUSES[2];
   if (text.includes('✅')) return STATUSES[3];
   return null;
+}
+// 待拍板：卡住开发的决策（不决就动不了那条线）。从名称/备注里识别决策触发词
+function isDecision(name, note) {
+  return /矛盾|须弃|待定|未决|是否|怎么选|卡住|待拍板|要砍|弃旧|新旧矛盾/.test(name + ' ' + note);
 }
 const SKIP_HEADS = new Set(['集合体', '页面', '过程', '域', '文档', '状态', '优先级', '项', '阶段', '产出']);
 
@@ -258,13 +265,42 @@ const total = all.length || 1;
 const rate = Math.round((tally.done / total) * 100);
 const updated = new Date().toLocaleString('zh-CN', { hour12: false });
 
+// —— 三区开发驱动台：从台账上浮「能驱动开发」的信号 ——
+// 区2 待你拍板：卡住开发的决策（不决就动不了那条线）；已完成(✅)行里的历史「矛盾」字样不算
+const decisions = all.filter((i) => i.status.key !== 'done' && isDecision(i.name, i.note));
+// 区3 已拍板待开发：🕐 已规定未实施（排除已进待拍板的）+ 待补清单 P1/P2（去重）；统一字段名避免 undefined
+const pendKeys = new Set(pending.map((p) => p.item));
+const pendItems = pending.map((p) => ({ kind: 'pending', level: p.level, name: p.item, note: p.why }));
+const covItems = all
+  .filter((i) => i.status.key === 'doing' && !isDecision(i.name, i.note))
+  .filter((i) => !pendKeys.has(i.name))
+  .map((i) => ({ kind: 'cov', name: i.name, note: i.note }));
+const zone3 = [...pendItems, ...covItems];
+// 区1 下一步：优先级队列顶端一项（P1 > P2 > 🕐 待开发），给出对 AI 说的口令
+const nextQueue = [
+  ...pendItems.filter((p) => p.level === 'P1'),
+  ...pendItems.filter((p) => p.level === 'P2'),
+  ...covItems,
+];
+const nextItem = nextQueue[0] || null;
+// 开发管道：顶端若干步（连发即一条连贯开发线），每步带口令
+const nextItems = nextQueue.slice(0, 3);
+function nextCommand(it) {
+  if (!it) return '';
+  if (it.kind === 'pending') return `开始做 ${it.level}：「${it.name}」`;
+  return `把「${it.name}」落地（已拍板待开发）`;
+}
+
 const p0 = pending.filter((p) => p.level === 'P0');
 const p1 = pending.filter((p) => p.level === 'P1');
 const p2 = pending.filter((p) => p.level === 'P2');
+// 头条：如实反映交付/待开发/偏差/未动，禁止「全部已落地」式误导（doing 不等于 done）
 const headline =
-  tally.todo === 0 && tally.warn === 0
-    ? `全部 ${tally.done} 项都已落地，剩下的只是继续加东西。`
-    : `${tally.done} 项已经能用，${tally.doing + tally.warn} 项还在做，${tally.todo} 项还没动。`;
+  `已交付 ${tally.done} 项` +
+  (tally.doing ? `，已拍板待开发 ${tally.doing} 项` : '') +
+  (tally.warn ? `，有偏差 ${tally.warn} 项` : '') +
+  (tally.todo ? `，还没动 ${tally.todo} 项` : '') +
+  '。';
 
 /* ------------------------------ --access 模式 ---------------------------- */
 if (process.argv.includes('--access')) {
@@ -314,18 +350,32 @@ const commitHtml = gitInfo.commits.length
   ? gitInfo.commits.map((c) => `<li><span class="date">${esc(c.date)}</span>${esc(human(c.text))}</li>`).join('')
   : '<li class="empty">暂无。</li>';
 
-const nextMove = p0.length
-  ? `下一步最优先：${esc(human(p0[0].item))}。你对它说「开始做」或「先放一放，做别的」。`
-  : p1.length
-    ? `P0 已清空。下一步看 P1：${esc(human(p1[0].item))}。`
-    : '高优先级都清了。想加新东西，直接说。';
-
 // 入口区数据内嵌：JS 在用户设备上实时探测，只有点得开的才亮
 const accessJson = JSON.stringify({
   lanIp: access.lanIp,
   publicUrl: access.publicUrl,
   services: SERVICES.map((s) => ({ n: s.name, h: s.hint, port: s.port, path: s.path, pub: s.publicOk })),
 });
+
+// 区2 / 区3 的 HTML 片段（在模板外先算好，保持模板干净）
+const zone3Html = zone3
+  .map(
+    (z) =>
+      `<li class="pend ${z.kind === 'pending' ? `p-${z.level}` : 'p-dev'}"><span class="lvl">${z.kind === 'pending' ? z.level : '🕐'}</span><div class="txt"><div class="name">${esc(human(z.name))}</div>${z.note ? `<div class="note">${esc(human(z.note))}</div>` : ''}</div></li>`
+  )
+  .join('');
+const decisionsHtml = decisions.length
+  ? `<section class="zone block">
+    <h2>待你拍板（卡住开发的决策）</h2>
+    <p class="why">这些不拍板，对应的开发线就动不了。点开看「不决会卡住什么」。</p>
+    <div class="box"><ul class="plist">${decisions
+      .map(
+        (d) =>
+          `<li class="pend p-block"><span class="lvl">⛔</span><div class="txt"><div class="name">${esc(human(d.name))}</div>${d.note ? `<div class="note">${esc(human(d.note))}</div>` : ''}</div></li>`
+      )
+      .join('')}</ul></div>
+  </section>`
+  : '';
 
 const html = `<!doctype html>
 <html lang="zh-CN">
@@ -353,6 +403,15 @@ const html = `<!doctype html>
   .stat .lbl{font-size:12px;color:var(--sub)}
   .stat.a .num{color:var(--ok)}.stat.b .num{color:var(--warn)}.stat.d .num{color:var(--bad)}
   .next{background:#eef4ff;border:1px solid #c9dafc;border-radius:12px;padding:14px;font-size:15px;margin-top:10px}
+  .zone{margin-top:18px}
+  .nextcmd{background:#eef4ff;border:1px solid #c9dafc;border-radius:12px;padding:14px;margin-top:8px}
+  .pipe{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+  .nc-step{font-size:12px;font-weight:700;color:#0d7a3c;margin-bottom:2px}
+  .nc-txt{font-size:17px;font-weight:700;line-height:1.4}
+  .nc-note{font-size:14px;color:var(--sub);margin-top:4px}
+  .nc-cmd{margin-top:10px;font-size:14px;font-weight:600;color:#0d7a3c;background:#e8f5ee;border:1px solid #12a150;border-radius:9px;padding:8px 12px;display:inline-block}
+  .p-dev .lvl{background:#6b7280}
+  .p-block .lvl{background:#7a3fb0}
   .entry{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 14px 12px;margin-bottom:8px}
   .entry .ename{font-weight:600;padding:10px 0 2px}
   .entry .ehint{font-size:13px;color:var(--sub);padding-bottom:8px}
@@ -396,15 +455,8 @@ const html = `<!doctype html>
 
 <div class="wrap">
   <div class="hero">
-    ${esc(headline)}完成度 ${rate}%。
-    <small>这一页只放「看了能行动」的信息：入口点得开就去用，拍板项等你说继续或调整。</small>
-  </div>
-
-  <div class="stats">
-    ${statCard('a', tally.done, '已完成')}
-    ${statCard('b', tally.doing, '在做')}
-    ${statCard('c', tally.warn, '有偏差')}
-    ${statCard('d', tally.todo, '还没做')}
+    ${esc(headline)}
+    <small>${rate}% 已交付。首屏只放「能驱动开发的三件事」：下一步、待你拍板、已拍板待开发。点得开的页面在下方入口区。</small>
   </div>
 
   <h2>现在能用的页面</h2>
@@ -416,15 +468,29 @@ const html = `<!doctype html>
       : `<div class="tip" style="margin-top:8px"><strong>出门在外也想用？</strong>公网入口还没建。对 AI 说「建公网」，建好后这里会出现公网按钮，手机在任何网络都能打开日常页面。</div>`
   }
 
-  <div class="next"><strong>接下来：</strong>${nextMove}</div>
+  <section class="zone next">
+    <h2>下一步该干什么（按优先级排的开发管道）</h2>
+    <p class="why">这是现在最该让 AI 动手的几步，按优先级排好。把任意一句发给 AI 就能开干；连发就是一条连贯的开发线。</p>
+    ${nextItems.length ? `<div class="pipe">${nextItems.map((it, idx) => `<div class="nextcmd"><div class="nc-step">第 ${idx + 1} 步</div><div class="nc-txt">${esc(human(it.name))}</div>${it.note ? `<div class="nc-note">${esc(human(it.note))}</div>` : ''}<div class="nc-cmd">👉 对 AI 说：「${esc(nextCommand(it))}」</div></div>`).join('')}</div>` : `<div class="empty">没有排定的开发了。想加东西直接说。</div>`}
+  </section>
 
-  <h2>项目在哪</h2>
-  <p class="why">每块业务能不能用一眼看清。想自己验，让 AI 给你「打开哪页、点什么、看到什么」。</p>
-  ${groupHtml}
+  ${decisionsHtml}
 
-  <h2>接下来做什么（按优先级）</h2>
-  <p class="why">P0 最急。对 AI 说「开始做 P0」或「先放一放」。</p>
-  <div class="box"><ul class="plist">${pendingHtml}</ul></div>
+  <section class="zone dev">
+    <h2>已拍板待开发（决定好了，只等落地）</h2>
+    <p class="why">🕐 已规定未实施 + 待补清单（P1/P2）。带「为什么做 / 做完解锁什么」，按优先级排。</p>
+    <div class="box"><ul class="plist">${zone3Html}</ul></div>
+  </section>
+
+  <details class="box gl-box"><summary style="padding:10px 0;font-weight:600">项目全景（完成度 + 各业务块能力）</summary>
+    <div class="stats">
+      ${statCard('a', tally.done, '已交付')}
+      ${statCard('b', tally.doing, '待开发')}
+      ${statCard('c', tally.warn, '有偏差')}
+      ${statCard('d', tally.todo, '还没动')}
+    </div>
+    ${groupHtml}
+  </details>
 
 ${
   (() => {
@@ -539,7 +605,19 @@ ${headline}完成度 ${rate}%（${tally.done}/${total}）。
 
 ${addrRows}
 
-## 项目在哪
+## 下一步该干什么（按优先级排的开发管道，对 AI 说任意一句直接开干）
+
+${nextItems.length ? nextItems.map((it, idx) => `${idx + 1}. 👉 **${nextCommand(it)}**（${plain(it.name)}）${it.note ? `：${plain(it.note)}` : ''}`).join('\n') : '- 无排定开发'}
+
+## 待你拍板（卡住开发的决策）
+
+${decisions.length ? decisions.map((d) => `- ⛔ **${plain(d.name)}**${d.note ? `：${plain(d.note)}` : ''}`).join('\n') : '- 无，开发不被任何待拍板决策卡住'}
+
+## 已拍板待开发（决定好了只等落地）
+
+${zone3.length ? zone3.map((z) => `- [${z.kind === 'pending' ? z.level : '🕐'}] ${plain(z.name)}${z.note ? `：${plain(z.note)}` : ''}`).join('\n') : '- 无'}
+
+## 项目全景（各业务块能力）
 
 ${groups
   .map(
@@ -548,14 +626,6 @@ ${groups
       g.items.map((i) => `- ${i.status.icon} **${plain(i.name)}**${i.note ? `：${i.note}` : ''}`).join('\n')
   )
   .join('\n\n')}
-
-## 接下来（用户可对 AI 说「开始做 P0」）
-
-${
-  pending.length
-    ? pending.map((p) => `- [${p.level}] ${plain(p.item)} —— ${plain(p.why)}`).join('\n')
-    : '- 无'
-}
 
 ## 最近做了什么（最多 8 条，防冗余）
 
