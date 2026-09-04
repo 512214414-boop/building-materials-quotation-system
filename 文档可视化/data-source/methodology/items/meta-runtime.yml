@@ -72,6 +72,10 @@ page:
           - /api/staff/r/:resource 服务清单/新建/快建/详情/改/删/引用计数；行为由 yml resources 段声明。禁止绕过登记表开接口。
         - - 引擎边界
           - 只做单表通用读写；多表事务、单据状态机、跨表对账走实体专属 service，禁止塞进引擎。
+        - - 配置边界（与上行是两条线，禁止混为一谈）
+          - 「单据不走引擎」不等于「单据不进登记表」。**引擎边界按「单表 vs 事务」切，配置边界按「声明 vs 行为」切**——所有实体（含单据）的字段/列/校验/权限/审计/统计口径都必须登记进 entity-meta.yml，只有它的写操作走专属 service。不登记就必然在别处手写第二份，直接违反「一处声明、呈现层零手写」。实证：单据守卫（`purchase_inbound_confirm` / `refund_add_lines`）本就在 actions 段、auditActions 含 `purchase_inbound_confirm`、indicators 的 `costAmount` 统计的就是单据行、后端 `resolveSnapshots` / `auditLogger` 已在消费同一份声明——**行为走代码，声明仍只有一个来源**。
+        - - 第三道锁 · 对拍（生成器 --check）
+          - 生成区隔离只保证「不许手改」，保证不了「yml 改了忘跑生成器」——那种漂移没有任何信号，生成物会一直停在旧版本且看起来完全正常。必须能跑 `node tools/gen-entity-meta.mjs --check`：以 yml 为输入重生成到内存，与磁盘逐字节比对，不一致 exit 1。**快照断言（把实体数/列数写死在测试里）不可替代对拍**——它既会因加实体而假红，又会在 yml 改了没生成时假绿（generated 没变，断言仍过）。所有生成物必须经生成器 `emit()` 统一出口，否则不会被对拍覆盖。
         - - 可写字段 Fail Fast
           - 新建出现白名单外字段直接拒绝（防误传静默落库）；修改只取白名单内字段。
         - - 页面装配
@@ -79,6 +83,8 @@ page:
         - - 零代码新增 SOP
           - Meta Studio 填 resources+pages → 写编辑器 → assembleSlots 接入 → 保存跑生成器 → 前端 vite build + 后端 tsc + verify-resource-engine(11/11) → e2e → 回写台账。
   rules:
+    - - 三道锁缺一不可
+      - ① 生成（yml → 前后端产物）② 禁手改（差异走旁侧 override）③ **会失败的对拍**（--check，不一致即红）。缺第 ③ 道＝只是集中存放，不叫自动对齐——没有失败信号的地方必然漂。门禁另需一条命令串起（tools/verify.mjs）：只写在文档里的门禁等于没有门禁（本项目 `verify` 脚本曾悬空整个项目周期，指向从不存在的文件）。
     - - 一处声明五面产出
       - 改一个字段只动 entity-meta.yml 一处，前端列表、后端校验、文档三处自动跟；check-docs 与前后端构建零报错是验收线。
     - - 留痕优于审批
