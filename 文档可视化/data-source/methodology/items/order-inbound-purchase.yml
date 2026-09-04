@@ -1,0 +1,37 @@
+id: inbound-purchase
+layer: L1
+navId: order-inbound-purchase
+index:
+  hear: "采购入库、囤货补货、不绑订单的进货"
+nav:
+  title: 采购入库
+  subtitle: 触发：囤货补货 · 不绑订单 · 一次确认即入账
+page:
+  kicker: 订单中心 · 进货管货
+  title: 采购入库是不绑订单的囤货入口：选品填价，一次确认把库存、应付、欠库三笔账一起记完
+  lead: 采购入库解决的是「先囤货再卖」——不绑客户订单，自己选品、填数量与进价，确认一次就完成入库落账。它和待入库的分工是：采购入库是主动补货（人发起），待入库是配货超额调货的被动产物（系统生成）。两者最终都汇进库存台账，都用同一套加权平均计价，都要冲抵欠库。不让采购动作阻塞开单主线，是这个入口存在的全部理由。
+  factsKicker: 这一页定什么
+  factsTitle: 无草稿态，确认即终态；一次确认动三笔账
+  factsLead: 没有草稿是因为囤货场景不需要来回改——填完就入账，错了走盘点调整或反向单据，不在单据上养草稿态。
+  facts:
+    - label: 无草稿，提交即完成
+      note: '状态直接落 done（复用 inbound_task_status：pending/done/cancelled）。单号 PO + 年月日 + 8 位序列。'
+    - label: 一次确认动三笔账
+      note: '加库存并按加权平均重算进价、写 in 流水；金额大于 0 的生成供应商应付（biz_type=purchase，pending）；再按「仓库+SKU 先进先出」冲抵欠库。'
+    - label: 必填与数值校验
+      note: '供应商、仓库（须存在且启用）、至少 1 行；行数量大于 0、进价不小于 0。行金额 = 数量 × 进价（round2），单头汇总总量与总额。'
+  tables:
+    - kicker: 确认时联动什么
+      navLabel: 联动
+      title: 一次确认写进去的账，三笔
+      lead: 三笔账必须同事务完成，缺一笔就是对不上账。
+      colA: 账
+      colB: 写什么 · 后续影响
+      rows:
+        - - 库存账
+          - 加库存 + 按加权平均重算进价 + 写 in 流水 · 决定后续出库成本
+        - - 应付账
+          - 生成 supplier_payable_lines（purchase，pending）· 收付款往来页据此付款
+        - - 欠库账
+          - 按仓库+SKU 先进先出冲抵 backorders · 冲抵掉的欠库自动结清
+card: {}

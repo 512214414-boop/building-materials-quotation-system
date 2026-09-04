@@ -1,0 +1,53 @@
+# 唯一顺序清单 —— 决定三件事：生成物 NN 序号、侧栏阅读顺序、AGENTS.md 技能索引顺序。
+# 顺序只在这里声明一处；items/ 下的文件名不带序号，避免多出一个隐式顺序源。
+#
+# 新增一篇三步法：
+#   1. items/ 下新建 <navId>.yml，内容顶格写（id / layer / navId / nav / page …）
+#   2. 把 navId 加进下面 order 列表的目标位置
+#   3. 在 文档可视化/js/data/05-nav-groups.js 对应分组加一行入口（否则生成器报错）
+# 改完跑 node tools/gen-docs.mjs，站点 / 执行卡 / 技能索引 / 加载清单四处自动同步。
+#
+# 注意：order 是全量清单，不是增量。删除一篇要同时删文件与这里的条目。
+order:
+  - know-table
+  - know-meta
+  - why-scope
+  - why-sales
+  - why-fulfill
+  - why-money
+  - why-after
+  - why-shared
+  - why-canon
+  - why-inbound
+  - why-objects
+  - why-flow
+  - why-habit
+  - know-method
+  - know-cause
+  - know-brief
+  - know-loop
+  - know-metaschema
+  - know-layout
+  - know-recover
+  - know-route
+  - cell-gate-path
+  - know-precipitate
+  - order-inbound-purchase
+  - order-inbound-pending
+  - order-inbound-inventory
+  - order-backorder
+  - order-payable
+  - ops-report
+  - sys-role
+  - sys-audit
+  - sys-auth-code
+  - sys-access-request
+  - sys-user
+  - ui-layer-model
+  - refactor-signals
+  - meta-runtime
+  - visual-canvas
+  - eng-discipline
+  - app-navigation
+  - fe-be-duties
+  - customer-app

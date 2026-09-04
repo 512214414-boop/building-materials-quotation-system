@@ -1,0 +1,154 @@
+# 组件资产清单（L1 项目级）：查同类先查这里，动手前按形态命中组件，
+# 邻近实现只能校验、不能当参照物。新增组件在这里登记，生成器写入执行卡。
+# 范本：供应商联系矩阵 shared/components/archive/ArchiveContactMatrixEditor.tsx
+assets:
+  - use: 多记录矩阵（行 + 空行 + 操作列）
+    name: MatrixTable
+    path: shared/components/MatrixTable.tsx
+    badge: C29
+    params: 'rows(MatrixRowConfig[]) / addNameCell / addMidCells / addPriceCell / showDefault / showAddButton / template / selectedRowKey+onRowSelect'
+  - use: 更底层网格骨架（仅表头+行，无操作/默认列）
+    name: EntityPanel
+    path: shared/components/EntityPanel.tsx
+    badge: C65
+    params: '新矩阵优先用 MatrixTable，不要直接用它。template/header/rows/addRow/footer'
+  - use: 可编辑单元格（点值→确认层）
+    name: ArchiveFieldCell
+    path: shared/components/product-picker/PickerInlineCells.tsx
+    badge: '-'
+    params: 'value/title/bullets/onApply/disabledReason（门禁）'
+  - use: 空行单元格（点值→确认→晋升）
+    name: ArchiveEmptyFieldCell
+    path: shared/components/product-picker/PickerInlineCells.tsx
+    badge: '-'
+    params: 'placeholder/title/onApply/disabledReason'
+  - use: 字典引用单元格
+    name: 'PickerNameCell / PickerNumCell'
+    path: shared/components/product-picker/PickerInlineCells.tsx
+    badge: '-'
+    params: 'kind/scope/fromId/onApply/onApplyGlobal'
+  - use: 只读 / 门禁占位格
+    name: DisplayCell
+    path: shared/components/product-picker/PickerInlineCells.tsx
+    badge: '-'
+    params: 'text/placeholder/rejectReason（门禁提示）'
+  - use: 多记录状态机（空行晋升/追加/默认互斥）
+    name: useMatrixRecords
+    path: shared/hooks/useMatrixRecords.ts
+    badge: '-'
+    params: 'value/isDataRow/blank/normalize/onDirty'
+  - use: 枚举记录矩阵（单位 + 换算率，列表侧）
+    name: UnitManagePanel
+    path: shared/components/UnitManagePanel.tsx
+    badge: C19
+    params: 'units/conversions/extensions{showBase,onSetBase,priceColumns}（编辑矩阵内的单位区已改用 MatrixTable，本组件用于列表侧独立单位管理）'
+  - use: 集合编辑矩阵（集合体编辑弹窗统一形态：§A 根实体信息 → 中间层切换行 → 叶子挂载子表矩阵 → 价格展开面板）
+    name: '集合编辑矩阵（实例：ProductEditDialog）'
+    path: apps/staff/pages/product-manage/ProductEditDialog.tsx
+    badge: '-'
+    params: '描述时加集合体前缀（产品集合编辑矩阵 / 供应商集合编辑矩阵）；组装式：CascadeSwitchRow（中间层）+ MatrixTable（叶子挂载子表）+ ArchiveFieldCell（确认层格）+ UnitPriceExpandPanel（价格展开面板）'
+  - use: 中间层级联切换行（品牌/规格：下挂子记录 → 行切换）
+    name: CascadeSwitchRow
+    path: shared/components/CascadeSwitchRow.tsx
+    badge: '-'
+    params: 'label/options{key,label,active,editCell}/onSelect/addCell/editRow（仅中间层用；叶子挂载子表一律 MatrixTable，禁止误用行切换）'
+  - use: 模态框（三载体之一）
+    name: DsDialog
+    path: shared/components/DsDialog.tsx
+    badge: C07
+    params: '相对 1200px 画布居中；max-width:none，容不下走 wrap 横滚'
+  - use: 悬浮定位框唯一基座（三载体之一）
+    name: FloatPanel
+    path: shared/components/FloatPanel.tsx
+    badge: C60
+    params: '锚定触发元素；title/children/footer 三段，确认取消钉底栏；画布内水平锚点；失焦/移动画布不关、点空白才关'
+  - use: 文本输入唯一实现
+    name: DsInput
+    path: shared/components/DsInput.tsx
+    badge: C02
+    params: 'plain/name/price/embedded 变体 + clickToEdit；sm 高 20px 与检索框同套'
+  - use: 数字输入唯一实现
+    name: DsNumberInput
+    path: shared/components/DsNumberInput.tsx
+    badge: C03
+    params: 'text+inputMode=decimal+等宽右对齐，扣减类红；禁原生 number'
+  - use: 输入+下拉组合
+    name: DsInputDropdown
+    path: shared/components/DsInputDropdown.tsx
+    badge: C61
+    params: '展开/收起挂确认层输入框（表格格只展示）；档案列表 lockInput 点开确认层'
+  - use: 检索+新建+回填
+    name: SuggestInput
+    path: shared/components/SuggestInput.tsx
+    badge: C12
+    params: 'AutoComplete + SuggestList 唯一列表；防抖 250ms（useSuggest）'
+  - use: 匹配列表唯一实现
+    name: SuggestList
+    path: shared/components/SuggestList.tsx
+    badge: C13
+    params: '新建项=「新建」+关键词卡片（禁「新建某某」文本）；highlightKeyword/countHint 可选'
+  - use: 确认层检索唯一实现
+    name: PickerEditGate
+    path: shared/components/product-picker/PickerEditGate.tsx
+    badge: '-'
+    params: '两档：检索结果/完整字典（全量不过滤）；gate 参数 title/input/search/bullets/fromText/onApply/allowEmpty；行内改删+dictMerge 并档'
+  - use: 页面表唯一引擎
+    name: UnifiedTable
+    path: shared/components/UnifiedTable.tsx
+    badge: C32
+    params: '三层=DataViewLayer(C33)+InteractionLayer(C34)+cell-editors；列宽走 colWidths.COL_WIDTHS 唯一取值处；行/表头扩展菜单；跨页勾选 TableSelectionStore'
+  - use: 管理列表页统一壳
+    name: ArchiveListPage
+    path: shared/components/ArchiveListPage.tsx
+    badge: '-'
+    params: 'ViewFrame+UnifiedTable+跨页勾选+filters 检索槽（防抖关键词+条件词+右侧状态）；新档案走 filters，禁手写查询按钮'
+  - use: 档案运行时宿主
+    name: ArchiveSlotHost
+    path: shared/components/archive/ArchiveSlotHost.tsx
+    badge: '-'
+    params: '交 slots[]+API → 渲染名称列/完整弹窗/N 矩阵/检索；供应商/库房/客户已接入'
+  - use: 表头列筛
+    name: HeaderCascadeFilter
+    path: shared/components/archive/HeaderCascadeFilter.tsx
+    badge: '-'
+    params: 'DsInputDropdown+FloatPanel+SuggestList；选项=当前结果 facets；条件升为 chip'
+  - use: 选用检索框架（金标准对象）
+    name: ProductPicker
+    path: shared/components/ProductPicker.tsx
+    badge: C22
+    params: 'model（pickerTree 树模型）+dateFilter；顶栏由 pickerViewsFromModel 派生宽松+精准；只许抽「渲染一行」私有文件，禁止拆空另写'
+  - use: 选用检索派生器
+    name: pickerViewsFromModel / pickerTree
+    path: shared/config/pickerTree.ts
+    badge: '-'
+    params: 'layers[] 只配存字的层（id/label/hit/grain/front/hint/dateFilter）；能从树推的档位禁止手写 views[]'
+  - use: 选用检索 Picker 族（同框架各树）
+    name: CustomerPicker / UnitPicker / SupplierPicker / SoldLinePicker / DocumentSourcePicker / AllocationSourcePicker / EnumPicker
+    path: shared/components/
+    badge: 'C23/C25/C67/C68/C69/C26/C24'
+    params: '各挂自己的树模型；配货来源一框检索两列分区禁套宽松+精准（C26）；售后单据 dateFilter=空词按日翻打字不锁日期（C69）；已卖行复用当时名和价（C68）'
+  - use: 快速建档弹窗与预览
+    name: QuickCreateConfirmDialog / DefaultFillsPreview
+    path: shared/components/
+    badge: 'C30/C31'
+    params: '分字段编辑+缺省确认+相似候选；统一入口 confirmFillsBeforeSave；quickCreateConfig（QUICK_CREATE_LAYERS 兜底值/去重键 SSOT）'
+  - use: 多记录展开外壳 / 快捷选项条
+    name: RecordExpandPanel / QuickOptionsBar
+    path: shared/components/
+    badge: 'C28/C27'
+    params: 'Tab+维度切换+常驻 DOM；无 Tab 贴边不垫灰底；预置选项行高走骨架行不撑宽面板'
+  - use: 列表单元格族
+    name: NameLinkCell / ImageThumbCell / TextCell / LongTextCell / DateTimeCell / StatusTagCell
+    path: shared/components/cells/
+    badge: 'C35-C40'
+    params: '主名称弹窗列/缩略图（无图进编辑补图）/短文本/长文本弹窗/日期等宽/状态标签——新列形态先查这组'
+  - use: 工作台骨架三件
+    name: ViewFrame / DocumentContextBar / StageActionBar+StageBizStrip
+    path: shared/components/
+    badge: 'C45/-/-'
+    params: '五槽骨架（actionBar+bizStrip+children+pre/post/dialogs）；主表行挂容器层；工具行/统计行（L2 行槽位层）'
+  - use: 单据表单视图
+    name: DocumentFormView
+    path: shared/components/document-form/DocumentFormView.tsx
+    badge: '-'
+    params: '客户端单据视图（documentMeta+明细行）；useFormPagination 位置化翻页；moneyToChinese 大写金额'

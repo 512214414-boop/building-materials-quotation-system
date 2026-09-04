@@ -1,0 +1,12 @@
+meta:
+  version: 30
+  updated: '2026-09-04'
+layers:
+  - id: L0
+    title: 通用方法论
+    note: 可带走到任何项目；禁止写本项目的组件名、表名、文件路径
+  - id: L1
+    title: 项目规范
+    note: 本项目的实现与资产；引用 L0，不重复 L0 的方法
+
+# ↑ meta.version 是全站缓存版本号：升版本即强制刷新所有 script（gen-docs 收口到 ?v=<version>）。

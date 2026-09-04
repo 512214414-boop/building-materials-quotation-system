@@ -1,7 +1,10 @@
 # AI 执行卡 · 建材报价系统
 
-> 本卡由 tools/gen-docs.mjs 从真相源 `文档可视化/data-source/methodology.yml` 生成（GEN 节）+ 手写总纲。
+> 本卡由 tools/gen-docs.mjs 从真相源 `文档可视化/data-source/methodology/`（分片目录）生成（GEN 节）+ 手写总纲。
 > **改任何方法论只改真相源一处，跑 `node tools/gen-docs.mjs`，站点与本卡自动同步；禁止手改 GEN 节与 js/data/gen/**。
+>
+> 真相源是一个**目录**不是单文件：`_meta.yml`（版本/分层）+ `_assets.yml`（组件资产清单）+ `items/<navId>.yml`（一篇一文件）+ `_index.yml`（唯一顺序清单）。
+> 42 篇挤在一个 3598 行的文件里时，改一篇要在几千行里搜索定位、多会话还会撞同一个文件——唯一性靠**入口唯一**保证，不靠**物理单文件**保证。
 
 ## 一、对话分流（任务类对话的第 0 步）
 
@@ -119,7 +122,7 @@
 
 - 信号：同一教训第二次 / 同一问题跨功能第二次 / 同一偏好讲第二遍 / 规则多处被违反 / AI 踩坑后找到稳做法 / **高代价教训一次也立即沉淀**
 - 流程：留证据 → 提炼（触发条件+步骤+否决项）→ 去项目化 → 可证伪 → **登记进真相源** → 回写旧篇
-- 登记：`文档可视化/data-source/methodology.yml` 加条目 → 跑 `node tools/gen-docs.mjs`，站点/侧栏/执行卡自动同步。**没进真相源=不存在。**
+- 登记：`文档可视化/data-source/methodology/` 加条目（三步：items/ 下建 `<navId>.yml` → `_index.yml` 的 order 加一行 → `05-nav-groups.js` 加入口）→ 跑 `node tools/gen-docs.mjs`，站点/侧栏/执行卡自动同步。**没进真相源=不存在。**
 
 ## 六、台账
 

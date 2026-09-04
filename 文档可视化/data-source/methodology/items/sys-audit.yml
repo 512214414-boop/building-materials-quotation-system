@@ -1,0 +1,39 @@
+id: sys-audit
+layer: L1
+navId: sys-audit
+index:
+  hear: "审计日志、谁干了什么、留痕、操作记录"
+nav:
+  title: 审计日志
+  subtitle: 触发：查谁干了什么 · 留痕优于审批 · 档案删了仍读得出
+page:
+  kicker: 系统管理 · 审计
+  title: 审计的原则是「留痕优于审批」：不拦业务，但每笔都记，且档案删了还认得出人
+  lead: 表归属：**业务记录**（audit_logs）。它对 users / customers 的删除行为是 decouple——不建物理外键，改存名称快照（userName / customerName）。所以员工离职删了档案，历史日志照样显示「张三」而不是一串失效的 ID。这里和角色权限页正好相反：那是 cascade（配置跟随），这是 decouple（记录留痕）。同一个项目里两种取值都有，判据是「档案删了这条记录还该不该读得出来」。
+  factsKicker: 这一页定什么
+  factsTitle: 记四要素、动作要先登记、按时间索引分页
+  factsLead: 审计的价值在事后能查清，所以「记什么」和「怎么查」同样重要。
+  facts:
+    - label: 留痕四要素
+      note: '谁（user_id + userName 快照）、何时（created_at）、对什么资源（resource_type + resource_id）、做了什么（action + detail）。'
+    - label: 动作先登记
+      note: 'action 必须先登记在 entity-meta.yml 的 auditActions 段；未登记只告警不阻断业务——宁可记了再说，也不因为没登记就丢失痕迹。'
+    - label: 快照而非外键
+      note: '不建物理外键，靠 userName / customerName 快照读档案。档案删除不影响日志展示，这是 decouple 的直接收益。'
+    - label: 规模基线
+      note: '按几千万行设计：列表默认按 created_at 倒序 + 索引分页，不做全表扫描。'
+  tables:
+    - kicker: 边界
+      navLabel: 边界
+      title: 审计只记录，不拦业务
+      lead: 审计是事后凭证，不是事前闸门。要拦业务用操作守卫，不是审计。
+      colA: 不做
+      colB: 原因 · 该用什么
+      rows:
+        - - 不拦业务
+          - 未登记的 action 只告警不阻断 · 要拦用操作守卫（actions 段）
+        - - 不改日志
+          - 日志只增不改不删 · 错了补一条，不擦掉旧的
+        - - 不依赖档案当前状态
+          - 全靠快照 · 档案改了删了都不影响历史
+card: {}

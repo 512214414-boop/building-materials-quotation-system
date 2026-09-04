@@ -183,7 +183,7 @@
 
 | 优先级 | 项 | 原因 |
 |---|---|---|
-| ~~P0~~ ✅ | 同步 `meta-schema.md` 到真相源 `methodology.yml`（gen-docs） | 已落地：`know-metaschema`（登记表填写口径），含三段填空表 + 三个真踩过的坑 |
+| ~~P0~~ ✅ | 同步 `meta-schema.md` 到真相源（当时为 `methodology.yml`，现为 `methodology/` 目录）（gen-docs） | 已落地：`know-metaschema`（登记表填写口径），含三段填空表 + 三个真踩过的坑 |
 | ~~P0~~ ✅ | 3 个未覆盖页面的文档（§2.8） | 已落地：真相源新条目 `customer-app`（客户端三页合一，2026-09-04） |
 | ~~P1~~ ✅ | 客户端 3 页（`apps/customer`）相关 5 维度 | 已落地：`customer-app` 条目即五维结构（2026-09-04） |
 | P1（部分完成，暂缓） | 系统管理 5 页中"角色权限"与"审计日志"对齐 | none 口径已修正（sys-role）、82 action 权威已=entity-meta auditActions；剩余对齐需基于 entity-meta.yml/opsReportService——**并行会话占用中，等提交后再做** |
@@ -197,7 +197,7 @@
 
 ## 八、旧文档退役吸收台账（2026-09-04 起账）
 
-> **规则**：`用户项目开发文档/` 停止维护，不再作为规范源；唯一真相源 = `文档可视化/data-source/methodology.yml`。
+> **规则**：`用户项目开发文档/` 停止维护，不再作为规范源；唯一真相源 = `文档可视化/data-source/methodology/`（分片目录，2026-09-04 由单文件 methodology.yml 拆出，内容等价、生成物零变更）。
 > **流程**：逐文件定级（A 已融入可删 / B 有独有内容待吸收 / C 过时作废直接删 / D 保留）→ B 类吸收进真相源对应篇后删除 → A/C 直接删（AI 判定，git rm 可回滚，此处记删除理由）。
 > **盘点方式**：code-explorer 子代理 34 篇逐一读取并与真相源 20 篇交叉检索（2026-09-04）。
 

@@ -4,12 +4,16 @@
  *
  * 用法：node tools/gen-docs.mjs
  *
- * 输入：文档可视化/data-source/methodology.yml（唯一真相源）
+ * 输入：文档可视化/data-source/methodology/（唯一真相源目录，分片版）
+ *        _meta.yml（meta+layers）· _assets.yml（组件资产清单）
+ *        items/<navId>.yml（一篇一文件）· _index.yml（唯一顺序清单）
  * 输出：
  *   ① 文档可视化/js/data/gen/NN-<navId>.js  —— 人读版（文档站点，carry 结构）
  *   ② AGENTS.md 中 <!-- GEN:BEGIN/END --> 之间 —— AI 执行卡（方法论指令）
  *
- * 规则：产物全部自动生成，禁止手改；改方法论只改 methodology.yml 再重跑本脚本。
+ * 规则：产物全部自动生成，禁止手改；改方法论只改 methodology/ 目录下的分片，再重跑本脚本。
+ * 为什么是目录不是单文件：一个文件装 42 篇时，AI 改一篇要在几千行里搜索定位，
+ * 多个会话改不同篇还会撞同一个文件。唯一性靠「入口唯一」保证，不靠「物理单文件」保证。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -22,12 +26,99 @@ const yaml = require('js-yaml');
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const docViz = path.join(root, '文档可视化');
-const srcFile = path.join(docViz, 'data-source', 'methodology.yml');
+const srcDir = path.join(docViz, 'data-source', 'methodology');
+const legacySrcFile = path.join(docViz, 'data-source', 'methodology.yml');
 const genDir = path.join(docViz, 'js', 'data', 'gen');
 const agentsFile = path.join(root, 'AGENTS.md');
 
-const src = yaml.load(fs.readFileSync(srcFile, 'utf8'));
+const readYaml = (p) => yaml.load(fs.readFileSync(p, 'utf8'));
+
+// ---------- ⓪ 分片守卫：目录形态的完整性必须在产出之前拦住 ----------
+/**
+ * 分片带来的新风险：文件与顺序清单可能对不上、id 可能重复、旧单文件可能复活。
+ * 这些都会静默产出错误内容，所以一律拦在生成之前——报错 + 给补法，禁止带病产出。
+ */
+function fatal(msg, fix) {
+  console.error(`✗ ${msg}`);
+  if (fix) console.error(`  ${fix}`);
+  process.exit(1);
+}
+
+// 守卫一：旧单文件仍在 —— 两个真相源，必然漂移
+if (fs.existsSync(legacySrcFile)) {
+  fatal(
+    `发现旧单文件真相源 ${path.relative(root, legacySrcFile)} 与目录 ${path.relative(root, srcDir)} 并存（两个真相源＝必然漂移）`,
+    `补法：确认内容已全部迁入目录后删除旧文件：rm "${legacySrcFile}"`
+  );
+}
+if (!fs.existsSync(srcDir)) {
+  fatal(`真相源目录不存在：${srcDir}`, '补法：检查 文档可视化/data-source/methodology/ 是否被误删');
+}
+
+const indexDoc = readYaml(path.join(srcDir, '_index.yml')) || {};
+const order = indexDoc.order || [];
+if (!order.length) {
+  fatal('_index.yml 的 order 为空或缺失', '补法：order 是全量 navId 清单，按阅读顺序列出，不是增量');
+}
+
+const metaDoc = readYaml(path.join(srcDir, '_meta.yml')) || {};
+const assetsDoc = readYaml(path.join(srcDir, '_assets.yml')) || {};
+
+const itemsDir = path.join(srcDir, 'items');
+const onDisk = fs.existsSync(itemsDir)
+  ? fs.readdirSync(itemsDir).filter((f) => f.endsWith('.yml')).map((f) => f.replace(/\.yml$/, ''))
+  : [];
+
+// 守卫二：文件在磁盘但没登记进 order —— 会被生成器无声忽略，等于白写
+const notListed = onDisk.filter((n) => !order.includes(n));
+if (notListed.length) {
+  fatal(
+    `items/ 有 ${notListed.length} 个文件没登记进 _index.yml：${notListed.join('、')}`,
+    '补法：把 navId 加进 _index.yml 的 order 列表（不登记＝不生成＝这篇等于没写）'
+  );
+}
+// 守卫三：order 登记了但文件不存在
+const missingFile = order.filter((n) => !onDisk.includes(n));
+if (missingFile.length) {
+  fatal(
+    `_index.yml 登记了 ${missingFile.length} 个不存在的文件：${missingFile.join('、')}`,
+    '补法：在 items/ 补建 <navId>.yml，或从 order 里移除该条'
+  );
+}
+
+const src = {
+  meta: metaDoc.meta,
+  layers: metaDoc.layers || [],
+  assets: assetsDoc.assets || [],
+  items: order.map((navId) => {
+    const item = readYaml(path.join(itemsDir, `${navId}.yml`));
+    // 守卫四：文件名与内容 navId 不一致 —— 改了内容忘了改名，产物文件名会错位
+    if (!item || item.navId !== navId) {
+      fatal(
+        `items/${navId}.yml 的 navId 是「${item && item.navId}」，与文件名不一致`,
+        '补法：文件名必须等于内容里的 navId，改名或改内容二选一'
+      );
+    }
+    if (!item.id) fatal(`items/${navId}.yml 缺 id`, '补法：补上 id 字段');
+    return item;
+  }),
+};
 const items = src.items || [];
+
+// 守卫五：id / navId 重复 —— 后来者覆盖前者，产物条数会莫名变少
+{
+  const seenId = new Map();
+  for (const it of items) {
+    if (seenId.has(it.id)) {
+      fatal(
+        `id 重复：「${it.id}」同时出现在 items/${seenId.get(it.id)}.yml 与 items/${it.navId}.yml`,
+        '补法：id 全局唯一，改掉其中一个'
+      );
+    }
+    seenId.set(it.id, it.navId);
+  }
+}
+
 const layerTitle = (id) =>
   ((src.layers || []).find((l) => l.id === id) || {}).title || id;
 

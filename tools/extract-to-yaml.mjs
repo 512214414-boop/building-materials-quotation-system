@@ -2,6 +2,12 @@
 /**
  * extract-to-yaml.mjs — 从现有 04-why/*.js 自动抽取内容进真相源（一次性迁移工具）
  *
+ * ⚠️ 已弃用（2026-09-04）：真相源已由单文件 data-source/methodology.yml 分片为目录
+ *   data-source/methodology/（_meta.yml + _assets.yml + items/<navId>.yml + _index.yml）。
+ *   本脚本的输出路径仍指向已退休的单文件，重跑会让它与目录并存，
+ *   随即被 gen-docs.mjs 的「守卫一」拦下（两个真相源＝必然漂移）。
+ *   保留本文件仅为迁移留痕；若确需再用，须先改造为写 _index.yml + items/ 分片形态。
+ *
  * 用法：node tools/extract-to-yaml.mjs
  *
  * 做法：在沙箱里执行各篇章文件拿到 DOC_VIZ.whyBiz 对象，原样转 YAML 合并进
@@ -21,7 +27,7 @@ const root = path.resolve(__dirname, '..');
 const docViz = path.join(root, '文档可视化');
 const srcDir = path.join(docViz, 'js', 'data', '04-why');
 const navFile = path.join(docViz, 'js', 'data', '05-nav-groups.js');
-const outFile = path.join(docViz, 'data-source', 'methodology.yml');
+const outFile = path.join(docViz, 'data-source', 'methodology.yml'); // ⚠️ 已弃用路径，见文件头说明
 
 // 分层映射（★ 为可争议项，抽取后人工复核）
 const LAYER = {

@@ -1,0 +1,52 @@
+id: supplier-payable
+layer: L1
+navId: order-payable
+index:
+  hear: "供应商应付、欠供应商多少钱、结算、对账单、账龄"
+nav:
+  title: 供应商应付
+  subtitle: 触发：该付供应商多少钱 · 按来源分三类 · 结算留痕
+page:
+  kicker: 收付款往来 · 应付
+  title: 应付是「进货欠的钱」：三类来源各自留凭证，结算只做一次且留名
+  lead: 进货有三个入口（等额直发、超额入库、独立采购），每一笔都可能形成应付。应付行不带自己的业务含义，只回答三件事：欠谁的、欠多少、从哪笔业务来的——凭 biz_no 回查源头单据。结算是不可逆动作（只做一次，记录结算人与时间），所以不提供批量结算，防止手滑一次结掉一批。
+  factsKicker: 这一页定什么
+  factsTitle: 三类来源、两个状态、一次结算
+  factsLead: 来源字段不是为了统计好看，是为了对不上账时能回查到源头。
+  facts:
+    - label: 三类来源
+      note: 'allocation_external（等额直发）/ inbound_task（超额入库）/ purchase（独立采购）。都带 biz_no 与可选的来源订单与单据行。'
+    - label: 状态与结算
+      note: 'pending → settled。仅 pending 可结算；已结算再点会被拒。结算写结算人与结算时间到 remark，不删行、不留糊涂账。'
+    - label: 金额口径
+      note: '应付金额 = 数量 × 约定进价，落库即定，不随后续价格变动重算。'
+    - label: 供应商名是快照
+      note: '存 supplierName 快照（来自 supplier.name），供应商改名不影响历史应付对账。'
+  tables:
+    - kicker: 账龄
+      navLabel: 账龄
+      title: 按生成日分四桶，只看未结算
+      lead: 账龄回答的是「哪笔拖太久了」，不是总额。
+      colA: 桶
+      colB: 含义 · 用途
+      rows:
+        - - '0-30'
+          - 一个月内新增 · 正常账期
+        - - '31-60 / 61-90'
+          - 中期 · 需要关注
+        - - '90+'
+          - 超三个月 · 该催该结
+    - kicker: 导出与边界
+      navLabel: 导出
+      title: 对账单按供应商分组，只导未结算
+      lead: 导出是给对账用的，不是给记账用的。
+      colA: 维度
+      colB: 说明
+      rows:
+        - - 对账单范围
+          - 仅 pending，按供应商分组、按生成时间升序
+        - - 聚合上限
+          - 账龄聚合取前 2000 行（禁全表 N+1 查询）
+        - - 不做什么
+          - 不做批量结算、不做部分结算、不做抹零——结算是不可逆动作，一次一行人为确认
+card: {}
