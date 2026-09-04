@@ -31,11 +31,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 import { attachPointToPurchaseRows } from './purchasePrice.js';
 import { attachSalePoints } from './point.js';
@@ -420,7 +415,6 @@ export async function updateProduct(
   // 产品信息变更（name/remark/status/categoryId）影响宽表 keywords/分类名/状态
   if (data.name !== undefined || data.remark !== undefined ||
       data.categoryId !== undefined || data.status !== undefined) {
-    await syncSkuSearchByProduct(id);
   }
   return updated;
 }
@@ -546,10 +540,8 @@ export async function deleteProduct(
   const oldImageUrls = oldImages.map((img) => img.imageUrl);
 
   // v14.0：product.delete → CASCADE spec → spec_brand/unit → 价格/图片/换算
-  await prisma.$transaction([
-    prisma.product_sku_search.deleteMany({ where: { productId: id } }),
-    prisma.product.delete({ where: { id } }),
-  ]);
+  // （去宽表改造：原需同步删除 product_sku_search 宽表行，现检索走范式实时 join，无需同步）
+  await prisma.product.delete({ where: { id } });
 
   // purgeOrphanFiles 默认 true：删 DB 关联后，仅无引用才清磁盘（共享 hash 永不误删）
   const purgeOrphanFiles = options?.purgeOrphanFiles !== false;
@@ -573,16 +565,11 @@ export async function deactivateProduct(id: bigint) {
   const existing = await prisma.product.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('产品不存在');
 
-  await prisma.$transaction([
-    prisma.product.update({
-      where: { id },
-      data: { status: 0 },
-    }),
-    prisma.product_sku_search.updateMany({
-      where: { productId: id },
-      data: { status: 0 },
-    }),
-  ]);
+  // （去宽表改造：无需再同步更新宽表 status，检索按范式表实时判定状态）
+  await prisma.product.update({
+    where: { id },
+    data: { status: 0 },
+  });
 
   return { id, status: 0 };
 }
@@ -604,19 +591,8 @@ export async function activateProduct(id: bigint) {
     data: { status: 1 },
   });
 
-  // v14.0：综合状态 = 产品启用 且 规格×品牌关联启用 且 品牌启用
-  await prisma.$executeRaw`
-    UPDATE product_sku_search ps
-    JOIN spec s ON s.id = ps.specId
-    JOIN brand b ON b.id = s.brandId
-    JOIN product_brand pb ON pb.productId = s.productId AND pb.brandId = s.brandId
-    SET ps.status = 1
-    WHERE ps.productId = ${id}
-      AND s.status = 1
-      AND b.status = 1
-      AND pb.status = 1
-  `;
-
+  // （去宽表改造：无需再同步宽表 status —— 综合状态由检索在范式表上实时判定：
+  //   产品启用 且 规格启用 且 品牌启用 且 product_brand 启用）
   return { id, status: 1 };
 }
 
@@ -631,13 +607,8 @@ export async function batchDeactivateProducts(ids: bigint[]) {
   const found = await prisma.product.count({ where: { id: { in: unique } } });
   if (found !== unique.length) throw Errors.notFound('部分产品不存在');
 
-  await prisma.$transaction([
-    prisma.product.updateMany({ where: { id: { in: unique } }, data: { status: 0 } }),
-    prisma.product_sku_search.updateMany({
-      where: { productId: { in: unique } },
-      data: { status: 0 },
-    }),
-  ]);
+  // （去宽表改造：无需再同步更新宽表 status）
+  await prisma.product.updateMany({ where: { id: { in: unique } }, data: { status: 0 } });
 
   return { count: unique.length, status: 0 as const };
 }
@@ -692,7 +663,6 @@ export async function updateSpec(id: bigint, data: { specModel?: string; status?
   const updated = await prisma.spec.update({ where: { id }, data: update });
   // 规格改名影响宽表 specModel/keywords
   if (data.specModel !== undefined) {
-    await syncSkuSearchBySpec(id);
   }
   return updated;
 }
@@ -717,10 +687,8 @@ export async function deleteSpec(id: bigint) {
   });
   const oldImageUrls = oldImages.map((img) => img.imageUrl);
 
-  await prisma.$transaction([
-    prisma.product_sku_search.deleteMany({ where: { specId: id } }),
-    prisma.spec.delete({ where: { id } }),
-  ]);
+  // （去宽表改造：无需再同步删除宽表行）
+  await prisma.spec.delete({ where: { id } });
 
   // 事务成功后异步清理磁盘文件（不阻塞响应）
   if (oldImageUrls.length > 0) {

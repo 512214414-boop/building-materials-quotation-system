@@ -28,8 +28,14 @@ import * as inboundCtrl from '../../controllers/inboundController.js';
 import * as payableCtrl from '../../controllers/supplierPayableController.js';
 import * as purchaseInboundCtrl from '../../controllers/purchaseInboundController.js';
 import * as opsReportCtrl from '../../controllers/opsReportController.js';
+// 元模型运行时 · 阶段 F：资源引擎（配置驱动的通用接口，服务所有 resources 段登记过的资源）
+import resourceRouter from './resource.js';
 
 const router = Router();
+
+// 资源引擎挂载：/api/staff/r/:resource[/:id]
+//   新增表功能时，只需在 entity-meta.yml 的 resources 段登记，无需在此新增路由。
+router.use(resourceRouter);
 
 // 供应商档案（v9.0：supplier 表，contacts Json + businessScope + remark + Int status）
 // v1.7.1：恢复独立 supplier_manage 权限叶子（供应商独立档案管理，标准接口供产品/配货/成本复用）

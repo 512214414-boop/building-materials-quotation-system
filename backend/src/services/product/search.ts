@@ -33,12 +33,14 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
+import {
+  recallSpecRowsNormalized,
+  recallColumnRowsNormalized,
+  getSkuRowsBySpecIds,
+  listSkuRowsNormalized,
+  facetOptionsNormalized,
+} from './searchNormalized.js';
 import { attachPointToPurchaseRows } from './purchasePrice.js';
 import { attachSalePoints } from './point.js';
 
@@ -240,42 +242,17 @@ async function recallSkuRowsByColumn(
 ): Promise<any[]> {
   const needles = uniqueSearchNeedles(keyword);
   if (needles.length === 0) return [];
-  const col = column === 'remark' ? 'remark' : column === 'brandName' ? 'brandName' : 'specModel';
-  const escaped = needles.map((n) => n.replace(/[\\%_]/g, (ch) => `\\${ch}`));
-  const likeClauses = escaped.map(() => `LOWER(\`${col}\`) LIKE ?`).join(' OR ');
-  const likeParams = escaped.map((p) => `%${p}%`);
 
-  let ftRows: any[] = [];
-  if (column === 'remark') {
-    const booleanSafeKw = uniqueSearchNeedles(keyword, 8)
-      .join(' ')
-      .replace(/[+\-<>()~*"@]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (booleanSafeKw) {
-      const ftSql = `SELECT * FROM product_sku_search WHERE MATCH(remark) AGAINST(? IN BOOLEAN MODE)${filterClause} LIMIT ?`;
-      ftRows = await prisma.$queryRawUnsafe<any[]>(
-        ftSql,
-        booleanSafeKw,
-        ...filterParams,
-        recallLimit,
-      );
-    }
-  }
-
-  const sql = `SELECT * FROM product_sku_search WHERE (${likeClauses})${filterClause} LIMIT ?`;
-  const likeRows = await prisma.$queryRawUnsafe<any[]>(
-    sql,
-    ...likeParams,
-    ...filterParams,
-    recallLimit,
-  );
-  return mergeSkuRows([ftRows, likeRows]);
+  // 去宽表改造：在各范式表自己的列上召回（宽表的 LIKE / FULLTEXT 实现已随宽表删除）
+  const clause = filterClause.trim();
+  const isStatusFilter = /^AND\s+status\s*=\s*\?$/i.test(clause);
+  const statusOnly = isStatusFilter ? Number(filterParams[0]) === 1 : false;
+  return recallColumnRowsNormalized(column, keyword, { statusOnly, recallLimit });
 }
 
 async function recallSkuRowsBySupplier(
   keyword: string,
-  skuWhere: Prisma.product_sku_searchWhereInput,
+  skuWhere: any,
   recallLimit: number,
 ): Promise<{
   hits: Array<{ row: any; hitSupplierId: bigint; hitSupplierName: string }>;
@@ -317,12 +294,10 @@ async function recallSkuRowsBySupplier(
   }
   const specIds = [...hitBySpec.keys()].map((id) => BigInt(id));
   if (specIds.length === 0) return { hits: [], channelNames };
-  const rows = await prisma.product_sku_search.findMany({
-    where: { ...skuWhere, specId: { in: specIds } },
-    take: recallLimit,
-  });
+  // 去宽表改造：定点取范式行（宽表 findMany 的等价替代）
+  const normRows = await getSkuRowsBySpecIds(specIds);
   return {
-    hits: rows.map((row) => {
+    hits: normRows.map((row) => {
       const hit = hitBySpec.get(row.specId.toString())!;
       return { row, hitSupplierId: hit.supplierId, hitSupplierName: hit.supplierName };
     }),
@@ -340,7 +315,7 @@ type ChannelHit = {
 /** 渠道档：已进价 ∪ 经营范围。打的是货，列出可能渠道；词里带着渠道名也能中。 */
 async function recallSkuRowsByChannel(
   keyword: string,
-  skuWhere: Prisma.product_sku_searchWhereInput,
+  skuWhere: any,
   filterClause: string,
   filterParams: any[],
   recallLimit: number,
@@ -444,102 +419,19 @@ export async function recallSkuRowsByKeyword(
   filterClause = '',
   filterParams: any[] = [],
   recallLimit = 500,
-  mergeLike = false,
+  _mergeLike = false,
 ): Promise<SkuRecallResult> {
-  const kw = keyword.trim();
-  const PUNCT_REGEX = /[.*+\-?^${}()|[\]\\\/]/;
-  // v1.5.5.1：打分使用原始关键词（保留点号）——"3.5" 的点号是规格（en3.5）关键字符，
-  //   若按标点替换成空格，token 变 "35"，而 "en3.5" 中 3 与 5 之间有点号不连续，
-  //   导致规格精确匹配完全失效（用户「25给水3.5 搜出来 4.2 反排前面」的根因）
-  const scoreKw = kw.trim();
-  // v1.5.6：语义段（松匹配打分用），LIKE/FULLTEXT 两路共用
-  const segments = segmentizeKeyword(scoreKw);
-
-  // 判断召回路径：
-  //   1. LIKE 直达（FULLTEXT 对以下输入不可靠）：
-  //      - 单字符（如 "管"、"6"）
-  //      - 纯数字+标点短规格（如 "3.5"、"1/2"、"253.5"）——ngram 把标点当分隔符切碎
-  //      - 短字母/数字词（如 "ppr"、"dn25"、"pvc"）——ngram 2 字符 ASCII token
-  //        （pp/pr/n2）低于 innodb_ft_min_token_size=3，不入倒排索引 → MATCH 必然 0 召回
-  //   2. FULLTEXT 主路径（BOOLEAN MODE，无 NATURAL LANGUAGE 的 50% 阈值）：
-  //      - 中文长词/混合词走倒排索引召回，0 条时回退 LIKE（防"越常见越搜不到"与局部索引缺失）
-  // v1.5.6.2 安全加固【关键】：LIKE 全部参数化——原实现把用户输入直接拼进 SQL 字面量，
-  //   单引号可破坏查询语法返回 500，%/_ 通配符污染匹配语义（注入类缺陷）
-  const isPureNumericPunctuation = /^[\d.*+\-?^${}()|[\]\\\/]+$/.test(kw);
-  const isShortAlphaNumeric = /^[a-zA-Z0-9]{2,4}$/.test(kw);
-  const needLikeFallback = kw.length === 1 || isPureNumericPunctuation || isShortAlphaNumeric;
-
-  // LIKE 召回模式：语义段 ∪ ngram token（段保完整、token 保碎片），去重转小写
-  const likePatterns = [
-    ...segmentizeKeyword(scoreKw).map((s) => s.toLowerCase()),
-    ...tokenizeKeyword(scoreKw).map((t) => t.toLowerCase()),
-  ]
-    .filter((s) => s.length > 0)
-    .filter((s, i, arr) => arr.indexOf(s) === i);
-
-  // 召回候选集上限（几十万数据全量召回会内存爆炸，必须限制候选集；
-  //   FULLTEXT/LIKE 仅用于召回，应用层打分再精确排序）
-  // v1.5.6.2：参数化 LIKE 召回（段 OR token 任一命中即召回，打分阶段再精确排序）
-  const runLikeRecall = async (): Promise<any[]> => {
-    if (likePatterns.length === 0) return [];
-    // % _ \ 转义为字面匹配，避免通配符污染（MySQL LIKE 默认转义符为反斜杠）
-    const escaped = likePatterns.map((p) => p.replace(/[\\%_]/g, (ch) => `\\${ch}`));
-    const likeClauses = escaped.map(() => 'LOWER(keywords) LIKE ?').join(' OR ');
-    const likeParams = escaped.map((p) => `%${p}%`);
-    const recallSql = `SELECT * FROM product_sku_search WHERE (${likeClauses})${filterClause} LIMIT ?`;
-    return prisma.$queryRawUnsafe<any[]>(
-      recallSql,
-      ...likeParams,
-      ...filterParams,
-      recallLimit,
-    );
-  };
-
-  // v11.9 候选召回（mergeLike=true）：FULLTEXT ngram 对无空格中文长串是「短语匹配」
-  // （token 连续才命中），口语乱序输入（如「伟星绿色25给水管」vs 档案「ppr DN25给水管 伟星绿」）
-  // 经常 0 召回；且 FULLTEXT 非 0 时原 LIKE 降级不触发 → 目标档案被低相关行永久掩埋。
-  // mergeLike=true：FULLTEXT（连续命中）∪ LIKE（任意位置包含）合并去重，保证不漏召回。
-  // 检索路径默认 false，保持既有行为不变。
-  const fullTextKw = kw.replace(PUNCT_REGEX, ' ').trim();
-  const booleanSafeKw = fullTextKw.replace(/[+\-<>()~*"@]/g, ' ').replace(/\s+/g, ' ').trim();
-  const runFullTextRecall = async (): Promise<any[]> => {
-    if (!booleanSafeKw) return [];
-    const recallSql = `SELECT * FROM product_sku_search WHERE MATCH(keywords) AGAINST(? IN BOOLEAN MODE)${filterClause} LIMIT ?`;
-    return prisma.$queryRawUnsafe<any[]>(recallSql, booleanSafeKw, ...filterParams, recallLimit);
-  };
-
-  // 用于应用层打分的 tokens（ngram 拆分）
-  //   含标点的长查询（如 "6分.PPR"）：去掉标点后拆分，避免标点污染 token
-  let recallRows: any[];
-  let tokens: string[];
-  if (mergeLike) {
-    const [ftRows, likeRows] = await Promise.all([runFullTextRecall(), runLikeRecall()]);
-    const seen = new Set<string>();
-    recallRows = [...ftRows, ...likeRows].filter((r) => {
-      const k = String(r.id ?? r.specBrandId);
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-    tokens = tokenizeKeyword(scoreKw);
-  } else if (needLikeFallback) {
-    recallRows = await runLikeRecall();
-    // LIKE 降级场景用 ngram token 打分（不再用整串单 token）
-    tokens = tokenizeKeyword(scoreKw);
-  } else {
-    // FULLTEXT 主路径：MATCH AGAINST BOOLEAN MODE 召回候选集（LIMIT 候选集上限）
-    //   v1.5.6.2：NATURAL LANGUAGE MODE → BOOLEAN MODE（无"命中超 50% 即 0 召回"阈值，
-    //   建材库常见词如「给水管」「ppr」占比高时不再静默失效）
-    recallRows = await runFullTextRecall();
-    // v1.5.6.2：FULLTEXT 0 召回时回退 LIKE（覆盖：短 ASCII token 未入索引、词频过高、局部索引缺失）
-    if (recallRows.length === 0 && likePatterns.length > 0) {
-      recallRows = await runLikeRecall();
-    }
-    // 打分 tokens 用原始关键词拆分（保留 "3.5" 的点号，保证规格精确匹配）
-    tokens = tokenizeKeyword(scoreKw);
-  }
-
-  return { rows: recallRows, tokens, segments, scoreKw };
+  // 去宽表改造：范式召回
+  //   —— 各表各列自建 FULLTEXT ngram 索引、多路召回后合并候选 specId，
+  //      展示字段由 buildSkuRows 读时批量组装（详见 searchNormalized.ts）。
+  //   原宽表实现（keywords 单列 FULLTEXT + LIKE 回退 + 逐行同步重建）
+  //      已随 product_sku_search 宽表一并删除：宽表会陈旧、留孤儿行，
+  //      且改一次品牌名需遍历该品牌全部 spec 重建（几十万行不可行）。
+  //   filterClause 仅支持「空 / 仅 status 过滤」；其余过滤条件由调用方改用范式参数。
+  const clause = filterClause.trim();
+  const isStatusFilter = /^AND\s+status\s*=\s*\?$/i.test(clause);
+  const statusOnly = isStatusFilter ? Number(filterParams[0]) === 1 : false;
+  return recallSpecRowsNormalized(keyword, { statusOnly, recallLimit });
 }
 
 // ============================================================
@@ -578,11 +470,11 @@ function applySkuSearchNameLocks(
   params: SkuSearchNameLocks,
   skip?: SkuSearchFacetField,
 ): {
-  where: Prisma.product_sku_searchWhereInput;
+  where: any;
   filterParts: string[];
   filterParams: any[];
 } {
-  const where: Prisma.product_sku_searchWhereInput = {};
+  const where: any = {};
   const filterParts: string[] = [];
   const filterParams: any[] = [];
   if (skip !== 'product') {
@@ -625,13 +517,13 @@ function applySkuSearchNameLocks(
 }
 
 function buildSkuSearchLocks(params: SkuSearchNameLocks & { field: SkuSearchFacetField }): {
-  where: Prisma.product_sku_searchWhereInput;
+  where: any;
   filterClause: string;
   filterParams: any[];
 } {
   const st = skuSearchEffectiveStatus(params.status);
   const named = applySkuSearchNameLocks(params, params.field);
-  const where: Prisma.product_sku_searchWhereInput = { ...named.where };
+  const where: any = { ...named.where };
   const filterParts = [...named.filterParts];
   const filterParams = [...named.filterParams];
   if (params.categoryId !== undefined) {
@@ -722,26 +614,26 @@ export async function listSkuSearchFacets(params: {
 
   const groupByIndexed = parentReady && !globalQ;
 
+  // 去宽表改造：分面候选直接在范式表上 group by（宽表 groupBy 已随宽表删除）
   if (groupByIndexed && field === 'brand') {
-    const nameFilter = headerKw ? { brandName: { contains: headerKw } } : {};
-    const rows = await prisma.product_sku_search.groupBy({
-      by: ['brandId', 'brandName'],
-      where: { ...where, ...nameFilter },
-      orderBy: { brandName: 'asc' },
-      take: FACET_LIMIT,
-    });
-    return toFacetOptions(rows.map((r) => ({ id: String(r.brandId), name: r.brandName })));
+    return toFacetOptions(
+      await facetOptionsNormalized('brand', headerKw, {
+        productId: params.productId ? BigInt(params.productId) : null,
+        productNameLike: params.productName?.trim() || null,
+        statusOnly: params.status !== -1,
+      }),
+    );
   }
 
   if (groupByIndexed && field === 'spec') {
-    const nameFilter = headerKw ? { specModel: { contains: headerKw } } : {};
-    const rows = await prisma.product_sku_search.groupBy({
-      by: ['specModel'],
-      where: { ...where, ...nameFilter },
-      orderBy: { specModel: 'asc' },
-      take: FACET_LIMIT,
-    });
-    return toFacetOptions(rows.map((r) => ({ id: r.specModel, name: r.specModel })));
+    return toFacetOptions(
+      await facetOptionsNormalized('spec', headerKw, {
+        productId: params.productId ? BigInt(params.productId) : null,
+        productNameLike: params.productName?.trim() || null,
+        brandId: params.brandId ? BigInt(params.brandId) : null,
+        statusOnly: params.status !== -1,
+      }),
+    );
   }
 
   const recallKey = headerKw || globalQ;
@@ -795,8 +687,8 @@ export async function searchProducts(
 
   // v10.1.7：where/orderBy 仅用于无关键词分支，有关键词分支使用 raw SQL
   // v11.0：默认过滤停用产品（status=0），仅当显式传 status 时按传入值查询
-  const where: Prisma.product_sku_searchWhereInput = {};
-  const orderBy: Prisma.product_sku_searchOrderByWithRelationInput[] = [];
+  const where: any = {};
+  const orderBy: any[] = [];
 
   if (params.categoryId !== undefined) {
     where.categoryId = BigInt(params.categoryId);
@@ -991,30 +883,28 @@ export async function searchProducts(
     return { list, total, page, size };
   }
 
-  // 无关键词时：有标准条件锁则按产品→品牌→规格排，方便表体去重显示；否则按最近更新
-  if (params.productId || params.brandId || params.specExact) {
-    orderBy.push({ productName: 'asc' }, { brandName: 'asc' }, { specModel: 'asc' });
-  } else {
-    orderBy.push({ updateTime: 'desc' });
-  }
-
-  const [total, rows] = await Promise.all([
-    prisma.product_sku_search.count({ where }),
-    prisma.product_sku_search.findMany({
-      where,
-      orderBy,
-      skip,
-      take: size,
-    }),
-  ]);
-
-  const list: Array<SkuSearchRow | { type: 'creation_prompt'; keyword: string }> = [];
-  list.push({ type: 'creation_prompt', keyword: params.keyword ?? '' });
-  for (const row of rows) {
-    list.push(mapWideToSku(row));
-  }
-
-  return { list, total, page, size };
+  // 去宽表改造：无关键词时的列表查询——筛选/排序/分页全在范式表上做（不再走宽表）
+  //   有标准条件锁则按产品→品牌→规格排（方便表体去重显示），否则按最近更新
+  const effectiveStatus = params.status === undefined ? 1 : params.status;
+  const specKw = params.specModel?.trim() || null;
+  const norm = await listSkuRowsNormalized({
+    categoryId: params.categoryId ?? null,
+    productId: params.productId ? BigInt(params.productId) : null,
+    productNameLike: params.productName?.trim() || null,
+    brandId: params.brandId ? BigInt(params.brandId) : null,
+    brandNameLike: params.brandName?.trim() || null,
+    specModel: specKw && params.specExact !== false ? specKw : null,
+    specModelLike: specKw && params.specExact === false ? specKw : null,
+    status: effectiveStatus === -1 ? null : effectiveStatus,
+    nameOrder: !!(params.productId || params.brandId || params.specExact),
+    skip,
+    take: size,
+  });
+  const normList: Array<SkuSearchRow | { type: 'creation_prompt'; keyword: string }> = [
+    { type: 'creation_prompt', keyword: params.keyword ?? '' },
+    ...norm.rows.map((row) => mapWideToSku(row)),
+  ];
+  return { list: normList, total: norm.total, page, size };
 }
 
 // ============================================================

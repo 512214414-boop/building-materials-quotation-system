@@ -1,41 +1,28 @@
-import { prisma } from '../../config/prisma.js';
-import { resolveDefaultUnit } from './unitDict.js';
-import { calcEffectivePrice } from './shared.js';
-
 /**
- * v1.5.6.2：分类改名后同步该分类下全部 SKU 宽表行
+ * skuSearch.ts —— 检索关键词拼接（去宽表改造后仅保留此函数）
+ *
+ * 【历史】本文件原是 product_sku_search 宽表的同步函数族
+ *   （syncSkuSearchBySpecBrand / ByProduct / ByBrand / ByCategory / syncAllSkuSearch），
+ *   任何写操作（改价/改图/改名/改分类/建档）都会触发整行重建宽表。
+ *
+ * 【为什么删除】宽表是**写时同步的派生表**：
+ *   1. 会陈旧——改单位（spec_unit.isDisplay）未触发同步，宽表 defaultUnitId 记成非显示单位，
+ *      连带价格取不到（对拍发现 93 行单位错、601 行进价缺失）
+ *   2. 留孤儿行——spec 删除后宽表行仍在（对拍发现 spec=576）
+ *   3. 规模代价——改一次品牌名要遍历该品牌全部 spec 逐行重建（几十万行时不可行）
+ *
+ * 【替代方案】检索改为范式多路召回（searchNormalized.recallSpecRowsNormalized），
+ *   展示字段读时批量计算（searchNormalized.buildSkuRows）——无冗余、无同步、实时准确。
+ *
+ * 【保留】buildKeywords：关键词拼接规则，宽表实现与范式实现共用同一口径，保持检索语义一致。
  */
-export async function syncSkuSearchByCategory(categoryId: number, newName: string) {
-  const rows = await prisma.product_sku_search.findMany({
-    where: { categoryId },
-    select: { id: true, productName: true, specModel: true, brandName: true, productRemark: true },
-  });
-  for (const row of rows) {
-    await prisma.product_sku_search.update({
-      where: { id: row.id },
-      data: {
-        categoryName: newName,
-        keywords: buildKeywords({
-          productName: row.productName,
-          specModel: row.specModel,
-          brandName: row.brandName,
-          productRemark: row.productRemark,
-          categoryName: newName,
-        }),
-      },
-    });
-  }
-}
 
-// §8 SKU 宽表同步工具
-// v22.0：每个 spec 一行（specId 唯一；API 仍称 specBrandId = spec.id）
-// ============================================================
-
+/** 拼接检索关键词：产品名 + 俗称 + 规格型号 + 品牌名 + 分类名（小写、空格分隔） */
 export function buildKeywords(parts: {
   productName: string;
   specModel: string;
   brandName: string;
-  /** 产品俗称。规格备注是执行标准层的字，不拼进名称层 keywords */
+  /** 产品俗称。规格备注（执行标准）不拼进名称层关键词 */
   productRemark?: string;
   categoryName?: string;
 }): string {
@@ -44,162 +31,4 @@ export function buildKeywords(parts: {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-}
-
-async function recomputeSkuPrices(
-  specId: bigint,
-  defaultUnitId: bigint | null,
-): Promise<{ retailPrice: number | null; purchasePriceDefault: number | null }> {
-  if (!defaultUnitId) return { retailPrice: null, purchasePriceDefault: null };
-
-  const [defaultSale, saleAgg, purchases] = await Promise.all([
-    prisma.sale_price.findFirst({
-      where: { specId, unitId: defaultUnitId, isDefault: true, status: 1 },
-    }),
-    prisma.sale_price.aggregate({
-      _min: { price: true },
-      where: { specId, unitId: defaultUnitId, status: 1 },
-    }),
-    prisma.purchase_price.findMany({
-      where: { specId, unitId: defaultUnitId, status: 1 },
-      select: { supplierId: true, price: true, isDefault: true },
-    }),
-  ]);
-
-  let purchasePriceDefault: number | null = null;
-  if (purchases.length > 0) {
-    const specRow = await prisma.spec.findUnique({
-      where: { id: specId },
-      include: {
-        brand: { select: { name: true } },
-        product: { include: { category: { select: { name: true } } } },
-      },
-    });
-    const brandName = specRow?.brand?.name ?? '';
-    const categoryName = specRow?.product?.category?.name ?? '未分类';
-    const rules = await prisma.supplier_point_rule.findMany({ where: { brandName, categoryName } });
-    const ruleMap = new Map<string, number>(rules.map((r) => [r.supplierId.toString(), r.point.toNumber()]));
-
-    const effectiveList = purchases.map((p) => ({
-      isDefault: p.isDefault,
-      eff: calcEffectivePrice(p.price.toNumber(), ruleMap.get(p.supplierId.toString()) ?? 1),
-    }));
-    const def = effectiveList.find((e) => e.isDefault);
-    purchasePriceDefault = def ? def.eff : Math.min(...effectiveList.map((e) => e.eff));
-  }
-
-  return {
-    retailPrice: defaultSale?.price.toNumber() ?? saleAgg._min.price?.toNumber() ?? null,
-    purchasePriceDefault,
-  };
-}
-
-/** 同步指定 spec 的 SKU 宽表（specBrandId 参数名保留兼容，值为 spec.id） */
-export async function syncSkuSearchBySpecBrand(specBrandId: bigint) {
-  const specId = specBrandId;
-  const specRow = await prisma.spec.findUnique({
-    where: { id: specId },
-    include: {
-      brand: true,
-      product: { include: { category: true } },
-    },
-  });
-  if (!specRow) {
-    await prisma.product_sku_search.deleteMany({ where: { specId } });
-    return;
-  }
-
-  const product = specRow.product;
-  const { unitId: defaultUnitId, unitName: defaultUnitName } = await resolveDefaultUnit(specId);
-
-  const mainImage = await prisma.product_image.findFirst({
-    where: { specId, isMain: 1 },
-    orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
-  });
-  const mainImageUrl = mainImage?.imageUrl ?? null;
-  const mainImageThumbUrl =
-    mainImage?.thumbnailUrl ||
-    (mainImageUrl ? mainImageUrl.replace(/_orig\.webp$/, '_thumb.webp') : null) ||
-    null;
-
-  const { retailPrice, purchasePriceDefault } = await recomputeSkuPrices(specId, defaultUnitId);
-
-  const keywords = buildKeywords({
-    productName: product.name,
-    specModel: specRow.specModel,
-    brandName: specRow.brand.name,
-    productRemark: product.remark,
-    categoryName: product.category?.name ?? '未分类',
-  });
-
-  const pb = await prisma.product_brand.findUnique({
-    where: { productId_brandId: { productId: product.id, brandId: specRow.brandId } },
-  });
-  const status =
-    product.status === 1 && specRow.status === 1 && specRow.brand.status === 1 && (pb?.status ?? 1) === 1
-      ? 1
-      : 0;
-
-  const data = {
-    productId: product.id,
-    productName: product.name,
-    specId,
-    specModel: specRow.specModel,
-    categoryId: BigInt(product.categoryId),
-    categoryName: product.category?.name ?? '未分类',
-    brandId: specRow.brandId,
-    brandName: specRow.brand.name,
-    defaultUnitId,
-    defaultUnitName,
-    retailPrice,
-    purchasePriceDefault,
-    mainImageUrl,
-    mainImageThumbUrl,
-    remark: specRow.remark,
-    productRemark: product.remark ?? '',
-    status,
-    keywords,
-  };
-
-  await prisma.product_sku_search.upsert({
-    where: { specId },
-    create: data,
-    update: data,
-  });
-}
-
-export async function syncSkuSearchBySpec(specId: bigint) {
-  await syncSkuSearchBySpecBrand(specId);
-}
-
-export async function syncSkuSearchByProduct(productId: bigint) {
-  const specs = await prisma.spec.findMany({
-    where: { productId },
-    select: { id: true },
-  });
-  for (const s of specs) {
-    await syncSkuSearchBySpecBrand(s.id);
-  }
-}
-
-export async function syncSkuSearchByBrand(brandId: bigint) {
-  const brand = await prisma.brand.findUnique({ where: { id: brandId } });
-  if (!brand) {
-    await prisma.product_sku_search.deleteMany({ where: { brandId } });
-    return;
-  }
-  const specs = await prisma.spec.findMany({
-    where: { brandId },
-    select: { id: true },
-  });
-  for (const s of specs) {
-    await syncSkuSearchBySpecBrand(s.id);
-  }
-}
-
-export async function syncAllSkuSearch() {
-  const specs = await prisma.spec.findMany({ select: { id: true } });
-  for (const s of specs) {
-    await syncSkuSearchBySpecBrand(s.id);
-  }
 }

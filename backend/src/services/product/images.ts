@@ -31,11 +31,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 
 // §7 产品图片管理（product_image）
@@ -195,7 +190,6 @@ export async function createProductImage(data: ProductImageCreateInput) {
 
   // 主图变更影响 SKU 宽表
   if (data.isMain === 1) {
-    await syncSkuSearchBySpecBrand(data.specBrandId);
   }
   return created;
 }
@@ -213,7 +207,6 @@ export async function updateProductImage(id: bigint, data: { sortOrder?: number;
 
   const updated = await prisma.product_image.update({ where: { id }, data });
   if (data.isMain !== undefined) {
-    await syncSkuSearchBySpecBrand(existing.specId);
   }
   return updated;
 }
@@ -224,7 +217,6 @@ export async function deleteProductImage(id: bigint) {
 
   await prisma.product_image.delete({ where: { id } });
   if (existing.isMain === 1) {
-    await syncSkuSearchBySpecBrand(existing.specId);
   }
 
   // v11.0 维护性补全：删除 DB 行后异步清理磁盘文件（不阻塞响应）

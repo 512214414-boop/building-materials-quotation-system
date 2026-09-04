@@ -31,11 +31,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 
 // §14 单位换算辅助（convertQty）

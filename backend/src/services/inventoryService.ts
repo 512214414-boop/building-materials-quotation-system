@@ -12,6 +12,7 @@ import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
 import { calcWeightedAvgCost, round2 } from '../engines/pricing-engine.js';
 import { recallSkuRowsByKeyword } from './productService.js';
+import { getSkuRowsBySpecIds } from './product/searchNormalized.js';
 
 // ============================================================
 // 流水号生成（IN + yyyyMMdd + 6位随机/自增，全局唯一）
@@ -28,16 +29,17 @@ function genLedgerNo(): string {
 //   删品牌/单位/规格后库存行仍能读出名字（宽表被级联删，实时 JOIN 会失名）。
 // ============================================================
 export async function resolveSkuNameSnapshot(specId: bigint, brandId: bigint, unitId: bigint) {
-  const [sku, unit] = await Promise.all([
-    prisma.product_sku_search.findUnique({
-      where: { specId },
-      select: { specModel: true, brandName: true },
+  // 去宽表改造：直接查范式表（spec + brand + unit），不再依赖宽表冗余列
+  const [specRow, unit] = await Promise.all([
+    prisma.spec.findUnique({
+      where: { id: specId },
+      select: { specModel: true, brand: { select: { name: true } } },
     }),
     prisma.unit.findUnique({ where: { id: unitId }, select: { unitName: true } }),
   ]);
   return {
-    specModel: sku?.specModel ?? null,
-    brandName: sku?.brandName ?? null,
+    specModel: specRow?.specModel ?? null,
+    brandName: specRow?.brand?.name ?? null,
     unitName: unit?.unitName ?? null,
   };
 }
@@ -90,31 +92,19 @@ export async function attachSkuSnapshots(
   invs: Array<{ spec_id: bigint; brand_id: bigint; unit_id: bigint; [k: string]: unknown }>,
 ) {
   if (invs.length === 0) return [];
-  const pairs = [...new Set(invs.map((i) => `${i.spec_id}_${i.brand_id}`))];
   const unitIds = [...new Set(invs.map((i) => i.unit_id))];
+  // 去宽表改造：按 specId 取范式行（v22 起 spec.id 已含品牌维度），
+  //   展示字段由 searchNormalized.buildSkuRows 读时批量组装（无 N+1）
   const [skuRows, unitMap] = await Promise.all([
-    prisma.product_sku_search.findMany({
-      where: { OR: pairs.map((p) => {
-        const [specId, brandId] = p.split('_');
-        return { specId: BigInt(specId), brandId: BigInt(brandId) };
-      }) },
-      select: {
-        specId: true,
-        brandId: true,
-        productName: true,
-        specModel: true,
-        brandName: true,
-        mainImageThumbUrl: true,
-        defaultUnitId: true,
-        defaultUnitName: true,
-      },
-    }),
+    getSkuRowsBySpecIds([...new Set(invs.map((i) => i.spec_id))]),
     prisma.unit.findMany({
       where: { id: { in: unitIds } },
       select: { id: true, unitName: true },
     }),
   ]);
-  const skuByPair = new Map(skuRows.map((s) => [`${s.specId}_${s.brandId}`, s]));
+  const skuByPair = new Map(
+    (skuRows as any[]).map((s) => [`${s.specId}_${s.brandId}`, s]),
+  );
   const unitByName = new Map(unitMap.map((u) => [String(u.id), u.unitName]));
   return invs.map((i) => {
     const sku = skuByPair.get(`${i.spec_id}_${i.brand_id}`);

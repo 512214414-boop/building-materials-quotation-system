@@ -32,11 +32,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 
 // §1 分类管理（category）
@@ -116,7 +111,6 @@ export async function updateCategory(id: number, data: CategoryUpdateInput) {
   //   → 列表展示旧分类名、按新分类名检索 keywords 不命中（检索与展示全面陈旧）
   //   修复：改名时同步该分类下全部宽表行（categoryName + keywords 重算）
   if (data.name !== undefined && data.name !== existing.name) {
-    await syncSkuSearchByCategory(id, data.name);
   }
   return updated;
 }

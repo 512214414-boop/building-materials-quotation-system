@@ -28,11 +28,6 @@ export interface UnitUpdateInput {
   specId?: bigint;
 }
 
-async function syncSpec(specId: bigint) {
-  const { syncSkuSearchBySpec } = await import('./skuSearch.js');
-  await syncSkuSearchBySpec(specId);
-}
-
 export async function ensureGlobalUnit(db: Db, unitName: string, status = 1) {
   const existing = await db.unit.findUnique({ where: { unitName } });
   if (existing) {
@@ -265,7 +260,6 @@ export async function createUnit(data: UnitCreateInput) {
     return { ...unit, specId: data.specId, isBase, isDisplay };
   });
 
-  await syncSpec(data.specId);
   return created;
 }
 
@@ -346,7 +340,6 @@ export async function rebindSpecUnit(specId: bigint, fromUnitId: bigint, unitNam
     };
   });
 
-  await syncSpec(specId);
   return updated;
 }
 
@@ -416,7 +409,6 @@ export async function updateUnit(id: bigint, data: UnitUpdateInput) {
     };
   });
 
-  if (link) await syncSpec(link.specId);
   return updated;
 }
 
@@ -444,7 +436,6 @@ export async function upsertSpecBrandConversion(
     create: { specId, unitId, conversionRate },
     update: { conversionRate },
   });
-  await syncSpec(specId);
   return {
     specBrandId: String(specBrandId),
     specId: String(specId),
@@ -470,7 +461,6 @@ export async function setUnitBase(unitId: bigint, specId?: bigint) {
     });
   });
 
-  await syncSpec(link.specId);
   return { unitId, isBase: true };
 }
 
@@ -494,7 +484,6 @@ export async function setUnitDisplay(unitId: bigint, isDisplay: boolean, specId?
     });
   }
 
-  await syncSpec(link.specId);
   return { unitId, isDisplay };
 }
 
@@ -531,7 +520,6 @@ export async function deleteUnit(id: bigint, specId?: bigint) {
     await unbindSpecUnit(tx, link.specId, id);
   });
 
-  await syncSpec(link.specId);
   return { id, deletedDocLineRefs: docLineCount };
 }
 

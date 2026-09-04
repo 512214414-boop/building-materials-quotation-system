@@ -31,11 +31,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 import { cleanupImageFilesIfUnreferenced } from './images.js';
 import { recallSkuRowsByKeyword } from './search.js';
@@ -328,7 +323,7 @@ export async function saveProduct(input: SaveProductInput) {
     });
     if (specsToDelete.length > 0) {
       const delIds = specsToDelete.map((s) => s.id);
-      await tx.product_sku_search.deleteMany({ where: { specId: { in: delIds } } });
+      // （去宽表改造：无需再同步删除宽表行）
       await tx.spec.deleteMany({ where: { id: { in: delIds } } });
     }
 
@@ -712,7 +707,6 @@ export async function saveProduct(input: SaveProductInput) {
     return { product, specId: anchorSpecId, specBrandList, unitList };
   }).then(async (result) => {
     // 事务提交后同步 SKU 宽表（该产品下所有规格×品牌行）
-    await syncSkuSearchByProduct(result.product.id);
     // v11.0 维护性补全：事务成功后异步清理孤儿图片文件（不阻塞响应）
     // v1.5.6.2：差集 + 引用计数双重保护——先排除本次仍引用的 URL，
     //   再确认剩余 URL 在整库无任何 product_image 行引用（其他产品可能复用同 hash 图片）
@@ -848,13 +842,17 @@ async function recallSkuSearchByPrefix(
     combo: string;
   }>
 > {
+  // 去宽表改造：组合去重改在范式表上算（spec + product + brand 实时 join），
+  //   口径不变——normalize(产品名) + normalize(规格) 拼成 dedupKey
   const selectFragment = Prisma.sql`
-    SELECT specId, brandId, brandName, productId,
+    SELECT s.id AS specId, s.brandId AS brandId, b.name AS brandName, s.productId AS productId,
            CONCAT(
-             REPLACE(REPLACE(REPLACE(REPLACE(productName, ' ', ''), '　', ''), '\t', ''), '\n', ''),
-             REPLACE(REPLACE(REPLACE(REPLACE(specModel, ' ', ''), '　', ''), '\t', ''), '\n', '')
+             REPLACE(REPLACE(REPLACE(REPLACE(p.name, ' ', ''), '　', ''), '\t', ''), '\n', ''),
+             REPLACE(REPLACE(REPLACE(REPLACE(s.specModel, ' ', ''), '　', ''), '\t', ''), '\n', '')
            ) AS dedupKey
-    FROM product_sku_search`;
+    FROM spec s
+    JOIN product p ON p.id = s.productId
+    JOIN brand b ON b.id = s.brandId`;
   const nameRows = await tx.$queryRaw<
     Array<{
       specId: bigint;
@@ -864,8 +862,8 @@ async function recallSkuSearchByPrefix(
       dedupKey: string;
     }>
   >(Prisma.sql`${selectFragment}
-    WHERE productName LIKE ${`${namePrefix}%`}
-    ORDER BY updateTime DESC
+    WHERE p.name LIKE ${`${namePrefix}%`}
+    ORDER BY s.updatedAt DESC
     LIMIT ${limit}`);
   const specRows = specPrefix
     ? await tx.$queryRaw<
@@ -877,8 +875,8 @@ async function recallSkuSearchByPrefix(
           dedupKey: string;
         }>
       >(Prisma.sql`${selectFragment}
-        WHERE specModel LIKE ${`${specPrefix}%`}
-        ORDER BY updateTime DESC
+        WHERE s.specModel LIKE ${`${specPrefix}%`}
+        ORDER BY s.updatedAt DESC
         LIMIT ${limit}`)
     : [];
   const merged = new Map<string, (typeof nameRows)[number]>();
@@ -1085,7 +1083,6 @@ export async function quickCreateProduct(
     };
   }).then(async (resp) => {
     if (resp.status === 'ok') {
-      await syncSkuSearchBySpecBrand(resp.result.spec.id);
     }
     return resp;
   });

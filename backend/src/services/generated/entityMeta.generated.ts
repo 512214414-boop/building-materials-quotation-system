@@ -112,3 +112,21 @@ export const INDICATORS: Array<{ id: string; label: string; aggregate?: string; 
   { id: "refundAmount", label: "退货扣减", aggregate: "SUM(refund_lines.refund_amount)", filter: "refund_type=refund", formula: undefined },
   { id: "netProfit", label: "净利润", aggregate: undefined, filter: undefined, formula: "salesAmount - costAmount - refundAmount" },
 ];
+
+export const RESOURCES: Record<string, {
+  key: string;
+  label?: string;
+  table: string;
+  /** Prisma 模型名（与 @@map 的表名可能不同） */
+  model: string;
+  primaryKey: string;
+  permission?: string;
+  softDelete?: { field: string; off: number | string };
+  writable: string[];
+  include: string[];
+  audit: string[];
+  refTargets: Array<{ label: string; table: string; field: string }>;
+  search?: { fields?: string[]; mode?: string; dictUnique?: string };
+}> = {
+  supplier: { key: "supplier", label: "供应商档案", table: "supplier", model: "supplier", primaryKey: "id", permission: "supplier_manage", softDelete: {"field":"status","off":0}, writable: ["name","remark","status"], include: ["contacts","addresses","businessCategories","businessBrands"], audit: ["supplier_create","supplier_update","supplier_delete","supplier_quick_add","supplier_status"], refTargets: [{"label":"进价记录","table":"purchase_price","field":"supplierId"},{"label":"应付行","table":"supplier_payable_lines","field":"supplier_id"},{"label":"采购入库单","table":"purchase_inbounds","field":"supplier_id"}], search: {"fields":["name"],"mode":"normalized","dictUnique":"global"} },
+};

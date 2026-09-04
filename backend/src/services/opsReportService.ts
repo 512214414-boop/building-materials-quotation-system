@@ -4,6 +4,7 @@ import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
 import { round2 } from '../engines/pricing-engine.js';
 import { getDocumentSummary } from './summaryService.js';
+import { getSkuRowsBySpecIds } from './product/searchNormalized.js';
 
 function parseRange(query: Record<string, unknown>) {
   const startDateStr = typeof query.startDate === 'string' ? query.startDate : undefined;
@@ -258,12 +259,10 @@ export async function inventoryTurnover() {
     const k = `${l.warehouse_id}_${l.spec_id}_${l.brand_id}_${l.unit_id}`;
     if (!lastOutMap.has(k)) lastOutMap.set(k, l.created_at);
   }
-  const skuRows = await prisma.product_sku_search.findMany({
-    where: {
-      OR: invs.map((i) => ({ specId: i.spec_id, brandId: i.brand_id })),
-    },
-    select: { specId: true, brandId: true, productName: true, specModel: true, brandName: true },
-  });
+  // 去宽表改造：按 specId 取范式行（字段与宽表同构，读时组装）
+  const skuRows: any[] = await getSkuRowsBySpecIds([
+    ...new Set(invs.map((i) => i.spec_id)),
+  ]);
   const skuMap = new Map(skuRows.map((s) => [`${s.specId}_${s.brandId}`, s]));
   const now = Date.now();
   return invs.map((i) => {

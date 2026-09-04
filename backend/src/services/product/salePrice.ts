@@ -31,11 +31,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 
 // §5 售价管理（sale_price）
@@ -160,7 +155,6 @@ export async function createSalePrice(data: SalePriceCreateInput) {
     },
   });
 
-  await syncSkuSearchBySpecBrand(data.specBrandId);
   return created;
 }
 
@@ -198,7 +192,6 @@ export async function updateSalePrice(id: bigint, data: SalePriceUpdateInput) {
   }
 
   const updated = await prisma.sale_price.update({ where: { id }, data: update });
-  await syncSkuSearchBySpecBrand(existing.specId);
   return updated;
 }
 
@@ -207,7 +200,6 @@ export async function deleteSalePrice(id: bigint) {
   if (!existing) throw Errors.notFound('售价不存在');
 
   await prisma.sale_price.delete({ where: { id } });
-  await syncSkuSearchBySpecBrand(existing.specId);
   return { id };
 }
 

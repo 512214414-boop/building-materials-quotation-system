@@ -32,11 +32,6 @@ import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffec
 import { resolvePurchasePoints, resolveGroupSpecBrandIds, upsertPurchaseGroupPoint } from './point.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 
 // §6 进价管理（purchase_price）
@@ -174,7 +169,6 @@ export async function createPurchasePrice(data: PurchasePriceCreateInput) {
     },
   });
 
-  await syncSkuSearchBySpecBrand(data.specBrandId);
   return created;
 }
 
@@ -223,7 +217,6 @@ export async function updatePurchasePrice(id: bigint, data: PurchasePriceUpdateI
   }
 
   const updated = await prisma.purchase_price.update({ where: { id }, data: update });
-  await syncSkuSearchBySpecBrand(existing.specId);
   return updated;
 }
 
@@ -232,7 +225,6 @@ export async function deletePurchasePrice(id: bigint) {
   if (!existing) throw Errors.notFound('进价不存在');
 
   await prisma.purchase_price.delete({ where: { id } });
-  await syncSkuSearchBySpecBrand(existing.specId);
   return { id };
 }
 

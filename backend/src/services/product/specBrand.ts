@@ -1,9 +1,9 @@
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import * as registry from '../registry.js';
-import { resolveUnitInSpec } from './unitDict.js';
+import { resolveUnitInSpec, resolveDefaultUnit } from './unitDict.js';
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME } from './shared.js';
-import { syncSkuSearchBySpecBrand } from './skuSearch.js';
+
 import { Prisma } from '@prisma/client';
 
 // v22：spec 已含 brandId；API 仍暴露 specBrandId = spec.id
@@ -64,21 +64,26 @@ async function copyConversions(fromSpecId: bigint, toSpecId: bigint) {
 }
 
 async function serializePickerSku(specId: bigint): Promise<PickerSkuCreated> {
-  await syncSkuSearchBySpecBrand(specId);
-  const row = await prisma.product_sku_search.findUnique({ where: { specId } });
-  if (!row) throw Errors.unprocessable('宽表未生成');
+  // 去宽表改造：直接读范式表（spec + product + category + brand + 默认单位），
+  //   不再依赖宽表冗余行（宽表已删，检索/展示改为范式实时计算）
+  const specRow = await prisma.spec.findUnique({
+    where: { id: specId },
+    include: { product: { include: { category: true } }, brand: true },
+  });
+  if (!specRow) throw Errors.unprocessable('规格不存在');
+  const { unitId, unitName } = await resolveDefaultUnit(specId);
   return {
-    specId: String(row.specId),
-    specModel: row.specModel,
-    specBrandId: String(row.specId),
-    brandId: String(row.brandId),
-    brandName: row.brandName,
-    productId: String(row.productId),
-    productName: row.productName,
-    categoryId: String(row.categoryId),
-    categoryName: row.categoryName,
-    defaultUnitId: row.defaultUnitId != null ? String(row.defaultUnitId) : null,
-    defaultUnitName: row.defaultUnitName,
+    specId: String(specRow.id),
+    specModel: specRow.specModel,
+    specBrandId: String(specRow.id),
+    brandId: String(specRow.brandId),
+    brandName: specRow.brand.name,
+    productId: String(specRow.productId),
+    productName: specRow.product.name,
+    categoryId: String(specRow.product.categoryId),
+    categoryName: specRow.product.category?.name ?? '未分类',
+    defaultUnitId: unitId != null ? String(unitId) : null,
+    defaultUnitName: unitName,
   };
 }
 

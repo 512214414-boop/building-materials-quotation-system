@@ -9,7 +9,6 @@ import { updateBrand } from './brand.js';
 import { updateCategory } from './category.js';
 import { updatePriceType } from './priceType.js';
 import { updateSupplier } from '../supplierService.js';
-import { syncSkuSearchByBrand, syncSkuSearchByCategory, syncSkuSearchBySpec } from './skuSearch.js';
 
 export type DictChangeKind = 'brand' | 'unit' | 'category' | 'priceType' | 'supplier';
 
@@ -461,7 +460,7 @@ async function absorbSpecBrand(tx: Tx, fromSbId: bigint, toSbId: bigint) {
     });
   }
   await tx.product_image.updateMany({ where: { specId: fromSbId }, data: { specId: toSbId } });
-  await tx.product_sku_search.deleteMany({ where: { specId: fromSbId } });
+  // （去宽表改造：无需再同步删除宽表行）
   await tx.spec.delete({ where: { id: fromSbId } });
 }
 
@@ -499,10 +498,9 @@ async function mergeBrand(fromId: bigint, toId: bigint, fromName: string, toName
     await retargetSalePointBrand(tx, fromName, toName);
     await retargetSupplierPointBrand(tx, fromName, toName);
     await retargetInventory(tx, { brandId: fromId }, { brandId: toId });
-    await tx.product_sku_search.deleteMany({ where: { brandId: fromId } });
+    // （去宽表改造：无需再同步删除宽表行）
     await tx.brand.delete({ where: { id: fromId } });
   }, { timeout: 60000 });
-  await syncSkuSearchByBrand(toId);
   return { deletedSource: true, touchedSpecBrandIds: [...touched] };
 }
 
@@ -660,9 +658,8 @@ async function mergeUnit(fromId: bigint, toId: bigint) {
       await tx.unit.delete({ where: { id: fromId } });
     }
   }, { timeout: 60000 });
-  for (const specId of specIds) {
-    await syncSkuSearchBySpec(BigInt(specId));
-  }
+  // 宽表同步已移除（去宽表改造）：并档后无需再重建冗余行，检索走范式实时 join
+  void specIds;
   return { deletedSource: true };
 }
 
@@ -675,14 +672,10 @@ async function mergeCategory(fromId: number, toId: number, fromName: string, toN
   }
   await prisma.$transaction(async (tx) => {
     await tx.product.updateMany({ where: { categoryId: fromId }, data: { categoryId: toId } });
-    await tx.product_sku_search.updateMany({
-      where: { categoryId: BigInt(fromId) },
-      data: { categoryId: BigInt(toId) },
-    });
+    // （去宽表改造：无需再同步更新宽表 categoryId）
     await retargetPointCategory(tx, fromName, toName);
     await tx.category.delete({ where: { id: fromId } });
   }, { timeout: 60000 });
-  await syncSkuSearchByCategory(toId, toName);
   return { deletedSource: true };
 }
 

@@ -32,11 +32,6 @@ import {
 import { DEFAULT_SPEC_MODEL, DEFAULT_UNIT_NAME, toNumber, roundPrice2, calcEffectivePrice } from './shared.js';
 import {
   buildKeywords,
-  syncSkuSearchByCategory,
-  syncSkuSearchBySpecBrand,
-  syncSkuSearchBySpec,
-  syncSkuSearchByProduct,
-  syncSkuSearchByBrand,
 } from './skuSearch.js';
 
 // §3 品牌管理（brand 全局档案，v14.0）
@@ -146,7 +141,6 @@ export async function updateBrand(id: bigint, data: BrandUpdateInput) {
   // v14.0：品牌改名/停启用 → 同步所有引用它的规格宽表行（brandName/keywords/status）
   //   品牌为全局档案：一次改名，所有引用该品牌的规格（spec_brand）全局生效
   if (data.name !== undefined || data.status !== undefined) {
-    await syncSkuSearchByBrand(id);
   }
   return updated;
 }
@@ -176,11 +170,8 @@ export async function deleteBrand(id: bigint) {
   // v11.0：查询单据引用数（用于审计日志，不阻止删除）
   const docLineCount = await prisma.document_lines.count({ where: { brandId: id } });
 
-  // 清理宽表 + 品牌档案
-  await prisma.$transaction([
-    prisma.product_sku_search.deleteMany({ where: { brandId: id } }),
-    prisma.brand.delete({ where: { id } }),
-  ]);
+  // （去宽表改造：无需再同步删除宽表行，只需删品牌档案本身）
+  await prisma.brand.delete({ where: { id } });
 
   return { id, deletedDocLineRefs: docLineCount };
 }

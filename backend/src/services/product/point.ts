@@ -3,7 +3,6 @@
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { calcEffectivePrice } from './shared.js';
-import { syncSkuSearchBySpecBrand } from './skuSearch.js';
 
 export type PointHit = { point: number; spec: boolean };
 
@@ -407,7 +406,6 @@ export async function previewPointChange(input: PointChangePreviewInput): Promis
 
 async function syncGroupSkuSearch(specBrandIds: bigint[]) {
   for (const specBrandId of specBrandIds) {
-    await syncSkuSearchBySpecBrand(specBrandId);
   }
 }
 
