@@ -92,7 +92,7 @@
 //     default（默认）→ var(--text-tertiary)（灰色）
 //     existing（已有）→ var(--text-quaternary)（浅灰色）
 
-import { Fragment, useMemo, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { Spin } from 'antd';
 import { CheckOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { ValueChip } from './ValueChangePair.js';
@@ -145,6 +145,17 @@ export interface SuggestListProps<T = SuggestOption> {
   onRename?: (item: T) => void;
   /** 行内删除回调：仅 existing 项 hover 显示「删」。调用方负责 modal.confirm 保护。 */
   onDelete?: (item: T) => void;
+  /**
+   * 高亮关键词（可选）：**只高亮 + 首个匹配项滚动定位，绝不裁剪列表**。
+   * 用于「全部字典」这类要看清总共有多少选项、又需要定位当前输入的场景。
+   * 不传则行为完全不变（其余使用方不受影响）。
+   *
+   * 纪律：过滤是调用方的事，本组件只负责渲染。需要「输入即过滤」的档位，
+   * 由调用方自己传过滤后的 options，不要指望本组件按 keyword 裁剪。
+   */
+  highlightKeyword?: string;
+  /** 列表顶部计数提示（如「共 12 项」）。不传则不渲染，其余使用方不受影响。 */
+  countHint?: string;
 }
 
 // ============================================================
@@ -204,6 +215,54 @@ const TYPE_TAG_MAP: Record<SuggestOption['type'], { text: string; color: string 
 };
 
 // ============================================================
+// §2.5 高亮（只增强视觉，不裁剪列表）
+// ============================================================
+
+/** 命中片段样式：只改底色与字重，不动字号行高（避免点开面板时行高跳动） */
+const HL_STYLE: CSSProperties = {
+  background: 'var(--bg-brand-popup)',
+  color: 'var(--text-brand)',
+  fontWeight: 500,
+  borderRadius: 2,
+  padding: '0 1px',
+};
+
+/**
+ * 把 label 中所有命中 kw 的片段包成高亮 span。
+ * 纯视觉增强：不裁剪、不改原文、不改变列表长度。
+ */
+function renderHighlighted(label: string, kw: string): React.ReactNode {
+  const t = kw.trim();
+  if (!t) return label;
+  const haystack = label.toLowerCase();
+  const needle = t.toLowerCase();
+  const first = haystack.indexOf(needle);
+  if (first < 0) return label;
+  const out: React.ReactNode[] = [];
+  let from = 0;
+  let idx = first;
+  while (idx >= 0) {
+    if (idx > from) out.push(label.slice(from, idx));
+    out.push(
+      <span key={`hl-${idx}`} style={HL_STYLE}>
+        {label.slice(idx, idx + t.length)}
+      </span>,
+    );
+    from = idx + t.length;
+    idx = haystack.indexOf(needle, from);
+  }
+  if (from < label.length) out.push(label.slice(from));
+  return out;
+}
+
+/** 是否命中关键词——只用于定位第一个匹配项以便滚动到可视区 */
+function isHit(item: unknown, kw: string): boolean {
+  const t = kw.trim().toLowerCase();
+  if (!t) return false;
+  return isSuggestOption(item) && String(item.value).toLowerCase().includes(t);
+}
+
+// ============================================================
 // §3 默认行渲染（单列模式）
 // ============================================================
 
@@ -226,11 +285,17 @@ function DefaultRow({
   onSelect,
   onRename,
   onDelete,
+  highlight,
+  hit,
 }: {
   opt: SuggestOption;
   onSelect: (opt: SuggestOption) => void;
   onRename?: (opt: SuggestOption) => void;
   onDelete?: (opt: SuggestOption) => void;
+  /** 高亮关键词；不传则原样渲染（其余使用方行为不变） */
+  highlight?: string;
+  /** 是否为第一个命中项（配合外层容器做滚动定位） */
+  hit?: boolean;
 }) {
   const tag = TYPE_TAG_MAP[opt.type] ?? TYPE_TAG_MAP.existing;
   const tagText = opt.badge?.trim() || tag.text;
@@ -248,6 +313,7 @@ function DefaultRow({
     <div
       role="button"
       tabIndex={0}
+      data-hit={hit ? '1' : undefined}
       onMouseDown={(e) => e.preventDefault()}
       onClick={() => onSelect(opt)}
       onKeyDown={(e) => {
@@ -273,7 +339,7 @@ function DefaultRow({
           minWidth: 0,
         }}
       >
-        {opt.label}
+        {highlight ? renderHighlighted(opt.label, highlight) : opt.label}
       </span>
       {showActions && (
         <>
@@ -344,8 +410,29 @@ export default function SuggestList<T = SuggestOption>({
   createLabel,
   onRename,
   onDelete,
+  highlightKeyword,
+  countHint,
 }: SuggestListProps<T>) {
   const trimmedKw = keyword.trim();
+
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  /** 第一个命中项下标：仅在传了 highlightKeyword 时计算（其余使用方零开销） */
+  const firstHitIndex = useMemo(() => {
+    if (!highlightKeyword?.trim()) return -1;
+    return options.findIndex((o) => isHit(o, highlightKeyword));
+  }, [options, highlightKeyword]);
+
+  /**
+   * 全量档滚动定位：列表很长时，光高亮不够——第一个命中项得主动滚进视野，
+   * 否则用户看到的是「一堆项 + 下面某处有高亮」，等于没定位。
+   * block:'nearest' 保证已在视野内时不动，不制造无谓跳动。
+   */
+  useEffect(() => {
+    if (firstHitIndex < 0) return;
+    const target = containerRef.current?.querySelector<HTMLElement>('[data-hit="1"]');
+    target?.scrollIntoView({ block: 'nearest' });
+  }, [firstHitIndex, highlightKeyword]);
 
   /**
    * 【一致性改造 · 防重复】100% 匹配判定。
@@ -375,7 +462,22 @@ export default function SuggestList<T = SuggestOption>({
   const showList = !loading && options.length > 0;
 
   return (
-    <div data-shared-badge="C13" style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
+    <div ref={containerRef} data-shared-badge="C13" style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
+      {/* 计数提示（全量档用：让用户一眼看清总共有多少选项，这是该档位存在的意义） */}
+      {countHint ? (
+        <div
+          style={{
+            padding: '4px 8px',
+            color: 'var(--text-tertiary)',
+            fontSize: 'var(--body-xs-font-size)',
+            lineHeight: 1.4,
+            background: 'var(--bg-base-secondary)',
+            borderBottom: '1px solid var(--border-neutral-l1)',
+          }}
+        >
+          {countHint}
+        </div>
+      ) : null}
       {/* 100% 匹配 →「已存在」占位项：占位不消失（布局稳定），点击 = 选中已存在的那项而非新建 */}
       {showExistingInsteadOfCreate && exactMatch && (
         <div
@@ -520,6 +622,8 @@ export default function SuggestList<T = SuggestOption>({
                 onSelect={onSelect as (opt: SuggestOption) => void}
                 onRename={onRename as ((opt: SuggestOption) => void) | undefined}
                 onDelete={onDelete as ((opt: SuggestOption) => void) | undefined}
+                highlight={highlightKeyword}
+                hit={idx === firstHitIndex}
               />
             );
           }

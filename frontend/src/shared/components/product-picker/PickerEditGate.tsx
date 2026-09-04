@@ -391,13 +391,17 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     if (suggestOpen && dictViewMode === 'dict' && gateDictListFn) void refreshGateDict();
   }, [suggestOpen, dictViewMode, gateDictListFn, refreshGateDict]);
 
-  /** 完整字典档按 draft 关键词前端过滤 */
-  const gateDictOptions = useMemo(() => {
-    const kw = draft.trim().toLowerCase();
-    const list = gateDictItems.map(toSuggestOption);
-    if (!kw) return list;
-    return list.filter((o) => o.value.toLowerCase().includes(kw));
-  }, [gateDictItems, draft]);
+  /**
+   * 全部字典档：保持全量，不做任何裁剪。
+   *
+   * 该档位存在的意义就是「让用户看清总共有多少选项」。按 draft 过滤等于把它变成
+   * 第二个检索档——而 open() 时 draft 预填了当前值，于是用户点开「全部字典」
+   * 看到的仍是被当前值过滤过的列表，永远数不清选项总数。
+   *
+   * 输入的字只交给 SuggestList 的 highlightKeyword 做高亮 + 首个命中滚动定位，
+   * 列表长度恒等于字典总量。
+   */
+  const gateDictOptions = useMemo(() => gateDictItems.map(toSuggestOption), [gateDictItems]);
 
   const dictSearch = !!((req?.dictField || req?.dictConfig) && req.input === 'text');
   const dictCfg = req?.dictConfig ?? (req?.dictField ? dictConfigFor(req.dictField) : undefined);
@@ -694,6 +698,12 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                       options={dictViewMode === 'dict' ? gateDictOptions : dictOptions}
                       loading={dictViewMode === 'dict' ? gateDictLoading : dictLoading}
                       keyword={draft}
+                      highlightKeyword={dictViewMode === 'dict' ? draft : undefined}
+                      countHint={
+                        dictViewMode === 'dict' && !gateDictLoading
+                          ? `共 ${gateDictOptions.length} 项`
+                          : undefined
+                      }
                       allowCreate={dictQuickCreate}
                       onCreate={dictQuickCreate ? handleDictQuickCreate : undefined}
                       onSelect={(item) => {
