@@ -10,6 +10,8 @@ DOC_VIZ.tableAggregatePermission = {
   kicker: "集合体 · 系统权限",
   title: "8 张表 · 对照组：哪些该进框架，哪些进了反而是错",
   lead: "它不在主线业务上（不是货、不是单、不是钱），所以能用来检验槽位化的边界在哪。判断一个集合体该不该进档案槽位框架，看两条：① 有没有「树」（根实体+挂载子表）；② 主操作是「编辑档案」还是「执行动作」。下面按「关系图 → 管理界面表格真实呈现 → 列交互 → 判定」展开。",
+  // 涉及的动作守卫（渲染时从 actions.generated.js 取判定+提示语，不复制文案）
+  guardActions: ["staff_login", "customer_verify", "customer_access_request"],
 
   // 元模型表：九组视角 × 界面字段。字段横向、视角纵向（appendFieldMatrix 渲染）。
   metaModel: {

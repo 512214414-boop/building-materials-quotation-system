@@ -26,8 +26,16 @@ DOC_VIZ.whyBiz["ui-layer-model"] = {
       "note": "页面不得在 `renderMode: 'custom'` 内手写单元格交互。任何一处可编辑格都必须能表达为「值形态 × 编辑入口 × 值状态」三个参数的组合。无法归类的例外必须登记在案，并说明为什么不能用参数表达。"
     },
     {
+      "label": "交互层职责边界（2026-09-04 裁决）",
+      "note": "常驻输入格（inline）的键盘导航归表格层（InteractionLayer）；确认层格（confirm）的键盘由浮层自管，表格层**不接管**。理由：confirm 格点开后是独立浮层，若表格层也接管焦点，会与浮层双重管理焦点。邻格快切由 CellSwitchProvider 承担（colOrder 显式声明方向钮顺序），与 InteractionLayer 是两套正交机制。**提案原第 2 条「验证 InteractionLayer 能接管确认层格子」的前提不成立，已按此修正**。"
+    },
+    {
+      "label": "弹窗剖面（第六观察位）",
+      "note": "五层管表格主体；编辑弹窗不看五层看剖面——截图上每个块 → 承载组件 → 数据特征 → 登记表出处，四层对照。弹窗内的表格主体仍走 L1-L5，剖面只补「弹窗骨架」这一段。实例见矩阵页「产品管理 · 编辑弹窗剖面」。"
+    },
+    {
       "label": "现状（2026-09-04 实测）",
-      "note": "L4 层的代码已全部建成（`cellSpec.ts` 三维定义 + `CellSpecRenderer` 渲染 + `cellSpecAdapter` 适配 + `auditCellSpecs` 自检），但**零页面接入**——20 个页面 135 处列仍逃在 `custom` 里手写。L5 已是唯一统一实现。L1 / L2 / L3 未落地。"
+      "note": "L4 层的代码已全部建成（`cellSpec.ts` 三维定义 + `CellSpecRenderer` 渲染 + `cellSpecAdapter` 适配 + `auditCellSpecs` 自检），采购报价已接入（样板跑通，7 处 custom 消灭）。其余 19 个页面 128 处列仍逃在 `custom` 里手写。L5 已是唯一统一实现。L1 / L2 / L3 未落地。"
     }
   ],
   "tables": [
@@ -51,7 +59,7 @@ DOC_VIZ.whyBiz["ui-layer-model"] = {
         ],
         [
           "L4 单元格层",
-          "这一格是什么值、点下去发生什么 · display × editEntry × valueState，另加 hidden（可见性）与 gate（确认层细化） · `cellSpec.ts` + `CellSpecRenderer` + `cellSpecAdapter`：**已建成，零接入**"
+          "这一格是什么值、点下去发生什么 · display × editEntry × valueState，另加 hidden（可见性）与 gate（确认层细化） · `cellSpec.ts` + `CellSpecRenderer` + `cellSpecAdapter`：**已建成，采购报价已接入**（2026-09-04 样板跑通，7 处 custom 消灭）"
         ],
         [
           "L5 确认层",
@@ -123,7 +131,7 @@ DOC_VIZ.whyBiz["ui-layer-model"] = {
         ],
         [
           "阶段 1",
-          "采购报价样板验证：列声明从 custom 改写为三维参数 · ❌ 未启动"
+          "采购报价样板验证：8 列全部改写为三维参数，7 处 custom 消灭 · ✅ 已落地（2026-09-04，e2e 13/13 全过：7 个 confirm 格逐个点开、金额只读、门禁提示、无 JS 错误）"
         ],
         [
           "阶段 2",

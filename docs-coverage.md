@@ -130,7 +130,7 @@
 | 文档可视化 · 站点体检脚本 | ✅ | `tools/check-docs.mjs`：79 内容 + 17 渲染，1 条提醒（specBrandId 旧名，不阻断） |
 | 文档可视化 · 死内容救活 | ✅ | 16-fill / 19-law / 24-archive |
 | 白话进度看板（给不懂代码的人远程看进度） | ✅ | `tools/gen-boss-view.mjs` 从本台账 + git 自动提取，产出 `项目进度看板.html`（人看）与 `项目进度看板.md`（AI 读）。**现状从代码提取，禁止手写进度描述**（「下发文档范本」篇硬纪律）；非技术用户口径见 `.codebuddy/rules/boss-view.md` |
-| 表格 UI 分层（L1 · 五层模型 + 表 × 层级矩阵页） | ✅ | 2026-09-04：真相源 `ui-layer-model` 条目（五层合一）+ 矩阵页 6 表 × 5 层实测数据。**同日缺陷修复**：① editEntry 删 inline 常驻输入（与「禁止常驻输入框」硬纪律冲突，收为 none/confirm/link/expand 四态）；② 装配序列按代码核实修正——主表行（DocumentContextBar）挂容器层 OrderWorkbench 九视图共享，报价/售后有、产品管理/采购清单无（subagent 实测 OrderWorkbench.tsx:543）；③ rules 补三条裁决：L4 声明落点＝登记表 pages 段（禁第二套）、现状数字以 auditCellSpecs/grep 实测为准、矩阵与网格＝并列引擎；④ ViewFrame/StageActionBar/StageBizStrip 注释层号对齐 L2。**L4 代码已建成但零页面接入**——迁移待下轮；下轮代码还需删 cellSpec.ts 残留 inline 分支 |
+| 表格 UI 分层（L1 · 五层模型 + 表 × 层级矩阵页） | ✅ | 2026-09-04：真相源 `ui-layer-model` 条目（五层合一）+ 矩阵页 6 表 × 5 层实测数据。**同日缺陷修复**：① editEntry 删 inline 常驻输入（与「禁止常驻输入框」硬纪律冲突，收为 none/confirm/link/expand 四态）；② 装配序列按代码核实修正——主表行（DocumentContextBar）挂容器层 OrderWorkbench 九视图共享，报价/售后有、产品管理/采购清单无（subagent 实测 OrderWorkbench.tsx:543）；③ rules 补三条裁决：L4 声明落点＝登记表 pages 段（禁第二套）、现状数字以 auditCellSpecs/grep 实测为准、矩阵与网格＝并列引擎；④ ViewFrame/StageActionBar/StageBizStrip 注释层号对齐 L2。**阶段 1 样板已落地**（2026-09-04：采购报价 8 列全部参数化、7 处 custom 消灭，e2e 13/13 全过；门禁从静默改为按四种冻结来源提示）——剩余 19 页 128 处 custom 待推广；下轮代码还需删 cellSpec.ts 残留 inline 分支 |
 
 ---
 

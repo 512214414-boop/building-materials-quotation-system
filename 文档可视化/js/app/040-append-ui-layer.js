@@ -99,7 +99,6 @@
     appendMethodLayer(parent, meta.implOrder);
     appendArrow(parent, "点值确认层 · 四页强制（下面槽位树）");
     appendPointEditLayer(parent, meta.pointEdit);
-    appendDeliveryMap(parent);
     nextFlow();
     if (meta.shell) {
       var shellSec = el("section", "layer");

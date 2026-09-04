@@ -10,6 +10,15 @@ DOC_VIZ.tableAggregateOrder = {
   kicker: "集合体 · 单据",
   title: "20 张表 · 全项目最大，从来没进过档案槽位框架",
   lead: "原因是快照语义与档案语义根本不同：档案格子改的是引用（改了全局生效），单据格子是快照（落单抄死）。四个平行单据集合体（销售单/入库单/采购入库/报销单）结构高度一致：「主表 + 快照行 + 若干标注层」。**本页边界**：本页是单据的集合体视角（数据怎么组织、怎么被选用）；业务现场在侧栏「指导思想 · 销售开单 / 售后」，过程交互在「订单中心 · 八个过程视图」，字段级表清单在数据层 orderTables——那三处是链接，不是本页的重复。",
+  // 涉及的动作守卫（渲染时从 actions.generated.js 取判定+提示语，不复制文案）
+  guardActions: [
+    "purchase_inbound_confirm", "quote_recognize", "purchase_recognize", "document_recognize",
+    "purchase_commit_qty", "purchase_submit_demand", "detail_add_to_doc",
+    "payment_quick_add", "reimbursement_save",
+    "refund_add_lines", "refund_add_single", "refund_edit_line",
+    "price_edit_add", "price_archive_confirm",
+    "archive_sales", "archive_logistics", "archive_costs", "allocation_source_quick_add"
+  ],
 
   // 元模型表：九组视角 × 界面字段。字段横向、视角纵向（appendFieldMatrix 渲染）。
   metaModel: {

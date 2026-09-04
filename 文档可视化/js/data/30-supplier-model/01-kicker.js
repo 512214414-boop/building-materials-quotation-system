@@ -97,8 +97,6 @@ DOC_VIZ.supplierModel.pickerSurfaces = {
       label: "产品选品",
       note: "检索 → 品牌 → 规格",
       host: true,
-      hostModule: "table-aggregate-product",
-      hostChapter: "picker",
       children: [
         {
           id: "buy",

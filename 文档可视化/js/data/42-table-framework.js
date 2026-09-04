@@ -9,7 +9,7 @@
 DOC_VIZ.tableFramework = {
   kicker: "表格功能框架模型 · 总纲",
   title: "集合体作为配置接入框架，表的一生由框架决定",
-  lead: "带数据表的功能不再各写一套：一个集合体（档案/单据/深树）作为一份配置接入表格功能框架，框架自动决定后端增删改查怎么处理、前端显示与交互用什么槽位和组件。这一页讲清楚框架的顶层形状、有哪些方面、多少槽位、共享组件清单，以及理想状态。真相源：entityRelations.ts（登记表）+ deriveTableColumns.ts（推导引擎）+ archiveSlotTypes.ts（槽位定义）+ 组件资产清单（AGENTS.md 第七节）。",
+  lead: "带数据表的功能不再各写一套：一个集合体（档案/单据/深树）作为一份配置接入表格功能框架，框架自动决定后端增删改查怎么处理、前端显示与交互用什么槽位和组件。这一页讲清楚框架的顶层形状、有哪些方面、多少槽位、共享组件清单，以及理想状态。真相源：data-source/entity-meta.yml（唯一登记表，元模型运行时阶段 E 全落地）→ 生成 entityRelations.generated.ts（前端界面列）+ entityMeta.generated.ts（前后端建档/快照/审计/统计）；deriveTableColumns.ts（推导引擎）+ archiveSlotTypes.ts（槽位定义）+ 组件资产清单（AGENTS.md 第七节）。",
 
   wideTable: {
     kicker: "先看宽表 · 数据最终落定的形态",

@@ -334,20 +334,11 @@
       renderCanvasContent(extra, meta, function () {});
       return;
     }
-    if (state.module === "entity-slot-model") {
-      renderEntitySlotContent(extra, meta);
-      return;
-    }
-    if (state.module === "table-framework") {
-      renderTableFrameworkContent(extra, meta);
-      return;
-    }
-    if (state.module === "table-features") {
-      renderTableFeaturesContent(extra, meta);
-      return;
-    }
-    if (state.module.indexOf("table-aggregate-") === 0) {
-      renderTableAggregateContent(extra, meta);
+    // 表格 UI 分层矩阵页：必须排在 whyBiz 短路之后——
+    // 真相源单篇 navId 是 ui-layer-model（会被短路接管走 carry 渲染），
+    // 而 ui-layer-quote / refund / ... 等矩阵页不在 whyBiz 里，才走到这里。
+    if (state.module.indexOf("ui-layer-") === 0) {
+      renderUiLayerContent(extra, meta);
       return;
     }
     if (isManage && meta.inventory && meta.tables) {

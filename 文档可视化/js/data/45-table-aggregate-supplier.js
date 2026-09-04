@@ -10,6 +10,33 @@ DOC_VIZ.tableAggregateSupplier = {
   kicker: "集合体 · 供应商档案",
   title: "5 张表 · 最标准的档案集合体，槽位框架用得最完整",
   lead: "树深 1 层 → 行内放得下 → 走 ArchiveSlotHost 的行内框架，不需要独立弹窗。这是「合格样例」：其余集合体该长什么样，照它比。下面按「关系图 → 管理界面表格真实呈现 → 列交互 → 判定」展开。",
+  // 涉及的动作守卫（渲染时从 actions.generated.js 取判定+提示语，不复制文案）
+  guardActions: ["supplier_quick_add", "dict_item_add", "dict_item_rename"],
+
+  // 出发点 / 要支持到：集合体视角自写（不复制旧 supplier-model 的五段档案正文）
+  intent: {
+    kicker: "出发点 · 开单时知道这货谁可能供",
+    title: "没货时下一动作是打电话：本页就是那本渠道名册",
+    lead: "开单没货，下一件事是打电话问谁可能有。本页落渠道名册：电话、宣称做什么货、实际报过什么价。现场正文在侧栏「指导思想 · 销售开单 / 配货履约」，本页只落结论。",
+    rules: [
+      ["已进过价 vs 宣称做这类货", "两层都出现：做过价的（进价行上的渠道名）+ 宣称经营的（经营范围盖住分类/品牌），好打电话"],
+      ["不是搜档案当产品名", "金牛是品牌，金牛管业是渠道。渠道档最左是渠道名"],
+      ["三层不混", "经营范围是宣称，进价是证实，点位是谈价。宣称不能替代进价结算"]
+    ]
+  },
+
+  need: {
+    kicker: "要支持到 · 场景推出层级",
+    title: "为什么拆成主档 + 四张挂载子表",
+    lead: "供应商的需求全是「一家渠道多个东西」：多个联系人、多个发货地址、经营多个分类品牌。层级由这些现场事实推出。",
+    rules: [
+      ["一家渠道一份档案", "名称唯一 → 主档一行"],
+      ["多个联系人", "微信 / 电话不止一个 → 联系子表 N（默认互斥）"],
+      ["多个发货地址", "公司 / 门店 / 库房地址 → 地址子表 N（默认互斥，不是内部仓）"],
+      ["经营多个分类和品牌", "宣称做哪些货 → 经营范围子表 N，一行一个字典 ID（不建子记录）"],
+      ["按分类 / 品牌 / SKU 找渠道", "范围粗圈 → 进价证实 → 点位谈价，三层答不同问题"]
+    ]
+  },
 
   // 元模型表：九组视角 × 界面字段。字段横向、视角纵向（appendFieldMatrix 渲染）。
   // 九组视角来自 L0 方法论「表功能元模型」（侧栏方法论库），与产品档案同一套口径。
@@ -79,7 +106,7 @@ DOC_VIZ.tableAggregateSupplier = {
         ["来源", "SupplierManage def.slots[] 数组顺序：name → matrix(contacts) → matrix(addresses) → custom(scope) → scalar(remark)"],
         ["对比产品", "产品走 deriveTableColumns 推导骨架 + mergeColumns 合并；供应商走 ArchiveSlotHost 读 slots 声明渲染——两种列来源并存"],
         ["差异合理", "产品深树需要推导引擎；档案浅树 slots 声明更直白，各自对"],
-        ["登记表不覆盖档案", "entityRelations.ts 的 supplier 登记未用——档案页的列由 ArchiveSlotHost + slots 声明决定"]
+        ["登记表不覆盖档案", "entity-meta.yml 的 supplier 登记未用——档案页的列由 ArchiveSlotHost + slots 声明决定"]
       ]
     },
 

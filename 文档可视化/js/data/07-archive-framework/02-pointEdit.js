@@ -91,7 +91,7 @@ DOC_VIZ.archiveFramework.pointEdit = {
       kicker: "四页落地 · 必须齐",
       title: "缺一页 = 框架未收敛完",
       rules: [
-        ["产品", "ProductManage PickerEditGateProvider。ProductEditDialog：产品名→品牌→系列/规格（ArchiveDialogField stack）；BatchAdjustDialog 全字段点值；列表备注 ArchiveFieldCell。宽表暂不迁宿主。"],
+        ["产品", "ProductManage PickerEditGateProvider。产品集合编辑矩阵（ProductEditDialog）：产品名→品牌切换行→系列/规格切换行（ArchiveDialogField stack）→单位矩阵；BatchAdjustDialog 全字段点值；列表备注 ArchiveFieldCell。宽表暂不迁宿主。"],
         ["供应商", "ArchiveSlotHost + slots[]。经营范围双栏勾选是私有槽。"],
         ["库房", "ArchiveSlotHost + slots[]。名称弹窗含区位 N + 负责人 N + 主地址 + 主仓。无编码。私有：主仓。"],
         ["客户", "ArchiveSlotHost + slots[]。点姓名打开完整弹窗（含联系/地址/开票 N）。私有：selectable=false、地址懒加载。"]

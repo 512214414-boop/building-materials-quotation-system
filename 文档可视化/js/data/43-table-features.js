@@ -5,7 +5,7 @@
  *
  * 约定：本文件只承载特征数据这一段内容。改这一段，只读/只改本文件，不必读全量。
  * 结构：特征维度分块 → 全表特征表（英文表名|中文表名|特征名称）→ 特征组合表（唯一特征集合统计）。
- * 真相源：backend/prisma/schema.prisma（63 张表）+ archiveSlotTypes.ts（槽位定义）。
+ * 真相源：backend/prisma/schema.prisma（63 张表）+ data-source/entity-meta.yml（实体登记）+ archiveSlotTypes.ts（槽位定义）。
  */
 DOC_VIZ.tableFeatures = {
   kicker: "特征表与特征组合",

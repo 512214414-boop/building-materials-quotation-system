@@ -99,9 +99,9 @@ DOC_VIZ.orderFramework = {
             label: "确认层输入上的选用检索",
             note: "子层 · 不要当第一层",
             children: [
-              { id: "p-prod", label: "产品", note: "ProductPicker hideHostInput", guest: "产品选品", guestModule: "table-aggregate-product", guestChapter: "picker" },
+              { id: "p-prod", label: "产品", note: "ProductPicker hideHostInput", guest: "产品选品" },
               { id: "p-unit", label: "单位", note: "UnitPicker" },
-              { id: "p-cust", label: "客户", note: "CustomerPicker", guest: "客户", guestModule: "table-aggregate-customer", guestChapter: "picker" }
+              { id: "p-cust", label: "客户", note: "CustomerPicker", guest: "客户" }
             ]
           }
         ]

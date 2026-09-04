@@ -18,6 +18,8 @@ DOC_VIZ.aggregateViews = [
   { id: "metaModel", label: "元模型表", hint: "九组视角逐字段登记：身份/语义/来源/关系/呈现/行为/检索/历史/权限" },
   { id: "manage", label: "管理界面", hint: "列表列 · 固定槽位 · 列顺序 · 列交互" },
   { id: "picker", label: "选用检索", hint: "开单与引用处怎么从这棵树上取一条" },
+  { id: "guard", label: "操作守卫", hint: "动作前拦截什么、给什么提示（actions.guard，8 类判定）" },
+  { id: "uiEditDialog", label: "编辑弹窗·组件剖面", hint: "看到什么→什么块→什么组件→什么特征（从外到内）" },
   { id: "verdict", label: "框架判定", hint: "与槽位框架的关系：同构插槽 / override / 绕开自建" }
 ];
 

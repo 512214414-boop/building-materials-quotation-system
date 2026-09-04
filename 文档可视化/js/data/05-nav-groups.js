@@ -218,9 +218,38 @@ DOC_VIZ.navGroups = [
     ]
   },
   {
+    id: "entity-slot",
+    title: "实体关系槽位",
+    hint: "数据关系图扔进槽位 · 五面自动产出 · 图形化说明",
+    defaultOpen: false,
+    items: [
+      {
+        id: "entity-slot-model",
+        title: "实体关系槽位模型",
+        subtitle: "模型形状 · 示例表结构 · 关系怎么插 · 槽位机制",
+        enabled: true
+      }
+    ]
+  },
+  {
+    id: "ui-layer",
+    title: "表格 UI 分层",
+    hint: "从使用角度组织 · 横向切表、纵向切层级 · 每格是这个表在这一层的真实配置参数",
+    defaultOpen: true,
+    items: [
+      { id: "ui-layer-model", title: "总纲 · 五层模型", subtitle: "触发：设计表格页面 · 上层只装配、下层只参数", enabled: true },
+      { id: "ui-layer-quote", title: "采购报价", subtitle: "唯一空行录入 · 分支覆盖最全", enabled: true },
+      { id: "ui-layer-refund", title: "售后", subtitle: "唯一有辅助行 · 明细只读", enabled: true },
+      { id: "ui-layer-product", title: "产品管理", subtitle: "可编辑明细 · 字典检索改全局", enabled: true },
+      { id: "ui-layer-purchase", title: "采购清单", subtitle: "只读明细 · 链接跳转列", enabled: true },
+      { id: "ui-layer-inventory", title: "库存台账", subtitle: "number / date 形态 · 服务端分页", enabled: true },
+      { id: "ui-layer-audit", title: "审计日志", subtitle: "enum-tag · 全表只读", enabled: true }
+    ]
+  },
+  {
     id: "table-framework",
     title: "表格功能框架模型",
-    hint: "集合体接入框架 · 框架方面 · 槽位 · 共享组件 · 特征与组合 · 按集合体分章",
+    hint: "【数据视角 · 已由上方「表格 UI 分层」页承接】集合体接入框架 · 框架方面 · 槽位 · 共享组件 · 特征与组合 · 按集合体分章",
     defaultOpen: false,
     items: [
       {

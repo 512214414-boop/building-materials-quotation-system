@@ -14,7 +14,9 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
     ov.tables = DOC_VIZ.orderTables;
     return ov;
   }
-  if (moduleId === "table-aggregate-product") {
+  // product-model 是产品档案的旧模块 id：集合体架子（table-aggregate-product）的
+  // intent/need/picker 三格回退到这里取值（见 095 的 aggViewData），内容仍在原处不复制。
+  if (moduleId === "product-model") {
     return {
       kicker: "产品管理",
       title: "货与价",
@@ -78,9 +80,7 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
                           id: "browse",
                           label: "查看可能渠道",
                           note: "只读查询槽",
-                          guest: "供应商",
-                          guestModule: "table-aggregate-supplier",
-                          guestChapter: "picker"
+                          guest: "供应商"
                         }
                       ]
                     }
@@ -93,18 +93,20 @@ DOC_VIZ.getModuleMeta = function (moduleId) {
       }
     };
   }
-  if (moduleId === "table-aggregate-supplier") return DOC_VIZ.supplierModel;
-  if (moduleId === "table-aggregate-warehouse") return DOC_VIZ.warehouseModel;
-  if (moduleId === "table-aggregate-customer") return DOC_VIZ.customerModel;
+  // *-model 是旧档案模块 id：集合体架子的 intent/need/picker 回退到这里取值，内容仍在原处
+  if (moduleId === "supplier-model") return DOC_VIZ.supplierModel;
+  if (moduleId === "warehouse-model") return DOC_VIZ.warehouseModel;
+  if (moduleId === "customer-model") return DOC_VIZ.customerModel;
   if (moduleId === "canvas-ui-hierarchy") return DOC_VIZ.canvasUi;
-  if (moduleId === "entity-slot-model") return DOC_VIZ.entitySlotModel;
-  if (moduleId === "table-framework") return DOC_VIZ.tableFramework;
-  if (moduleId === "table-features") return DOC_VIZ.tableFeatures;
-  if (moduleId === "table-aggregate-product") return DOC_VIZ.tableAggregateProduct;
-  if (moduleId === "table-aggregate-supplier") return DOC_VIZ.tableAggregateSupplier;
-  if (moduleId === "table-aggregate-customer") return DOC_VIZ.tableAggregateCustomer;
-  if (moduleId === "table-aggregate-warehouse") return DOC_VIZ.tableAggregateWarehouse;
-  if (moduleId === "table-aggregate-order") return DOC_VIZ.tableAggregateOrder;
-  if (moduleId === "table-aggregate-permission") return DOC_VIZ.tableAggregatePermission;
+  // 表格 UI 分层矩阵页：内容在 uiLayerTables 里按「表 × 层级」取，
+  // 这里只提供页头三件套（kicker / title / lead）。
+  if (moduleId.indexOf("ui-layer-") === 0) {
+    var uiT = (DOC_VIZ.uiLayerList || []).filter(function (x) { return x.id === moduleId; })[0];
+    return {
+      kicker: "表格 UI 分层 · 矩阵",
+      title: (uiT && uiT.label) || moduleId,
+      lead: "从使用角度组织：横向切表、纵向切层级。每一格是这个表在这一层的真实配置参数，附代码证据。"
+    };
+  }
   return { kicker: DOC_VIZ.why.kicker, title: DOC_VIZ.why.title, lead: DOC_VIZ.why.lead };
 };

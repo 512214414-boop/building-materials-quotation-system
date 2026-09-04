@@ -8,7 +8,7 @@
 DOC_VIZ.entitySlotModel = {
   kicker: "实体关系槽位 · 图形化",
   title: "数据关系图扔进槽位，五面自动产出",
-  lead: "带数据表的功能不再各写一套列、一套检索、一套快建、一套确认。只填一份「数据关系图」参数（实体 + 字段 + 关系 + 场景可见性 + 确认策略），槽位自动推导五个面。下面把模型形状、示例表结构、关系怎么插进去、模型怎么解读、槽位机制一层一层画出来。真相源文件：entityRelations.ts（登记表）+ deriveTableColumns.ts（推导引擎）。",
+  lead: "带数据表的功能不再各写一套列、一套检索、一套快建、一套确认。只填一份「数据关系图」参数（实体 + 字段 + 关系 + 场景可见性 + 确认策略），槽位自动推导五个面。下面把模型形状、示例表结构、关系怎么插进去、模型怎么解读、槽位机制一层一层画出来。真相源文件：data-source/entity-meta.yml（唯一登记表）→ 生成 entityRelations.generated.ts（界面列）+ entityMeta.generated.ts（建档/快照/审计/统计）；deriveTableColumns.ts（推导引擎）。",
   // 1. 模型形状：输入 → 槽位 → 五面
   pipeline: {
     kicker: "模型形状 · 一进五出",
@@ -23,7 +23,7 @@ DOC_VIZ.entitySlotModel = {
         {
           id: "slot",
           label: "槽位（统一实体关系模型）",
-          note: "entityRelations.ts 登记表 + deriveTableColumns.ts 推导引擎",
+          note: "entity-meta.yml 登记表（生成 entityRelations.generated.ts）+ deriveTableColumns.ts 推导引擎",
           card: "1",
           children: [
             { id: "f1", label: "面1 · 表格 UI", note: "列序/列宽/对齐/单元格类型/能否点/布局 从字段元数据推导", card: "1" },
@@ -60,7 +60,7 @@ DOC_VIZ.entitySlotModel = {
     title: "声明字段 → 推导骨架 → 合并视图专属 render",
     note: "关系图不是运行时插入，是登记时就写进字段规格。引擎按场景读登记表，产出列骨架；视图把自己的 render/renderEditor 作为 override 合并进去。",
     steps: [
-      ["1 声明", "在 entityRelations.ts 给实体加一行 EntityFieldSpec：key/标题/渲染模式/列宽/对齐/fieldClass(A·B)/dictKind/suggestField/confirmStrategy/scenes/order。关系写在实体 relations[] 里（如 product → brand manyToOne）。"],
+      ["1 声明", "在 data-source/entity-meta.yml 给实体加 columns 项（key/标题/渲染模式/列宽/对齐/fieldClass/dictKind/suggestField/confirmStrategy/scenes/order/slot），跑 node tools/gen-entity-meta.mjs 生成 entityRelations.generated.ts。关系写在 entities[].relations 里（如 product → brand manyToOne）。"],
       ["2 推导", "deriveTableColumns('product','workbench') 按 scenes 过滤可见字段、按 order 升序，映射成 UnifiedTableColumn[] 骨架（只含 key/标题/dataIndex/渲染模式/列宽/对齐/类名）。"],
       ["3 合并", "mergeColumns(骨架, 视图专属列)：视图把 render/renderEditor/cellSwitch/pickerRender 作为 override 传入，按 key 匹配浅合并到骨架列；骨架未声明的列追加末尾；slot 列插到占位处。"],
       ["4 解读·五面", "表格UI=骨架本身；检索=A类字段 suggestField 走 dictSearch；快建/管理=A类字段 dictKind 接 recordDicts；确认策略=confirmStrategy 三档；场景截断=scenes[] 过滤。一面都不用视图再手写。"]
@@ -95,7 +95,7 @@ DOC_VIZ.entitySlotModel = {
   migrated: {
     kicker: "已迁移视图 · 改一处三视图跟",
     title: "三视图已接入登记表",
-    lead: "采购报价（workbench）/ 产品档案（archive，含 skuPrice slot）/ 库存主表（inventory）。改列序只改 entityRelations.ts，视图自动跟。",
+    lead: "采购报价（workbench）/ 产品档案（archive，含 skuPrice slot）/ 库存主表（inventory）。改列序只改 data-source/entity-meta.yml，视图自动跟。",
     rules: [
       ["骨架唯一", "列顺序/出现哪些列/默认宽对齐 只在登记表声明，视图不能再手写第二套列序"],
       ["渲染各补", "级联筛选表头、点值确认层、选品浮层等视图专属 render 仍由视图传入并胜出，不丢手调精度"],
