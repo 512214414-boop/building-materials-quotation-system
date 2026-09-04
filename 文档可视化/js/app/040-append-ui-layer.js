@@ -89,6 +89,7 @@
     appendRuleLayer(parent, meta.writeRule);
     appendArrow(parent, "选用检索挂确认层输入");
     appendRuleLayer(parent, meta.hangPicker);
+    if (meta.docSpec) appendRuleLayer(parent, meta.docSpec);
     appendPagesLayer(parent, { kicker: "过程页", title: "各页只写自己的槽" }, meta.pagesList);
   }
 

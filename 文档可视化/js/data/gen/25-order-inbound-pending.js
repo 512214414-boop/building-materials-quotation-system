@@ -24,6 +24,10 @@ DOC_VIZ.whyBiz["order-inbound-pending"] = {
     {
       "label": "来源固定",
       "note": "行取自配货行 allocation_lines 的超额量（over_qty）与单价（unit_cost），不手工录入。单号前缀 IB。"
+    },
+    {
+      "label": "超额记到最后问的那家头上",
+      "note": "超出的量归属该单品外部行里最晚问价的供应商（多行合并）；默认进主仓，没有主仓取第一个启用仓，待入库上可改。内部出库不参与归属。"
     }
   ],
   "tables": [

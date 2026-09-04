@@ -170,6 +170,18 @@ DOC_VIZ.orderFramework = {
       ["配货来源", "两枝：内部仓 | 供应商。不要套宽松+精准。"]
     ]
   },
+  docSpec: {
+    kicker: "单据规格 · 速查",
+    title: "编号格式与视图锁键：权威在 schema 与代码，这里漂移以代码为准",
+    lead: "枚举值、字段、推进逻辑的唯一权威是 backend/prisma/schema.prisma 与 applyTransition / summaryService。本块只留速查口径（承接自旧《单据与状态机》《发货管理》《收款对账》，2026-09-04 退役）。",
+    rules: [
+      ["单据编号", "YY-MM-DD-序号（3 位），如 26-08-11-001；全库统一禁前缀，报销副单同规则。"],
+      ["视图锁键", "documents.view_locks 键统一 snake_case：payment_reconcile / purchase_quote / delivery / refund_after_sale。"],
+      ["交付子状态", "pending → shipped → signed 可回退；signed 仅签收接口进入，PATCH 不许改；全单签收 best-effort 自动推进交付完成。"],
+      ["收款核销推进", "已核销合计 ≥ 单据总额（允许 0.01 精度）自动推进收款已结算。"],
+      ["运费分摊", "按行金额比例分摊到 cost_lines.freight，不录为 0。"]
+    ]
+  },
   pagesList: [
     { name: "全局规则", file: "文档可视化 · 本页", note: "点值、写入、槽" },
     { name: "采购报价", file: "workbench/views/PurchaseQuote.tsx", note: "开单行槽 · 表头级联筛" },
