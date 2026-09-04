@@ -2,7 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { ArchiveFieldCell } from '../product-picker/PickerInlineCells.js';
 import type { DictRecordConfig } from '../DictRefField.js';
-import type { SuggestField } from '../../services/api/baseDataApi.js';
+import type { DictChangeKind, SuggestField } from '../../services/api/baseDataApi.js';
 
 export function ArchiveDialogField({
   label,
@@ -19,6 +19,10 @@ export function ArchiveDialogField({
   className,
   bodyStyle,
   suffix,
+  dictField,
+  fromId,
+  applyGlobal,
+  kind,
 }: {
   label: string;
   value: string;
@@ -36,6 +40,11 @@ export function ArchiveDialogField({
   bodyStyle?: CSSProperties;
   /** stack 布局时可追加控件（如规格 ▾ 按钮） */
   suffix?: ReactNode;
+  /** v26.4 同源字典能力：传 dictField 即走与表体 PickerNameCell 同一条确认层（两档 + 改名/删 + 改全局） */
+  dictField?: DictChangeKind;
+  fromId?: string;
+  applyGlobal?: (next: string) => void | Promise<void>;
+  kind?: import('../product-picker/pickerCatalogImpact.js').PickerCatalogKind;
 }) {
   const labelNode = (
     <span
@@ -61,6 +70,10 @@ export function ArchiveDialogField({
         dictConfig={dictConfig}
         input={input}
         onApply={onApply}
+        dictField={dictField}
+        fromId={fromId}
+        applyGlobal={applyGlobal}
+        kind={kind}
       />
     </div>
   );

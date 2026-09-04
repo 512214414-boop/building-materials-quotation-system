@@ -88,6 +88,7 @@ import PickerTreeViewBar from './PickerTreeViewBar.js';
 import { PickerEditGateProvider, usePickerEditGate } from './product-picker/PickerEditGate.js';
 import {
   DICT_DELETE_FN,
+  DICT_LIST_FN,
   DICT_ENTRY_VIEWS,
   dictChangeKindOfField,
   isDictEntryField,
@@ -326,7 +327,7 @@ function SuggestInputInner({
           dictField: kind,
           input: 'text',
           applyGlobal: async (next) => {
-            const result = await renameDictEntry(field, fromId, next);
+            const result = (await renameDictEntry(field, fromId, next)) as { toId: string; toName: string };
             void refreshDict();
             if (value.trim() === opt.value) {
               onChange(next);
@@ -504,7 +505,7 @@ function SuggestInputInner({
             <PickerTreeViewBar
               views={DICT_ENTRY_VIEWS}
               value={viewMode}
-              onChange={setViewMode}
+              onChange={(v: string) => setViewMode(v as 'suggest' | 'dict')}
             />
           )}
           <SuggestList

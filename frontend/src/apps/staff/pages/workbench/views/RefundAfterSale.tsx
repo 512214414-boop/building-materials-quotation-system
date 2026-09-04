@@ -522,7 +522,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
         ellipsis: true,
         render: (_v: any, r: RefundLineView) => (
           <span style={{ color: 'var(--text-default)' }}>
-            {r.documentLine.productName || r.documentLine.productRef}
+            {r.documentLine.productRef}
           </span>
         ),
       },
@@ -535,7 +535,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
         renderMode: 'static',
         ellipsis: true,
         render: (_v: any, r: RefundLineView) =>
-          r.documentLine.brandName ? r.documentLine.brandName : <span style={{ color: 'var(--text-tertiary)' }}>—</span>,
+          r.documentLine.brand?.name ?? <span style={{ color: 'var(--text-tertiary)' }}>—</span>,
       },
       // 5. 规格型号
       {
@@ -797,7 +797,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
                     商品（强继承）
                   </div>
                   <div style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-                    {editTarget.documentLine.productName || editTarget.documentLine.productRef}
+                    {editTarget.documentLine.productRef}
                   </div>
                 </div>
                 <div>

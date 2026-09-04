@@ -21,6 +21,8 @@ export type PickerCatalogKind =
   | 'addUnit'
   | 'addSaleType'
   | 'addChannel'
+  /** 地址类型：托管字典（有 addressTypeId → addressType 关系），改名/并档走后端 dict-change */
+  | 'addressType'
   /** 档案矩阵格：impact / dictConfig 由调用方注入，无改全局 */
   | 'archiveField';
 
@@ -210,6 +212,12 @@ export function describeCatalogImpact(
         title: '修改',
         scopeLine,
         bullets: ['仅修改当前格子。', '取消则不保存。'],
+      };
+    default:
+      return {
+        title: '修改',
+        scopeLine,
+        bullets: ['仅修改当前值。', '取消则不保存。'],
       };
   }
 }

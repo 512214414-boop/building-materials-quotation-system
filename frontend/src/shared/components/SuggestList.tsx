@@ -173,19 +173,48 @@ const LIST_CONTAINER_STYLE: CSSProperties = {
   touchAction: 'pan-y',
 };
 
-/** 默认行样式（单列模式） */
-const DEFAULT_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
+// §2.4 表格网格样式（v26.4 重构：检索下拉统一为「带表头的表格网格」，
+//   改名/删除独占「操作」列，与「名称」选中列物理分离——从结构上消除行内按钮误触选中。
+//   对齐本项目「一切皆表」的 UI 分层：行列清晰、每列点击交互不同、有表头列）
+const SL_TABLE_STYLE: CSSProperties = {
   width: '100%',
-  padding: '4px 8px',
+  borderCollapse: 'collapse',
   fontSize: 'var(--body-xs-font-size)',
   lineHeight: 1.4,
-  color: 'var(--text-default)',
+};
+const SL_TH_STYLE: CSSProperties = {
   textAlign: 'left',
-  cursor: 'pointer',
+  padding: '4px 8px',
+  color: 'var(--text-tertiary)',
+  background: 'var(--bg-base-secondary)',
   borderBottom: '1px solid var(--border-neutral-l1)',
+  fontWeight: 500,
+  whiteSpace: 'nowrap',
+  position: 'sticky',
+  top: 0,
+  zIndex: 1,
+};
+const SL_TD_BASE: CSSProperties = {
+  padding: '4px 8px',
+  borderBottom: '1px solid var(--border-neutral-l2)',
+  verticalAlign: 'middle',
+};
+const SL_NAME_TD_STYLE: CSSProperties = {
+  ...SL_TD_BASE,
+  cursor: 'pointer',
+  color: 'var(--text-default)',
+};
+const SL_TYPE_TD_STYLE: CSSProperties = {
+  ...SL_TD_BASE,
+  whiteSpace: 'nowrap',
+  color: 'var(--text-tertiary)',
+};
+const SL_ACTION_TD_STYLE: CSSProperties = {
+  ...SL_TD_BASE,
+  whiteSpace: 'nowrap',
+  textAlign: 'right',
+};
+const SL_TR_STYLE: CSSProperties = {
   transition: 'background .12s ease',
 };
 
@@ -287,6 +316,7 @@ function DefaultRow({
   onDelete,
   highlight,
   hit,
+  dictMode,
 }: {
   opt: SuggestOption;
   onSelect: (opt: SuggestOption) => void;
@@ -296,33 +326,23 @@ function DefaultRow({
   highlight?: string;
   /** 是否为第一个命中项（配合外层容器做滚动定位） */
   hit?: boolean;
+  /** 字典管理模式（调用方传了 onRename/onDelete）：渲染「类型」「操作」两列；否则仅「名称」列 */
+  dictMode: boolean;
 }) {
   const tag = TYPE_TAG_MAP[opt.type] ?? TYPE_TAG_MAP.existing;
   const tagText = opt.badge?.trim() || tag.text;
-  const tagColor = opt.badge?.trim() ? 'var(--text-brand)' : tag.color;
-  // 行内改/删：仅 existing 项、且调用方传入回调时渲染，**常驻**（不依赖 hover——格局稳定，
-  // 移动端没有 hover；宽度换稳定性）。stopPropagation 防误触 onSelect；
-  // onMouseDown preventDefault 防下拉失焦关闭（AutoComplete 基于 Select，mousedown 会抢焦点）。
-  const showActions = opt.type === 'existing' && (!!onRename || !!onDelete);
+  // 行内改/删：仅 existing 项、且字典管理模式才渲染，独占「操作」列（与「名称」选中列物理分离）。
+  // 按钮 onClick/onMouseDown 均 stopPropagation，整列点击都不会冒泡到「名称」列的 onSelect。
+  const showActions = dictMode && opt.type === 'existing' && (!!onRename || !!onDelete);
   const stop = (fn?: () => void) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     fn?.();
   };
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <tr
       data-hit={hit ? '1' : undefined}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onSelect(opt)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect(opt);
-        }
-      }}
-      style={DEFAULT_ROW_STYLE}
+      style={SL_TR_STYLE}
       onMouseEnter={(e) => {
         e.currentTarget.style.background = 'var(--bg-overlay-l2)';
       }}
@@ -330,47 +350,58 @@ function DefaultRow({
         e.currentTarget.style.background = 'transparent';
       }}
     >
-      <span
-        style={{
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          minWidth: 0,
+      <td
+        role="button"
+        tabIndex={0}
+        style={SL_NAME_TD_STYLE}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onSelect(opt)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(opt);
+          }
         }}
       >
         {highlight ? renderHighlighted(opt.label, highlight) : opt.label}
-      </span>
+      </td>
+      {dictMode && <td style={SL_TYPE_TD_STYLE}>{tagText}</td>}
       {showActions && (
-        <>
-          {onRename && (
-            <button
-              type="button"
-              aria-label={`改名「${opt.label}」`}
-              title="改名（字典里已有同名则并档）"
-              style={ROW_ACTION_BTN_STYLE}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={stop(() => onRename(opt))}
-            >
-              <EditOutlined />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              aria-label={`删除「${opt.label}」`}
-              title="删除（历史值作为字符串保留）"
-              style={{ ...ROW_ACTION_BTN_STYLE, color: 'var(--text-danger, var(--text-tertiary))' }}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={stop(() => onDelete!(opt))}
-            >
-              <DeleteOutlined />
-            </button>
-          )}
-        </>
+        <td style={SL_ACTION_TD_STYLE}>
+          <span
+            className="sl-row-actions"
+            style={{ display: 'inline-flex', gap: 2 }}
+            onMouseDown={stop()}
+            onClick={stop()}
+          >
+            {onRename && (
+              <button
+                type="button"
+                aria-label={`改名「${opt.label}」`}
+                title="改名（字典里已有同名则并档）"
+                style={ROW_ACTION_BTN_STYLE}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={stop(() => onRename(opt))}
+              >
+                <EditOutlined />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                aria-label={`删除「${opt.label}」`}
+                title="删除（历史值作为字符串保留）"
+                style={{ ...ROW_ACTION_BTN_STYLE, color: 'var(--text-danger, var(--text-tertiary))' }}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={stop(() => onDelete!(opt))}
+              >
+                <DeleteOutlined />
+              </button>
+            )}
+          </span>
+        </td>
       )}
-      <span style={{ fontSize: 10, color: tagColor, flexShrink: 0 }}>{tagText}</span>
-    </div>
+    </tr>
   );
 }
 
@@ -460,6 +491,8 @@ export default function SuggestList<T = SuggestOption>({
   const showEmpty = !loading && options.length === 0 && !showCreate && trimmedKw !== '';
   const showIdle = !loading && options.length === 0 && trimmedKw === '' && !!idleText;
   const showList = !loading && options.length > 0;
+  /** 字典管理模式：调用方传了 onRename/onDelete → 表格网格多「类型」「操作」两列 */
+  const dictMode = !!(onRename || onDelete);
 
   return (
     <div ref={containerRef} data-shared-badge="C13" style={{ ...LIST_CONTAINER_STYLE, maxHeight, ...style }}>
@@ -600,35 +633,59 @@ export default function SuggestList<T = SuggestOption>({
         </div>
       )}
 
-      {/* 列表 */}
+      {/* 列表：默认行渲染统一为「带表头的表格网格」；rowRender 模式由调用方完全控制（不套表格） */}
       {showList &&
-        options.map((item, idx) => {
-          const key = rowKey
-            ? rowKey(item, idx)
-            : isSuggestOption(item)
-              ? (item.id ?? `${item.value}-${idx}`)
-              : `row-${idx}`;
-          if (rowRender) {
+        (rowRender ? (
+          options.map((item, idx) => {
+            const key = rowKey
+              ? rowKey(item, idx)
+              : isSuggestOption(item)
+                ? (item.id ?? `${item.value}-${idx}`)
+                : `row-${idx}`;
             // rowRender 模式：调用方完全控制行渲染和交互（含 onClick/onKeyDown），
             //   SuggestList 只负责列表容器 + 新建项 + loading + 无匹配
             return <Fragment key={key}>{rowRender(item, idx)}</Fragment>;
-          }
-          // 默认行渲染：仅当 T = SuggestOption 时使用
-          if (isSuggestOption(item)) {
-            return (
-              <DefaultRow
-                key={key}
-                opt={item}
-                onSelect={onSelect as (opt: SuggestOption) => void}
-                onRename={onRename as ((opt: SuggestOption) => void) | undefined}
-                onDelete={onDelete as ((opt: SuggestOption) => void) | undefined}
-                highlight={highlightKeyword}
-                hit={idx === firstHitIndex}
-              />
-            );
-          }
-          return null;
-        })}
+          })
+        ) : (
+          <table className="sl-grid" style={SL_TABLE_STYLE}>
+            <thead>
+              <tr>
+                <th style={SL_TH_STYLE}>名称</th>
+                {dictMode && (
+                  <>
+                    <th style={SL_TH_STYLE}>类型</th>
+                    <th style={SL_TH_STYLE}>操作</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {options.map((item, idx) => {
+                const key = rowKey
+                  ? rowKey(item, idx)
+                  : isSuggestOption(item)
+                    ? (item.id ?? `${item.value}-${idx}`)
+                    : `row-${idx}`;
+                // 默认行渲染：仅当 T = SuggestOption 时使用
+                if (isSuggestOption(item)) {
+                  return (
+                    <DefaultRow
+                      key={key}
+                      opt={item}
+                      onSelect={onSelect as (opt: SuggestOption) => void}
+                      onRename={onRename as ((opt: SuggestOption) => void) | undefined}
+                      onDelete={onDelete as ((opt: SuggestOption) => void) | undefined}
+                      highlight={highlightKeyword}
+                      hit={idx === firstHitIndex}
+                      dictMode={dictMode}
+                    />
+                  );
+                }
+                return null;
+              })}
+            </tbody>
+          </table>
+        ))}
     </div>
   );
 }

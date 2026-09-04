@@ -1430,8 +1430,8 @@ export function upsertSpecBrandConversion(
   );
 }
 
-/** 选品改全局：品牌/单位/分类/售价类型/供应商。目标名已存在则并到那个 ID，不报「已存在」。 */
-export type DictChangeKind = 'brand' | 'unit' | 'category' | 'priceType' | 'supplier';
+/** 选品改全局：品牌/单位/分类/售价类型/供应商/地址类型。目标名已存在则并到那个 ID，不报「已存在」。 */
+export type DictChangeKind = 'brand' | 'unit' | 'category' | 'priceType' | 'supplier' | 'addressType';
 
 export interface DictChangeExample {
   title: string;

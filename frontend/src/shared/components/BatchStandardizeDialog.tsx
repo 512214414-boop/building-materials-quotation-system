@@ -37,6 +37,15 @@ import {
 } from '../services/api/baseDataApi.js';
 import { isRecognizedGoods } from '../utils/documentLineInvariants.js';
 
+// 本地拼接商品全名：与 apps/customer/components/productUtils.buildFullName 同签名。
+// 不放进 shared 抽取是为避免 shared/components → apps/customer 反向依赖（productUtils 已 import shared）。
+function buildFullName(productName: string, brandName?: string | null, specModel?: string | null): string {
+  const parts: string[] = [productName];
+  if (brandName && brandName.trim()) parts.push(brandName.trim());
+  if (specModel && specModel.trim()) parts.push(specModel.trim());
+  return parts.join(' ');
+}
+
 /** 每条非标行的检索状态 */
 interface RowState {
   /** 检索关键词（默认注入当前 productRef） */
@@ -130,7 +139,7 @@ export default function BatchStandardizeDialog({
 
   /** 选中档案 */
   const handlePick = (lineId: string, sku: SkuSearchRow) => {
-    setRowStates((p) => ({ ...p, [lineId]: { ...p[lineId], selected: sku, results: [], keyword: buildFullName(sku) } }));
+    setRowStates((p) => ({ ...p, [lineId]: { ...p[lineId], selected: sku, results: [], keyword: buildFullName(sku.productName, sku.brandName, sku.specModel) } }));
   };
 
   /** 取消选中 */
@@ -162,7 +171,7 @@ export default function BatchStandardizeDialog({
           specId: sku.specId,
           productId: sku.productId,
           unitId: sku.defaultUnitId ?? undefined,
-          productRef: buildFullName(sku),
+          productRef: buildFullName(sku.productName, sku.brandName, sku.specModel),
           spec: sku.specModel,
           unit: sku.defaultUnitName ?? l.unit,
           thumbnailUrl: sku.mainImageThumbUrl ?? sku.mainImageUrl ?? undefined,

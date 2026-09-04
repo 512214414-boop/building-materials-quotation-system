@@ -9,11 +9,11 @@
 // 每个档案的 list 返回结构不同（分页 / 数组），均在配置内适配为 T[]。
 
 import type {
+  DictChangeKind,
   GlobalBrandView,
   SupplierView,
   CategoryView,
   PriceTypeView,
-  UnitView,
 } from '../services/api/baseDataApi.js';
 import {
   listBrands,
@@ -128,8 +128,8 @@ export const priceTypeDict: DictRecordConfig<PriceTypeView> = {
 //   - 删除：无 spec_unit 引用才允许物理删除；被引用时管理面板拦截
 // ============================================================
 
-export const unitDict: DictRecordConfig<UnitView> = {
-  list: () => listUnits({ page: 1, pageSize: 200 }).then((r) => r.list ?? []),
+export const unitDict: DictRecordConfig<{ id: string; name: string }> = {
+  list: () => listUnits({ page: 1, pageSize: 200 }).then((r) => (r.list ?? []).map((u) => ({ id: u.id, name: u.unitName }))),
   create: (name) => quickAddUnit(name).then((u) => ({ id: u.id, name: u.unitName })),
   update: () => {
     throw new Error('单位全局字典暂不支持改名，请在产品编辑里维护');
@@ -152,7 +152,7 @@ export default {
   unitDict,
 };
 
-export function dictConfigFor(kind: 'brand' | 'unit' | 'category' | 'priceType' | 'supplier') {
+export function dictConfigFor(kind: DictChangeKind) {
   if (kind === 'category') return categoryDict;
   if (kind === 'brand') return brandDict;
   if (kind === 'priceType') return priceTypeDict;

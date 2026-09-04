@@ -23,10 +23,7 @@ import { attachOutsideTapGuard } from '../../utils/outsideTapGuard.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
 import { useCanvasApp } from '../../hooks/useCanvasApp.js';
 import type { SuggestField } from '../../services/api/baseDataApi.js';
-import {
-  previewDictChange,
-  type DictChangeKind,
-} from '../../services/api/baseDataApi.js';
+import { previewDictChange, type DictChangeKind } from '../../services/api/baseDataApi.js';
 import {
   DICT_ENTRY_VIEWS,
   DICT_LIST_FN,
@@ -157,6 +154,9 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   const [listExpanded, setListExpanded] = useState(true);
   // 确认层定位稳定后子层才展开，避免跳动。
   const [hostReady, setHostReady] = useState(false);
+  // 受控重算信号：换锚点（open）或邻格快切复用同面板（reopen）时自增，
+  // 强制 FloatPanel 在 commit 前重算定位，消除「切格后定位停在上一个锚点」的 bug。
+  const [repositionKey, setRepositionKey] = useState(0);
   const anchorRef = useRef<HTMLElement | null>(null);
   const inputHostRef = useRef<HTMLDivElement>(null);
   // 只包输入框那一行：选用检索/字典检索都锚到这里，紧贴输入框展开，
@@ -189,6 +189,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
     anchorRef.current?.classList.remove('ds-gate-source-active');
     anchor.classList.add('ds-gate-source-active');
     anchorRef.current = anchor;
+    setRepositionKey((k) => k + 1);
     setParentId(pid);
     setBusy(false);
     setDraft(next.from);
@@ -298,6 +299,8 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
         const reopen = target.reopen;
         setBusy(false);
         reopen();
+        // 复用同面板但锚点已变（新格），强制重算定位。
+        setRepositionKey((k) => k + 1);
       } catch {
         setBusy(false);
       }
@@ -373,7 +376,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   const [gateDictItems, setGateDictItems] = useState<DictEntryItem[]>([]);
   const [gateDictLoading, setGateDictLoading] = useState(false);
   const gateDictField = req?.dictField;
-  const gateDictListFn = gateDictField ? DICT_LIST_FN[gateDictField] : undefined;
+  const gateDictListFn = gateDictField ? DICT_LIST_FN[gateDictField as SuggestField] : undefined;
 
   const refreshGateDict = useCallback(async () => {
     if (!gateDictListFn) return;
@@ -450,7 +453,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   );
   const suggestKw = useDebounce(dictSearch ? draft : '', 250);
   const { options: dictOptions, loading: dictLoading } = useSuggest({
-    field: req?.suggestField ?? dictCfg?.suggestField ?? req?.dictField ?? 'category',
+    field: req?.suggestField ?? dictCfg?.suggestField ?? 'category',
     keyword: suggestKw,
     allowEmptyKeyword: true,
     enabled: dictSearch && suggestOpen,
@@ -492,6 +495,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
         <FloatPanel
           open
           panelId={confirmPanelIdRef.current}
+          repositionKey={repositionKey}
           anchorRef={anchorRef}
           parentId={parentId}
           onClose={busy ? () => {} : close}
@@ -691,7 +695,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
                       <PickerTreeViewBar
                         views={DICT_ENTRY_VIEWS}
                         value={dictViewMode}
-                        onChange={setDictViewMode}
+                        onChange={(v: string) => setDictViewMode(v as 'suggest' | 'dict')}
                       />
                     )}
                     <SuggestList

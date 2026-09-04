@@ -42,25 +42,16 @@ import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
 import { confirmFillsBeforeSave } from '../../../shared/components/index.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import {
-  NameLinkCell,
-  ImageThumbCell,
-  StatusTagCell,
-  DateTimeCell,
   createSkuPriceColumns,
   type SkuPriceRowData,
 } from '../../../shared/components/cells/index.js';
-import { deriveTableColumns, mergeColumns } from '../../../shared/config/deriveTableColumns.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import ProductEditDialog from './product-manage/ProductEditDialog.js';
 import BatchAdjustDialog from './product-manage/BatchAdjustDialog.js';
 import ProductDeleteConfirmDialog from './product-manage/ProductDeleteConfirmDialog.js';
 import { HeaderCascadeFilter } from '../../../shared/components/archive/HeaderCascadeFilter.js';
-import {
-  ArchiveBrandCell,
-  ArchiveCategoryCell,
-  ArchiveSpecCell,
-} from './product-manage/ArchiveFieldCell.js';
 import { PickerEditGateProvider } from '../../../shared/components/product-picker/PickerEditGate.js';
-import { ArchiveFieldCell } from '../../../shared/components/product-picker/PickerInlineCells.js';
 import { QUICK_CREATE_LAYERS } from '../../../shared/config/quickCreateConfig.js';
 import {
   type SalePriceItem,
@@ -81,6 +72,10 @@ import {
   createUnit,
   rebindSpecUnit,
   applyDictChange,
+  quickAddCategory,
+  updateProduct,
+  rebindSpecBrand,
+  updateSpec,
   deleteUnit,
   setUnitDisplay,
   listSkuSearchFacets,
@@ -1074,206 +1069,168 @@ export default function ProductManage() {
     ],
   );
 
-  const columns = useMemo<UnifiedTableColumn<TableRow>[]>(
-    () => mergeColumns(deriveTableColumns('product', 'archive'), [
-      // 1. 分类（最后一级：点值打开确认浮层，字典检索 + 可改全局）
-      {
-        key: 'categoryName',
-        title: '分类',
-        dataIndex: 'categoryName',
-        minWidth: COL_WIDTHS.TAG_L,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v, record) => {
-          return <ArchiveCategoryCell sku={record.sku} onSaved={() => void fetchList()} />;
-        },
+  // 列定义：由 entityCellSpecs['product'] 配置驱动，页面只登记每列的业务回调，
+  // 差异组件由 editorRegistry 按 (display/editEntry/searchKind) 映射到既有组件，零手写列 render。
+  // 单位/售价/进价三列的结构化多行仍由共享工厂承载（挂 skuPrice 槽位）。
+  const productCellHandlers: Record<string, CellHandlers<TableRow>> = {
+    categoryName: {
+      value: (r) => (r.sku.categoryName === '未分类' ? '' : r.sku.categoryName),
+      fromId: (r) => (r.sku.categoryId && r.sku.categoryId !== '0' ? r.sku.categoryId : undefined),
+      scope: (r) => r.sku.productName,
+      onApply: async (r, name) => {
+        const cat = await quickAddCategory(name);
+        await updateProduct(r.sku.productId, { categoryId: cat.id });
+        void fetchList();
       },
-      // 2. 产品图片（icon列，ICON=36px）——ImageThumbCell 共享组件
-      {
-        key: 'mainImageUrl',
-        title: '图',
-        dataIndex: 'sku',
-        minWidth: COL_WIDTHS.ICON,
-        fitContent: false,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v, record) => {
-          const sku = record.sku;
-          return (
-            <ImageThumbCell
-              url={sku.mainImageUrl}
-              thumbUrl={sku.mainImageThumbUrl}
-              onEmptyClick={() => handleOpenEditDialog(sku.productId, sku.specBrandId, sku.specId)}
-            />
-          );
-        },
+      onApplyGlobal: (r, name) => {
+        const fromId = r.sku.categoryId && r.sku.categoryId !== '0' ? r.sku.categoryId : undefined;
+        return fromId
+          ? applyDictChange({ kind: 'category', fromId, toName: name }).then(() => void fetchList())
+          : Promise.resolve();
       },
-      // 3. 产品名（表头级联筛；格子点开编辑弹窗。列宽跟采购报价一样随内容撑开）
-      {
-        key: 'productName',
-        title: (
-          <HeaderCascadeFilter
-            field="product"
-            placeholder="产品名"
-            selectedName={filterProductName}
-            fetcher={fetchProductFacet}
-            onSelect={(id, name) => {
-              setFilterProductId(id || null);
-              setFilterProductName(name);
-              setFilterBrandId(null);
-              setFilterBrandName('');
-              setFilterSpecModel('');
-              setFilterSpecExact(true);
-              setPage(1);
-            }}
-            onClear={clearProductFilter}
-          />
-        ),
-        dataIndex: 'productName',
-        minWidth: COL_WIDTHS.NAME_QUOTE,
-        className: 'ds-cascade-col',
-        renderMode: 'custom',
-        align: 'left',
-        render: (_v, record) => {
-          const sku = record.sku;
-          if (record.hideProductName) return <span />;
-          if (!sku.productName) return '—';
-          return (
-            <NameLinkCell
-              segments={[{ text: sku.productName }]}
-              nowrap
-              onClick={() => handleOpenEditDialog(sku.productId, sku.specBrandId, sku.specId)}
-            />
-          );
-        },
+    },
+    mainImageUrl: {
+      value: (r) => r.sku.mainImageUrl ?? '',
+      thumbUrl: (r) => r.sku.mainImageThumbUrl ?? undefined,
+      onApply: async () => undefined,
+      onEmptyClick: (r) => handleOpenEditDialog(r.sku.productId, r.sku.specBrandId, r.sku.specId),
+    },
+    productName: {
+      value: (r) => r.sku.productName ?? '',
+      hidden: (r) => !!r.hideProductName,
+      onClick: (r) => handleOpenEditDialog(r.sku.productId, r.sku.specBrandId, r.sku.specId),
+      onApply: async () => undefined,
+      titleNode: (
+        <HeaderCascadeFilter
+          field="product"
+          placeholder="产品名"
+          selectedName={filterProductName}
+          fetcher={fetchProductFacet}
+          onSelect={(id, name) => {
+            setFilterProductId(id || null);
+            setFilterProductName(name);
+            setFilterBrandId(null);
+            setFilterBrandName('');
+            setFilterSpecModel('');
+            setFilterSpecExact(true);
+            setPage(1);
+          }}
+          onClear={clearProductFilter}
+        />
+      ),
+    },
+    brandName: {
+      value: (r) => r.sku.brandName ?? '',
+      fromId: (r) => r.sku.brandId,
+      scope: (r) => r.sku.productName,
+      hidden: (r) => !!r.hideBrandName,
+      onApply: async (r, name) => {
+        await rebindSpecBrand(r.sku.specBrandId, name);
+        void fetchList();
       },
-      // 4. 品牌（表头从当前结果里选；格子点开选品同款确认浮层改档）
-      {
-        key: 'brandName',
-        title: (
-          <HeaderCascadeFilter
-            field="brand"
-            placeholder="品牌"
-            selectedName={filterBrandName}
-            fetcher={fetchBrandFacet}
-            onSelect={(id, name) => {
-              setFilterBrandId(id || null);
-              setFilterBrandName(name);
-              setFilterSpecModel('');
-              setFilterSpecExact(true);
-              setPage(1);
-            }}
-            onClear={clearBrandFilter}
-          />
-        ),
-        dataIndex: 'brandName',
-        minWidth: COL_WIDTHS.NAME_S,
-        className: 'ds-cascade-col',
-        renderMode: 'custom',
-        align: 'left',
-        render: (_v, record) => {
-          if (record.hideBrandName) return <span />;
-          return <ArchiveBrandCell sku={record.sku} onSaved={() => void fetchList()} />;
-        },
+      onApplyGlobal: (r, name) =>
+        applyDictChange({ kind: 'brand', fromId: r.sku.brandId, toName: name }).then(() => void fetchList()),
+      titleNode: (
+        <HeaderCascadeFilter
+          field="brand"
+          placeholder="品牌"
+          selectedName={filterBrandName}
+          fetcher={fetchBrandFacet}
+          onSelect={(id, name) => {
+            setFilterBrandId(id || null);
+            setFilterBrandName(name);
+            setFilterSpecModel('');
+            setFilterSpecExact(true);
+            setPage(1);
+          }}
+          onClear={clearBrandFilter}
+        />
+      ),
+    },
+    specModel: {
+      value: (r) => r.sku.specModel ?? '',
+      scope: (r) => `${r.sku.productName} ${r.sku.brandName}`.trim(),
+      hidden: (r) => !!r.hideSpecModel,
+      onApply: async (r, name) => {
+        await updateSpec(r.sku.specId, { specModel: name });
+        void fetchList();
       },
-      // 5. 系列/规格（品牌下变体；点开确认浮层改这一条）
-      {
-        key: 'specModel',
-        title: (
-          <HeaderCascadeFilter
-            field="specModel"
-            placeholder="系列/规格"
-            selectedName={filterSpecModel}
-            fetcher={fetchSpecFacet}
-            onSelect={(id, name) => {
-              setFilterSpecModel(name);
-              setFilterSpecExact(!!id);
-              setPage(1);
-            }}
-            onClear={clearSpecFilter}
-          />
-        ),
-        dataIndex: 'specModel',
-        minWidth: COL_WIDTHS.NAME_S,
-        className: 'ds-cascade-col',
-        renderMode: 'custom',
-        align: 'left',
-        render: (_v, record) => {
-          if (record.hideSpecModel) return <span />;
-          return <ArchiveSpecCell sku={record.sku} onSaved={() => void fetchList()} />;
-        },
-      },
-      // 4/5/6. 单位 / 售价 / 进价（结构化多行三列）——createSkuPriceColumns 共享工厂
-      ...skuPriceColumns.map((c) => ({ ...c, slot: 'skuPrice' })),
-      // 7. 备注（spec.remark）——点值确认层
-      {
-        key: 'remark',
-        title: '备注',
-        dataIndex: 'remark',
-        minWidth: COL_WIDTHS.REMARK_S,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v, record) => (
-          <ArchiveFieldCell
-            value={record.sku.remark ?? ''}
-            placeholder="—"
-            title="修改备注"
-            align="center"
-            onApply={(v) => saveRemark(record, v)}
-          />
-        ),
-      },
-      // 8. 状态（tag列）——StatusTagCell 共享组件
-      {
-        key: 'status',
-        title: '状态',
-        dataIndex: 'sku',
-        minWidth: COL_WIDTHS.TAG_S,
-        fitContent: false,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v, record) => {
-          return (
-            <StatusTagCell
-              value={record.sku.status ?? 1}
-              statusMap={STATUS_TAG_MAP as Record<string, { color: any; text: string }>}
-            />
-          );
-        },
-      },
-      // 9. 更新时间（datetime列）——DateTimeCell 共享组件
-      {
-        key: 'updateTime',
-        title: '更新时间',
-        dataIndex: 'sku',
-        minWidth: COL_WIDTHS.DATETIME,
-        fitContent: false,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v, record) => {
-          return <DateTimeCell value={record.sku.updateTime} />;
-        },
-      },
-    ]),
-    [
-      handleOpenEditDialog,
-      skuPriceColumns,
-      fetchList,
-      filterProductName,
-      filterProductId,
-      filterBrandName,
-      filterBrandId,
-      filterSpecModel,
-      filterSpecExact,
-      fetchProductFacet,
-      fetchBrandFacet,
-      fetchSpecFacet,
-      clearProductFilter,
-      clearBrandFilter,
-      clearSpecFilter,
-      saveRemark,
-    ],
-  );
+      titleNode: (
+        <HeaderCascadeFilter
+          field="specModel"
+          placeholder="系列/规格"
+          selectedName={filterSpecModel}
+          fetcher={fetchSpecFacet}
+          onSelect={(id, name) => {
+            setFilterSpecModel(name);
+            setFilterSpecExact(!!id);
+            setPage(1);
+          }}
+          onClear={clearSpecFilter}
+        />
+      ),
+    },
+    remark: {
+      value: (r) => r.sku.remark ?? '',
+      title: '修改备注',
+      onApply: (r, v) => saveRemark(r, v),
+    },
+    status: {
+      value: (r) => String(r.sku.status ?? 1),
+      statusMap: STATUS_TAG_MAP as Record<string, { color: any; text: string }>,
+      onApply: async () => undefined,
+    },
+    updateTime: {
+      value: (r) => r.sku.updateTime ?? '',
+      onApply: async () => undefined,
+    },
+  };
+
+  const columns = useMemo<UnifiedTableColumn<TableRow>[]>(() => {
+    const baseSpecs = (entityCellSpecs['product'] ?? []).filter((s) => s.key !== '__skuPriceSlot__');
+    const layoutOf = (s: GeneratedCellSpec) => {
+      switch (s.key) {
+        case 'categoryName':
+          return { minWidth: COL_WIDTHS.TAG_L, align: 'center' as const };
+        case 'mainImageUrl':
+          return { minWidth: COL_WIDTHS.ICON, align: 'center' as const, fitContent: false };
+        case 'productName':
+          return { minWidth: COL_WIDTHS.NAME_QUOTE, align: 'left' as const, className: 'ds-cascade-col' };
+        case 'brandName':
+          return { minWidth: COL_WIDTHS.NAME_S, align: 'left' as const, className: 'ds-cascade-col' };
+        case 'specModel':
+          return { minWidth: COL_WIDTHS.NAME_S, align: 'left' as const, className: 'ds-cascade-col' };
+        case 'remark':
+          return { minWidth: COL_WIDTHS.REMARK_S, align: 'center' as const };
+        case 'status':
+          return { minWidth: COL_WIDTHS.TAG_S, align: 'center' as const, fitContent: false };
+        case 'updateTime':
+          return { minWidth: COL_WIDTHS.DATETIME, align: 'center' as const, fitContent: false };
+        default:
+          return {};
+      }
+    };
+    const base = cellSpecsWithEditorsToColumns(baseSpecs, (s) => productCellHandlers[s.key], layoutOf);
+    // 单位/售价/进价结构化多行三列：沿用共享工厂，挂到 skuPrice 槽位（确认层已统一为 PickerEditGate 链路）
+    return [...base, ...skuPriceColumns.map((c) => ({ ...c, slot: 'skuPrice' }))];
+  }, [
+    handleOpenEditDialog,
+    skuPriceColumns,
+    fetchList,
+    filterProductName,
+    filterProductId,
+    filterBrandName,
+    filterBrandId,
+    filterSpecModel,
+    filterSpecExact,
+    fetchProductFacet,
+    fetchBrandFacet,
+    fetchSpecFacet,
+    clearProductFilter,
+    clearBrandFilter,
+    clearSpecFilter,
+    saveRemark,
+  ]);
 
   // ============================================================
   // 工具栏

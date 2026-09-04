@@ -9,7 +9,7 @@ import {
   type PickerCatalogKind,
 } from './pickerCatalogImpact.js';
 import type { DictRecordConfig } from '../DictRefField.js';
-import type { SuggestField } from '../../services/api/baseDataApi.js';
+import type { DictChangeKind, SuggestField } from '../../services/api/baseDataApi.js';
 
 export type PickerCellEmbed = 'inline' | 'table';
 
@@ -326,6 +326,16 @@ export function ArchiveFieldCell({
   onReject,
   allowNoChange,
   onDelete,
+  /**
+   * v26.4 同源字典能力：传 dictField（如 'category'/'brand'/'unit'）即走与表体
+   * PickerNameCell 同一条确认层——检索下拉带「完整字典」档 + 行内改名/删 + 改全局。
+   * 不传则为本地标量/本地字典（供应商联系、地址等），只给检索结果档，无字典管理入口。
+   * 与 PickerNameCell 的 catalogDictField 路径对齐，杜绝同类第二套确认层。
+   */
+  dictField,
+  fromId,
+  applyGlobal,
+  kind,
 }: {
   value: string;
   disabled?: boolean;
@@ -344,6 +354,12 @@ export function ArchiveFieldCell({
   allowNoChange?: boolean;
   /** v26.3 确认层承载删除：底栏出现删除按钮 */
   onDelete?: { label: string; run: () => void | Promise<void> };
+  /** v26.4 同源字典能力：命中 DictEntryField 即渲染两档 + 改名/删 + 改全局 */
+  dictField?: DictChangeKind;
+  fromId?: string;
+  applyGlobal?: (next: string) => void | Promise<void>;
+  /** 默认 'archiveField'（无改全局）；字典类传对应 kind（如 'category'）以开启改全局预览 */
+  kind?: PickerCatalogKind;
 }) {
   const gate = usePickerEditGate();
   const impact: CatalogImpactView = {
@@ -362,14 +378,17 @@ export function ArchiveFieldCell({
       onOpen={(el) =>
         gate.open(
           {
-            kind: 'archiveField',
+            kind: kind ?? 'archiveField',
             from: value,
+            fromId,
+            dictField,
             input,
             placeholder,
             impact,
             suggestField,
             dictConfig,
             apply: onApply,
+            applyGlobal,
             allowNoChange,
             onDelete,
           },

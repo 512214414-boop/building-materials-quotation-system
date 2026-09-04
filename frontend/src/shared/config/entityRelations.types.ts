@@ -2,7 +2,7 @@
 // 元模型运行时 · 阶段 E：登记表内容迁移到 entityMeta.generated.ts（真相源驱动），
 // 类型保持在这里，生成物与入口文件共用，避免循环引用。
 import type { ReactNode } from 'react';
-import type { DictChangeKind } from '../components/DictRefField.js';
+import type { DictChangeKind } from '../services/api/baseDataApi.js';
 import type { SuggestField } from '../services/api/baseDataApi.js';
 
 /** 场景：视图截断的维度 */
