@@ -1,0 +1,21 @@
+-- v30：删除反范式宽表 product_sku_search（去宽表改造 · 收尾）
+--
+-- 前提（已完成，见 v29 与配套代码改造）：
+--   1. v29 在范式表各列建了 6 个检索用的 FULLTEXT ngram 索引
+--      （product.name / product.remark / spec.specModel / spec.remark / brand.name / category.name）
+--   2. 所有读路径已切到范式实现（backend/src/services/product/searchNormalized.ts）：
+--      检索召回、按列召回、渠道召回、分面候选、无关键词列表、库存/报表快照补充
+--   3. 所有写路径已停止宽表同步（删除 syncSkuSearchBy* 函数族与 24 处调用、
+--      catalog/brand/dictMerge/saveProduct 里的宽表 deleteMany/updateMany/$executeRaw）
+--   4. 对拍验证：召回重合度 96.2%，宽表覆盖 99–100%（范式不漏召回）；
+--      展示字段差异绝大多数是宽表陈旧所致（93 行单位记错、601 行进价取不到），范式更准
+--   5. 数据缺陷已修：2 个缺 spec_unit 关联的规格已按"价格实际挂的单位"补齐
+--      （backend/scripts/fix-spec-unit-gaps.ts，幂等）
+--
+-- 删除理由（宽表作为派生副本的固有缺陷）：
+--   写时同步 → 会陈旧（改单位不触发同步）、留孤儿行（spec 删除后残留）、
+--   改一次品牌名要遍历该品牌全部 spec 逐行重建（几十万行规模不可行）。
+--
+-- 影响面：仅检索与列表展示；单据快照、金额、统计均不受影响（不依赖本表）。
+
+DROP TABLE IF EXISTS `product_sku_search`;

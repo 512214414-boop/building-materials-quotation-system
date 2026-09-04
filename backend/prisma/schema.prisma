@@ -660,67 +660,20 @@ model purchase_price {
 }
 
 /// 7. SKU 检索宽表（v22.0）：每「品牌+规格」一行（spec.id 唯一）
-model product_sku_search {
-  id                   BigInt   @id @default(autoincrement())
-  /// 产品 ID
-  productId            BigInt
-  /// 产品名称
-  productName          String   @db.VarChar(200)
-  /// 规格 ID（v22：已含品牌维度，原 specBrandId 合并）
-  specId               BigInt   @unique
-  /// 规格型号（来自 spec.specModel）
-  specModel            String   @db.VarChar(200)
-  /// v15.3 分类ID
-  categoryId           BigInt
-  /// 分类名称
-  categoryName         String   @default("未分类") @db.VarChar(100)
-  /// 品牌ID（冗余，统计/展示用）
-  brandId              BigInt
-  /// 品牌名称（来自全局品牌档案 brand.name）
-  brandName            String   @db.VarChar(100)
-  /// 默认显示单位ID（取 unit.isDisplay=true，若无则取 isBase=true）
-  defaultUnitId        BigInt?
-  /// 默认显示单位名称
-  defaultUnitName      String?  @db.VarChar(50)
-  /// 默认零售价（默认单位下的最低售价类型价格）
-  retailPrice          Decimal? @db.Decimal(10, 2)
-  /// 默认进价（默认单位下的最低供应商进价）
-  purchasePriceDefault Decimal? @db.Decimal(10, 2)
-  /// 规格×品牌第一张主图（原图 URL，详情/预览用）
-  mainImageUrl         String?  @db.VarChar(500)
-  /// v1.5.6.2：主图缩略图 URL（列表 24px 图标/客户端卡片用，避免加载 1280px 原图）
-  mainImageThumbUrl    String?  @db.VarChar(500)
-  /// 规格备注（执行标准/企标/国标）。执行标准视图打这一列。不进名称 keywords
-  remark               String   @default("") @db.VarChar(500)
-  /// 产品俗称冗余（product.remark）。名称视图 keywords 含这一列
-  productRemark        String   @default("") @db.VarChar(500)
-  /// 综合状态：产品启用且规格启用且品牌启用
-  status               Int      @default(1)
-  /// 更新时间
-  updateTime           DateTime @updatedAt
-  /// 全文检索字段（产品名+俗称+规格型号+品牌+分类 拼接转小写；不含执行标准、不含渠道名）
-  /// v10.1.9：配套 FULLTEXT INDEX WITH PARSER ngram，支持任意顺序无空格多关键词匹配
-  ///   索引通过原生 SQL 创建（Prisma 不直接支持 ngram parser 声明）
-  ///   详见 migration: 20260727_v10_1_9_fulltext_ngram
-  ///   执行标准另有 ft_sku_remark（remark 列），见 20260828120000_v23
-  keywords             String   @db.VarChar(768)
-
-  /// v22.0：每「品牌+规格」一行（specId 唯一）
-  @@index([specId])
-  @@index([keywords])
-  @@index([categoryId])
-  @@index([productId])
-  // v1.5.4 性能优化：列表默认查询 WHERE status=? ORDER BY updateTime DESC 全表扫
-  //   数据量增长后翻页变慢，加复合索引覆盖（无筛选）与（分类筛选）两种列表路径
-  @@index([status, updateTime])
-  @@index([categoryId, status, updateTime])
-  // 档案列表按品牌筛：某品牌下全部规格/产品，走索引禁止全表扫
-  @@index([brandId, status, updateTime])
-  // v11.8 规模升级（几十万 SKU）：建档去重/相似候选的前缀 LIKE 粗筛走索引，禁止全表扫描
-  @@index([productName])
-  @@index([specModel])
-  @@map("product_sku_search")
-}
+// 【已删除】model product_sku_search（反范式宽表 · 去宽表改造 v29）
+//
+// 原设计：每个 spec 一行，冗余 productName/brandName/categoryName/specModel/keywords
+//   以及价格/主图/默认单位等展示字段，由应用层在每次写操作后同步重建。
+//
+// 删除理由（对拍实证，见 backend/scripts/compare-recall.ts）：
+//   1. 会陈旧——改单位未触发同步，宽表 defaultUnitId 记成非显示单位，连带价格取不到
+//      （93 行单位错、601 行进价缺失）
+//   2. 留孤儿行——spec 删除后宽表行残留（spec=576 案例）
+//   3. 规模代价——改一次品牌名遍历该品牌全部 spec 逐行重建，几十万行不可行
+//
+// 替代：检索走范式多路召回（各表各列 FULLTEXT ngram 索引），
+//   展示字段读时批量计算（backend/src/services/product/searchNormalized.ts）。
+//   改名字只 UPDATE 主表一行、改价改图完全不碰检索索引 —— 零冗余、零同步。
 
 /// 8. 产品图片表（v22.0 挂 spec）
 model product_image {
