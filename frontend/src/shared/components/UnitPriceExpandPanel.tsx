@@ -25,6 +25,7 @@ import { calcEffectivePrice, formatPoint } from '../utils/format.js';
 import { calcDerivedUnitPrice } from '../engines/pricing-engine.js';
 import { sortUnitsByRate } from '../utils/unitRateText.js';
 import { useCanvasApp } from '../hooks/useCanvasApp.js';
+import { resolveGuard } from '../config/resolveGuard.js';
 import {
   applyDictChange,
   createPriceType,
@@ -286,9 +287,12 @@ export function UnitPriceExpandPanel({
       let next = types.find((t) => t.name === newName);
       if (!next) next = await createPriceType({ name: newName, status: 1 });
       if (next.id === pt.id) return;
-      const dup = unitSalePrices.find((p) => p.priceTypeId === next.id);
-      if (dup) {
-        message.warning(`价格类型「${newName}」已存在，可在上方行直接编辑`);
+      const block = resolveGuard('sale_price_apply', {
+        collections: { unitSalePrices },
+        form: { nextId: next.id, name: newName },
+      });
+      if (block) {
+        message.warning(block);
         return;
       }
       if (!priceTypes.some((p) => p.id === next.id)) {
@@ -434,9 +438,12 @@ export function UnitPriceExpandPanel({
   };
 
   const handlePurchaseSupplierChange = (rowKey: string, newId: string, newName: string) => {
-    const dup = purchasePrices.find((x) => x.rowKey !== rowKey && x.unitIdx === unitIdx && x.supplierId === newId && newId !== '');
-    if (newId && dup) {
-      message.warning(`供应商「${newName}」已存在，不可重复`);
+    const block = resolveGuard('purchase_price_edit_supplier', {
+      collections: { purchasePrices },
+      form: { newId, newName, unitIdx, rowKey },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     onPurchasePricesChange(purchasePrices.map((p) => (p.rowKey === rowKey ? { ...p, supplierId: newId, supplierName: newName } : p)));
@@ -497,8 +504,12 @@ export function UnitPriceExpandPanel({
   const handleAddDerivedPurchaseCommit = (bp: PurchasePriceItem, raw: string) => {
     const val = raw.trim();
     if (!val || isNaN(parseFloat(val))) return;
-    if (purchasePrices.some((x) => x.unitIdx === unitIdx && x.supplierId === bp.supplierId)) {
-      message.warning(`供应商「${bp.supplierName}」已存在，可直接编辑`);
+    const block = resolveGuard('purchase_price_add_derived', {
+      collections: { purchasePrices },
+      form: { supplierId: bp.supplierId, unitIdx, sname: bp.supplierName },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     onPurchasePricesChange([

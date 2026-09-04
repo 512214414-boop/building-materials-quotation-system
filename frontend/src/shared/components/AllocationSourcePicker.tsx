@@ -14,6 +14,7 @@ import {
   type AllocationSourcesResult,
 } from '../services/api/allocationApi.js';
 import { ALLOCATION_SOURCE_TREE_VIEWS } from '../config/pickerTree.js';
+import { resolveGuard } from '../config/resolveGuard.js';
 import { useCanvasApp } from '../hooks/useCanvasApp.js';
 import { DS_SHELL_INLINE_BTN } from '../styles/shell-constants.js';
 
@@ -140,8 +141,11 @@ export default function AllocationSourcePicker({
 
   const createIn = async (kind: 'warehouse' | 'supplier') => {
     const name = kw;
-    if (!name) {
-      message.warning('先打名称再新建');
+    const block = resolveGuard('allocation_source_quick_add', {
+      form: { kw },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setCreating(kind);

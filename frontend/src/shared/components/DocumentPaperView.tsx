@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { resolveGuard } from '../config/resolveGuard.js';
 import {
   DeleteOutlined,
   LockOutlined,
@@ -520,8 +521,11 @@ export default function DocumentPaperView(props: DocumentPaperViewProps) {
 
   // 识别订单
   const handleRecognize = useCallback(() => {
-    if (!recognizeText.trim()) {
-      message.warning('请粘贴订单文本');
+    const block = resolveGuard('document_recognize', {
+      form: { recognizeText: recognizeText.trim() },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     onRecognizeOrder(recognizeText);

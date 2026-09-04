@@ -23,6 +23,7 @@ import {
   type SalePriceView,
 } from '../services/api/baseDataApi.js';
 import DsSelect from './DsSelect.js';
+import { resolveGuard } from '../config/resolveGuard.js';
 import { overlayModalContainer } from '../utils/canvasStage.js';
 
 export interface PricePickerProps {
@@ -142,13 +143,11 @@ export default function PricePicker({
 
   // 点击「+」打开 Modal
   const handleOpenModal = async () => {
-    if (!specBrandId || !unitId) {
-      message.warning('请先选择产品与单位');
-      return;
-    }
-    const numVal = toNum(inputValue);
-    if (numVal <= 0) {
-      message.warning('请先输入有效价格');
+    const block = resolveGuard('price_edit_add', {
+      form: { specBrandId, unitId, inputValue },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     await loadPriceTypes();
@@ -162,8 +161,11 @@ export default function PricePicker({
   // 确认写入档案
   const handleArchiveConfirm = async () => {
     if (!specBrandId || !unitId) return;
-    if (!selectedPriceTypeId) {
-      message.warning('请选择价格类型');
+    const block = resolveGuard('price_archive_confirm', {
+      form: { selectedPriceTypeId },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setArchiving(true);

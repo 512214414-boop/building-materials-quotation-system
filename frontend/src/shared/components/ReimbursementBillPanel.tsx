@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { FloatPanel } from './FloatPanel.js';
 import { DsButton } from './DsButton.js';
 import { DsInput } from './DsInput.js';
+import { resolveGuard } from '../config/resolveGuard.js';
 import { DsNumberInput } from './DsNumberInput.js';
 import {
   createReimbursementBill,
@@ -96,8 +97,11 @@ export function ReimbursementBillPanel({ open, anchorRef, onClose, documentId, d
 
   const handleSave = async () => {
     const validLines = draftLines.filter((l) => l.productRef.trim() && toNum(l.qty) > 0);
-    if (validLines.length === 0) {
-      message.warning('至少保留一行有效商品');
+    const block = resolveGuard('reimbursement_save', {
+      rows: validLines,
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setSaving(true);

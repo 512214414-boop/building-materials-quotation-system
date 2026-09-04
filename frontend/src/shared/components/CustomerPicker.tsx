@@ -11,6 +11,7 @@ import SuggestList from './SuggestList.js';
 import PickerTreeViewBar from './PickerTreeViewBar.js';
 import { PickerHostTrigger, PickerOverlayInput } from './PickerSlotChrome.js';
 import { CUSTOMER_PICKER_TREE_VIEWS, DEFAULT_CUSTOMER_PICKER_VIEW } from '../config/pickerTree.js';
+import { resolveGuard } from '../config/resolveGuard.js';
 import { formatCustomerInfo } from '../utils/customerInfo.js';
 import {
   searchCustomers,
@@ -263,8 +264,11 @@ export default function CustomerPicker({
   const handleQuickAdd = async () => {
     const phoneVal = quickAddPhone.trim();
     const nameVal = quickAddName.trim();
-    if (!phoneVal && !nameVal) {
-      message.warning('姓名与联系方式至少填一个');
+    const block = resolveGuard('customer_quick_add', {
+      form: { phone: phoneVal, name: nameVal },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setQuickAddLoading(true);

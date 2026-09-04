@@ -17,6 +17,7 @@ import ProductPicker, {
 import QuickCreateConfirmDialog from '../../../shared/components/QuickCreateConfirmDialog.js';
 import SupplierPicker from '../../../shared/components/SupplierPicker.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
+import { resolveGuard } from '../../../shared/config/resolveGuard.js';
 import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
 import {
   listPurchaseInbounds,
@@ -160,30 +161,14 @@ export default function PurchaseInbound() {
 
   const handleConfirm = async () => {
     if (!canWrite) return;
-    if (!supplierId) {
-      message.warning('请选择供应商');
-      return;
-    }
-    if (!warehouseId) {
-      message.warning('请选择入库仓库');
-      return;
-    }
     const lines = drafts.filter((r) => r.specId && r.brandId && r.unitId);
-    if (!lines.length) {
-      message.warning('请先选品，再确认入库');
+    const block = resolveGuard('purchase_inbound_confirm', {
+      form: { supplierId, warehouseId },
+      rows: lines,
+    });
+    if (block) {
+      message.warning(block);
       return;
-    }
-    for (const l of lines) {
-      const qty = Number(l.qty);
-      const cost = Number(l.unitCost);
-      if (!isFinite(qty) || qty <= 0) {
-        message.warning(`「${l.productRef}」数量必须大于 0`);
-        return;
-      }
-      if (!isFinite(cost) || cost < 0) {
-        message.warning(`「${l.productRef}」进价不能为负`);
-        return;
-      }
     }
     setSubmitting(true);
     try {

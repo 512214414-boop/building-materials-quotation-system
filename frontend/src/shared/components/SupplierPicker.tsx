@@ -6,6 +6,7 @@ import SuggestList from './SuggestList.js';
 import PickerTreeViewBar from './PickerTreeViewBar.js';
 import { PickerHostTrigger, PickerOverlayInput } from './PickerSlotChrome.js';
 import { DEFAULT_SUPPLIER_PICKER_VIEW, SUPPLIER_PICKER_TREE_VIEWS } from '../config/pickerTree.js';
+import { resolveGuard } from '../config/resolveGuard.js';
 import {
   searchSuppliers,
   quickAddSupplier,
@@ -102,8 +103,11 @@ export default function SupplierPicker({
   const handleSelect = (id: string) => {
     if (id === QUICK_ADD_VALUE) {
       const name = keyword.trim();
-      if (!name) {
-        message.warning('先输入供应商名称');
+      const block = resolveGuard('supplier_quick_add', {
+        form: { keyword: name },
+      });
+      if (block) {
+        message.warning(block);
         return;
       }
       void (async () => {

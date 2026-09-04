@@ -19,6 +19,7 @@ import ProductPicker, { type SelectedPrice } from '../../../shared/components/Pr
 import { PickerHostTrigger } from '../../../shared/components/PickerSlotChrome.js';
 import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
+import { resolveGuard } from '../../../shared/config/resolveGuard.js';
 import {
   listInventory,
   listInventoryLedgers,
@@ -73,17 +74,16 @@ function AdjustDialog({
   }, [open, record]);
 
   const handleSave = async () => {
-    const qty = Number(targetQty);
-    if (!isFinite(qty) || qty < 0) {
-      message.warning('盘点后数量必须 ≥ 0');
-      return;
-    }
-    const costVal = unitCost.trim() === '' ? undefined : Number(unitCost);
-    if (costVal !== undefined && (!isFinite(costVal) || costVal < 0)) {
-      message.warning('期初/盘点成本必须 ≥ 0');
+    const block = resolveGuard('inventory_adjust', {
+      form: { targetQty, unitCost },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     if (!record) return;
+    const qty = Number(targetQty);
+    const costVal = unitCost.trim() === '' ? undefined : Number(unitCost);
     setSaving(true);
     try {
       await adjustInventory(record.id, {
@@ -344,24 +344,17 @@ function OpeningStrip({
   };
 
   const handleSave = async () => {
-    if (!warehouseId) {
-      message.warning('请选择仓库');
+    const block = resolveGuard('inventory_opening', {
+      form: { warehouseId, sku, unit, qty, unitCost },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
-    if (!sku || !unit) {
-      message.warning('请先选品');
-      return;
-    }
+    // 守卫（inventory_opening.requires）已断言 sku/unit 非空；此处仅窄化类型
+    if (!sku || !unit) return;
     const qtyNum = Number(qty);
     const costNum = Number(unitCost);
-    if (!isFinite(qtyNum) || qtyNum <= 0) {
-      message.warning('期初数量必须大于 0');
-      return;
-    }
-    if (!isFinite(costNum) || costNum < 0) {
-      message.warning('期初成本不能为负');
-      return;
-    }
     setSaving(true);
     try {
       await openingInventory({

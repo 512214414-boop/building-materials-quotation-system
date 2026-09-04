@@ -14,6 +14,7 @@ import {
   DsTag,
   ArchiveDialogField,
 } from '../../../../shared/components/index.js';
+import { resolveGuard } from '../../../../shared/config/resolveGuard.js';
 import {
   batchAdjustPreview,
   batchAdjustPurchasePrices,
@@ -98,16 +99,15 @@ export default function BatchAdjustDialog({
   const invalidatePreview = () => setPreview(null);
 
   const buildInput = (): BatchAdjustInput | null => {
+    const block = resolveGuard('purchase_price_batch_adjust', {
+      form: { supplierId, brandInput, categoryInput, oldPoint, newPoint },
+    });
+    if (block) {
+      message.warning(block);
+      return null;
+    }
     const oldP = parseFloat(oldPoint);
     const newP = parseFloat(newPoint);
-    if (!(oldP > 0)) {
-      message.warning('请填写旧点位');
-      return null;
-    }
-    if (!(newP > 0)) {
-      message.warning('请填写新点位');
-      return null;
-    }
     return {
       supplierId,
       brandName: brandInput.trim(),
@@ -118,10 +118,6 @@ export default function BatchAdjustDialog({
   };
 
   const handlePreview = async () => {
-    if (!groupReady) {
-      message.warning('请先选择供应商、品牌、分类');
-      return;
-    }
     const input = buildInput();
     if (!input) return;
     setPreviewing(true);

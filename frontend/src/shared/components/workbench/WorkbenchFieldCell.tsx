@@ -21,6 +21,7 @@ export function WorkbenchFieldCell({
   text,
   placeholder = '—',
   disabled,
+  gateReason,
   align = 'left',
   color,
   mono,
@@ -40,7 +41,15 @@ export function WorkbenchFieldCell({
 }: {
   text: string;
   placeholder?: string;
+  /** 行级锁定：该行整体不可改（如已完工）。会置灰——这是真实状态，不是门禁 */
   disabled?: boolean;
+  /**
+   * 门禁原因：前置条件未满足（如「请先填写规格」）。
+   * 与 disabled 的区别是纪律性的——门禁格**必须保持与可编辑格一致的视觉**
+   * （hover、手型、键盘可达都在），点击给提示，禁止置灰消失。
+   * 此前本组件只暴露 disabled，导致 confirm 入口无法落实这条硬纪律（只能置灰），故补此参数。
+   */
+  gateReason?: string;
   align?: 'left' | 'center';
   color?: string;
   mono?: boolean;
@@ -116,6 +125,7 @@ export function WorkbenchFieldCell({
       mono={mono}
       embed={embed}
       disabled={disabled}
+      rejectReason={gateReason}
       onOpen={() => openGate()}
     />
   );

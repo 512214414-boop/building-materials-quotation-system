@@ -22,6 +22,7 @@ import type { ReactNode } from 'react';
 import { Spin, Menu, type MenuProps } from 'antd';
 import { DeleteOutlined, EditOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
 import DsButton from '../../../../../shared/components/DsButton.js';
+import { resolveGuard } from '../../../../../shared/config/resolveGuard.js';
 import DsInput from '../../../../../shared/components/DsInput.js';
 import DsSelect from '../../../../../shared/components/DsSelect.js';
 import DsDialog from '../../../../../shared/components/DsDialog.js';
@@ -326,21 +327,18 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   const submitSoldLines = useCallback(
     async (lines: Array<SoldLineHit & { refundQty?: number }>) => {
       if (viewLocked) return;
-      if (!lines.length) {
-        message.warning('请先对上已卖行');
-        return;
-      }
       // 每行用自己的数量（picker 里输的）；没输的回退到新建区统一数量
       const resolved = lines.map((l) => ({ line: l, qty: l.refundQty ?? newRefundQty }));
-      for (const { line, qty } of resolved) {
-        if (qty <= 0) {
-          message.warning(`${line.productRef} 退换数量必须大于 0`);
-          return;
-        }
-        if (qty > line.remaining) {
-          message.warning(`${line.productRef} 不能超过剩余可退量 ${line.remaining}`);
-          return;
-        }
+      const block = resolveGuard('refund_add_lines', {
+        rows: resolved.map(({ line, qty }) => ({
+          productRef: line.productRef,
+          remaining: line.remaining,
+          qty,
+        })),
+      });
+      if (block) {
+        message.warning(block);
+        return;
       }
       setSubmitting(true);
       try {
@@ -371,10 +369,15 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
   );
 
   const handleAdd = useCallback(async () => {
-    if (!selectedSold) {
-      message.warning('请先对上已卖行');
+    const block = resolveGuard('refund_add_single', {
+      form: { selectedSold },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
+    // 守卫（refund_add_single.requires）已断言 selectedSold 非空；此处仅窄化类型
+    if (!selectedSold) return;
     await submitSoldLines([selectedSold]);
   }, [selectedSold, submitSoldLines, message]);
 
@@ -418,11 +421,15 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
     if (!editTarget) return;
     if (viewLocked) return;
     const newQty = parseFloat(editForm.refundQty) || 0;
-    if (newQty <= 0) {
-      message.warning('退换数量必须大于 0');
+    const block = resolveGuard('refund_edit_line', {
+      form: { refundQty: editForm.refundQty },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     // 前端超退校验：其他退换记录总和 + 新数量 ≤ originalQty
+    // （真·例外：remaining 是跨行汇总的派生计算，判定数据非「字段/行数/状态」，登记在案）
     const otherRefunded = refundedByLine[editTarget.lineId] - editTarget.refundQty;
     const remaining = editTarget.originalQty - otherRefunded;
     if (newQty > remaining) {

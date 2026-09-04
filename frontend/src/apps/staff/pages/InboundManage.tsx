@@ -14,6 +14,7 @@ import DsTag from '../../../shared/components/DsTag.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
+import { resolveGuard } from '../../../shared/config/resolveGuard.js';
 import {
   listInboundTasks,
   confirmInboundTask,
@@ -162,8 +163,11 @@ function ChangeWarehouseDialog({
 
   const handleSave = async () => {
     if (!task) return;
-    if (!target) {
-      message.warning('请选择目标仓库');
+    const block = resolveGuard('inbound_set_target', {
+      form: { target },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setSaving(true);

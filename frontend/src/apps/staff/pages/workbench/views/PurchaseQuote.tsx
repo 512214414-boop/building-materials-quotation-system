@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { resolveGuard } from '../../../../../shared/config/resolveGuard.js';
 import { Checkbox, Spin, Menu, type MenuProps } from 'antd';
 import {
   DeleteOutlined,
@@ -49,11 +50,16 @@ import ProductPicker, {
   type SelectedPrice,
 } from '../../../../../shared/components/ProductPicker.js';
 import BatchStandardizeDialog from '../../../../../shared/components/BatchStandardizeDialog.js';
-import UnitPicker from '../../../../../shared/components/UnitPicker.js';
+// UnitPicker 导入已移除：单位列的非标行走 dictConfig（字典检索），不走 UnitPicker 组件，
+// 该导入是历史遗留的未使用项。文件头注释里对 UnitPicker 的描述是当时的设计，实现已改为字典检索。
 import { unitDict } from '../../../../../shared/config/recordDicts.js';
 import { deriveTableColumns, mergeColumns } from '../../../../../shared/config/deriveTableColumns.js';
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+// 注意：本页仍有不进表格列的独立格子（bizStrip 的「优惠」金额），故值导入要保留
+import { WorkbenchFieldCell, type WorkbenchGatePickerRender } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
 import { CellSwitchProvider } from '../../../../../shared/components/product-picker/cellSwitch.js';
+// L4 单元格层：列用「值形态 × 编辑入口 × 值状态」三维参数声明，由适配层转成表格列。
+// 页面不再手写 renderMode:'custom' 的 render（那正是 135 处治理盲区的来源）。
+import { cellSpecsToColumns } from '../../../../../shared/components/table/cellSpecAdapter.js';
 import {
   composeSkuSearchText,
   displayProductName,
@@ -939,9 +945,8 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
   );
 
   // ============================================================
-  // UnifiedTable 列定义
+  // UnifiedTable 列定义（L4 单元格层：三维参数声明，不再手写 custom 的 render）
   // ============================================================
-  const isRowDisabled = useCallback(() => !canPersist, [canPersist]);
 
   const columns: UnifiedTableColumn<PaperRow>[] = useMemo(
     () => {
@@ -952,262 +957,283 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
           spec: record.spec,
           productRef: record.productRef,
         });
-      const renderSkuPick = (
-        record: PaperRow,
-        opts: { colKey: string; text: string; title: string; warn?: boolean },
-      ) => (
-        <WorkbenchFieldCell
-          text={opts.text}
-          fromText={skuSearchOf(record)}
-          placeholder="—"
-          disabled={isRowDisabled()}
-          title={opts.title}
-          bullets={[
-            '点开后输入是拼在一起的，空格向后拆到品牌/规格/数量/单位。',
-            '从列表插入才整份抄档案。',
-            '取消不保存。',
-          ]}
-          warnNonStandard={opts.warn}
-          cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: opts.colKey }}
-          onApply={(next) => applySkuDraft(record, next)}
-          pickerRender={(ctx) => (
-            <ProductPicker
-              open
-              hostedInGate
-              parentPanelId={ctx.panelId}
-              hostedKeyword={ctx.keyword}
-              onHostedKeywordChange={ctx.setKeyword}
-              hostedListExpanded={ctx.listExpanded}
-              hostReady={ctx.hostReady}
-              anchorRef={ctx.inputHostRef}
-              initialKeyword={skuSearchOf(record)}
-              onClose={ctx.close}
-              onSelect={(sku, unit, selectedPrice) => {
-                handleProductSelect(record, sku, unit, selectedPrice);
-                ctx.close();
-              }}
-              isStaff
-              onQuickCreate={(kw) => {
-                ctx.close();
-                setQuickCreateCtx({ row: record, keyword: kw });
-              }}
-            />
-          )}
+
+      /**
+       * 门禁：按冻结来源给具体提示。
+       * 迁移前是 isRowDisabled（只返回布尔，点击静默无反馈——违反「门禁用提示不用静默」）；
+       * 迁移后格子视觉与可编辑格完全一致（hover / 手型 / 键盘可达都在），点击出对应提示。
+       */
+      const gateReason = (): string | undefined => {
+        if (!canWrite) return '当前账号无编辑权限';
+        if (isVoided) return '单据已作废，不可编辑';
+        if (viewLocked) return '请先解锁编辑';
+        if (salesArchived) return '单据已归档，不可编辑';
+        return undefined;
+      };
+
+      /** 邻格快切的行标识：空行没有 id，必须用 __empty_${seq} 兜底，否则空行无法参与快切 */
+      const rowIdOf = (record: PaperRow) => record.id ?? `__empty_${record.seq}`;
+
+      /** 产品名/品牌/规格三列共用：输入是拼在一起的，从列表插入才整份抄档案 */
+      const skuBullets = [
+        '点开后输入是拼在一起的，空格向后拆到品牌/规格/数量/单位。',
+        '从列表插入才整份抄档案。',
+        '取消不保存。',
+      ];
+
+      const skuPickerRender = (record: PaperRow): WorkbenchGatePickerRender => (ctx) => (
+        <ProductPicker
+          open
+          hostedInGate
+          parentPanelId={ctx.panelId}
+          hostedKeyword={ctx.keyword}
+          onHostedKeywordChange={ctx.setKeyword}
+          hostedListExpanded={ctx.listExpanded}
+          hostReady={ctx.hostReady}
+          anchorRef={ctx.inputHostRef}
+          initialKeyword={skuSearchOf(record)}
+          onClose={ctx.close}
+          onSelect={(sku, unit, selectedPrice) => {
+            handleProductSelect(record, sku, unit, selectedPrice);
+            ctx.close();
+          }}
+          isStaff
+          onQuickCreate={(kw) => {
+            ctx.close();
+            setQuickCreateCtx({ row: record, keyword: kw });
+          }}
         />
       );
-      return mergeColumns(deriveTableColumns('product', 'workbench'), [
-      {
-        key: 'productRef',
-        title: (
-          <HeaderCascadeFilter
-            field="product"
-            placeholder="产品名"
-            selectedName={lineFilter.filterProductName}
-            fetcher={lineFilter.fetchProductFacet}
-            onSelect={lineFilter.selectProduct}
-            onClear={lineFilter.clearProductFilter}
-          />
-        ),
-        dataIndex: 'productRef',
-        minWidth: COL_WIDTHS.NAME_PRODUCT,
-        className: 'ds-cascade-col',
-        align: 'left',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        getFitText: (record) => (record.hideProductName ? '' : displayProductName(record)),
-        render: (_value: string, record: PaperRow) =>
-          record.hideProductName ? (
-            <span />
-          ) : (
-            renderSkuPick(record, {
-              colKey: 'productRef',
-              text: displayProductName(record),
-              title: '产品名',
-              warn: !!record.productRef && !isRecognizedGoods(record),
-            })
-          ),
-      },
-      {
-        key: 'brandName',
-        title: (
-          <HeaderCascadeFilter
-            field="brand"
-            placeholder="品牌"
-            selectedName={lineFilter.filterBrandName}
-            fetcher={lineFilter.fetchBrandFacet}
-            onSelect={lineFilter.selectBrand}
-            onClear={lineFilter.clearBrandFilter}
-          />
-        ),
-        dataIndex: 'brandName',
-        minWidth: COL_WIDTHS.NAME_BRAND,
-        className: 'ds-cascade-col',
-        align: 'left',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        getFitText: (record) => (record.hideBrandName ? '' : record.brandName?.trim() || ''),
-        render: (_value: string, record: PaperRow) =>
-          record.hideBrandName ? (
-            <span />
-          ) : (
-            renderSkuPick(record, {
-              colKey: 'brandName',
-              text: record.brandName?.trim() || '',
-              title: '品牌',
-            })
-          ),
-      },
-      {
-        key: 'spec',
-        title: (
-          <HeaderCascadeFilter
-            field="specModel"
-            placeholder="规格"
-            selectedName={lineFilter.filterSpecModel}
-            fetcher={lineFilter.fetchSpecFacet}
-            onSelect={lineFilter.selectSpec}
-            onClear={lineFilter.clearSpecFilter}
-          />
-        ),
-        dataIndex: 'spec',
-        minWidth: COL_WIDTHS.NAME_SPEC,
-        className: 'ds-cascade-col',
-        align: 'left',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        getFitText: (record) => (record.hideSpecModel ? '' : record.spec?.trim() || ''),
-        render: (_value: string, record: PaperRow) =>
-          record.hideSpecModel ? (
-            <span />
-          ) : (
-            renderSkuPick(record, {
-              colKey: 'spec',
-              text: record.spec?.trim() || '',
-              title: '规格',
-            })
-          ),
-      },
-      {
-        key: 'unit',
-        title: '单位',
-        dataIndex: 'unit',
-        minWidth: COL_WIDTHS.TAG_L,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_value: string, record: PaperRow) => (
-          <WorkbenchFieldCell
-            text={record.unit || ''}
-            placeholder="—"
-            align="center"
-            disabled={isRowDisabled()}
-            title="单位"
-            bullets={['确认后写入当前行。', '取消不保存。']}
-            cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'unit' }}
-            onApply={(next) => handleUnitFreeText(record, next)}
-            pickerRender={(ctx) =>
-              rowHasSku(record) ? (
-                <ProductPicker
-                  open
-                  hostedInGate
-                  parentPanelId={ctx.panelId}
-                  hostedKeyword={ctx.keyword}
-                  onHostedKeywordChange={ctx.setKeyword}
-                  hostedListExpanded={ctx.listExpanded}
-                  hostReady={ctx.hostReady}
-                  entrySlot="unit"
-                  lockedContext={{
-                    specId: String(record.specId),
-                    brandId: String(record.brandId),
-                    productId: record.productId,
-                    productName: record.productRef,
-                    brandName: record.brandName,
-                    specModel: record.spec ?? '',
-                    unitId: record.unitId,
-                    unitName: record.unit,
-                  }}
-                  anchorRef={ctx.inputHostRef}
-                  onClose={ctx.close}
-                  onSelect={(_sku, unit, selectedPrice) => {
-                    const priced = priceFromPick(unit, selectedPrice);
-                    handleUnitSelect(record, {
-                      unitName: unit.unitName,
-                      unitId: unit.unitId,
-                      price: priced.price,
-                      priceSource: priced.priceSource,
-                    });
-                    ctx.close();
-                  }}
-                  isStaff
-                  onQuickCreate={() => {}}
-                />
-              ) : null
-            }
-            dictConfig={rowHasSku(record) ? undefined : unitDict}
-            suggestField={rowHasSku(record) ? undefined : 'unit'}
-          />
-        ),
-      },
-      {
-        key: 'qty',
-        title: '数量',
-        dataIndex: 'qty',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_v, record: PaperRow) => (
-          <WorkbenchFieldCell
-            text={record.qty == null ? '' : String(record.qty)}
-            placeholder="0"
-            align="center"
-            mono
-            input="number"
-            disabled={isRowDisabled()}
-            title="数量"
-            bullets={['确认后写入当前行。改数量不刷产品名。', '取消不保存。']}
-            cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'qty' }}
-            onApply={(next) => {
-              const numVal = parseFloat(next) || 0;
-              void commitCell(record, { qty: numVal });
+
+      /** 单位列：该行有 SKU 走选品树的单位槽，没 SKU 走单位字典检索（按行判定） */
+      const unitPickerRender = (record: PaperRow): WorkbenchGatePickerRender => (ctx) =>
+        rowHasSku(record) ? (
+          <ProductPicker
+            open
+            hostedInGate
+            parentPanelId={ctx.panelId}
+            hostedKeyword={ctx.keyword}
+            onHostedKeywordChange={ctx.setKeyword}
+            hostedListExpanded={ctx.listExpanded}
+            hostReady={ctx.hostReady}
+            entrySlot="unit"
+            lockedContext={{
+              specId: String(record.specId),
+              brandId: String(record.brandId),
+              productId: record.productId,
+              productName: record.productRef,
+              brandName: record.brandName,
+              specModel: record.spec ?? '',
+              unitId: record.unitId,
+              unitName: record.unit,
             }}
+            anchorRef={ctx.inputHostRef}
+            onClose={ctx.close}
+            onSelect={(_sku, unit, selectedPrice) => {
+              const priced = priceFromPick(unit, selectedPrice);
+              handleUnitSelect(record, {
+                unitName: unit.unitName,
+                unitId: unit.unitId,
+                price: priced.price,
+                priceSource: priced.priceSource,
+              });
+              ctx.close();
+            }}
+            isStaff
+            onQuickCreate={() => {}}
           />
-        ),
-      },
+        ) : null;
+
+      return mergeColumns(deriveTableColumns('product', 'workbench'), cellSpecsToColumns<PaperRow>([
+      // 1 产品名：名称类列左对齐；认不成货的行标非标（值右侧橙色 ⓘ）
       {
-        key: 'unitPrice',
-        title: '单价',
-        dataIndex: 'unitPrice',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_v, record: PaperRow) => {
-          const color =
-            record.priceSource === 'purchase'
+        spec: {
+          key: 'productRef',
+          title: (
+            <HeaderCascadeFilter
+              field="product"
+              placeholder="产品名"
+              selectedName={lineFilter.filterProductName}
+              fetcher={lineFilter.fetchProductFacet}
+              onSelect={lineFilter.selectProduct}
+              onClear={lineFilter.clearProductFilter}
+            />
+          ),
+          display: 'text',
+          editEntry: 'confirm',
+          valueState: (r) => (!!r.productRef && !isRecognizedGoods(r) ? 'non-standard' : 'standard'),
+          value: (r) => displayProductName(r),
+          // 合并单元格时子行隐藏主行字段——本质是列级参数，不该由 render 写三元表达式
+          hidden: (r) => !!r.hideProductName,
+          fitText: (r) => (r.hideProductName ? '' : displayProductName(r)),
+          disabledReason: gateReason,
+          gate: {
+            title: '产品名',
+            fromText: (r) => skuSearchOf(r),
+            bullets: () => skuBullets,
+            search: (r) => ({ kind: 'picker', render: skuPickerRender(r) }),
+            onApply: (r, next) => applySkuDraft(r, next),
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.NAME_PRODUCT,
+          align: 'left',
+          className: 'ds-cascade-col',
+          cellSwitch: { rowIdOf },
+        },
+      },
+      // 2 品牌
+      {
+        spec: {
+          key: 'brandName',
+          title: (
+            <HeaderCascadeFilter
+              field="brand"
+              placeholder="品牌"
+              selectedName={lineFilter.filterBrandName}
+              fetcher={lineFilter.fetchBrandFacet}
+              onSelect={lineFilter.selectBrand}
+              onClear={lineFilter.clearBrandFilter}
+            />
+          ),
+          display: 'text',
+          editEntry: 'confirm',
+          value: (r) => r.brandName?.trim() || '',
+          hidden: (r) => !!r.hideBrandName,
+          fitText: (r) => (r.hideBrandName ? '' : r.brandName?.trim() || ''),
+          disabledReason: gateReason,
+          gate: {
+            title: '品牌',
+            fromText: (r) => skuSearchOf(r),
+            bullets: () => skuBullets,
+            search: (r) => ({ kind: 'picker', render: skuPickerRender(r) }),
+            onApply: (r, next) => applySkuDraft(r, next),
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.NAME_BRAND,
+          align: 'left',
+          className: 'ds-cascade-col',
+          cellSwitch: { rowIdOf },
+        },
+      },
+      // 3 系列/规格
+      {
+        spec: {
+          key: 'spec',
+          title: (
+            <HeaderCascadeFilter
+              field="specModel"
+              placeholder="规格"
+              selectedName={lineFilter.filterSpecModel}
+              fetcher={lineFilter.fetchSpecFacet}
+              onSelect={lineFilter.selectSpec}
+              onClear={lineFilter.clearSpecFilter}
+            />
+          ),
+          display: 'text',
+          editEntry: 'confirm',
+          value: (r) => r.spec?.trim() || '',
+          hidden: (r) => !!r.hideSpecModel,
+          fitText: (r) => (r.hideSpecModel ? '' : r.spec?.trim() || ''),
+          disabledReason: gateReason,
+          gate: {
+            title: '规格',
+            fromText: (r) => skuSearchOf(r),
+            bullets: () => skuBullets,
+            search: (r) => ({ kind: 'picker', render: skuPickerRender(r) }),
+            onApply: (r, next) => applySkuDraft(r, next),
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.NAME_SPEC,
+          align: 'left',
+          className: 'ds-cascade-col',
+          cellSwitch: { rowIdOf },
+        },
+      },
+      // 4 单位：按行走不同检索分支——该行有 SKU 走选品树的单位槽，没 SKU 走单位字典检索。
+      //   这正是 gate.search 支持函数形式的原因：同一列不同行，检索来源不同。
+      {
+        spec: {
+          key: 'unit',
+          title: '单位',
+          display: 'text',
+          editEntry: 'confirm',
+          value: (r) => r.unit || '',
+          disabledReason: gateReason,
+          gate: {
+            title: '单位',
+            bullets: () => ['确认后写入当前行。', '取消不保存。'],
+            onApply: (r, next) => handleUnitFreeText(r, next),
+            search: (r) =>
+              rowHasSku(r)
+                ? { kind: 'picker', render: unitPickerRender(r) }
+                : { kind: 'dict', dictConfig: unitDict, suggestField: 'unit' },
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.TAG_L,
+          align: 'center',
+          cellSwitch: { rowIdOf },
+        },
+      },
+      // 5 数量：纯值输入（不渲染检索槽），等宽数字
+      {
+        spec: {
+          key: 'qty',
+          title: '数量',
+          display: 'number',
+          editEntry: 'confirm',
+          value: (r) => (r.qty == null ? '' : String(r.qty)),
+          placeholder: '0',
+          disabledReason: gateReason,
+          gate: {
+            title: '数量',
+            input: 'number',
+            bullets: () => ['确认后写入当前行。改数量不刷产品名。', '取消不保存。'],
+            onApply: (r, next) => {
+              const numVal = parseFloat(next) || 0;
+              void commitCell(r, { qty: numVal });
+            },
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.AMOUNT,
+          align: 'center',
+          cellSwitch: { rowIdOf },
+        },
+      },
+      // 6 单价：纯值输入；该行有 SKU 时挂选品树的价格叶子（按行判定）。
+      //   颜色跟价格来源走——进价红 / 派生灰 / 手输默认色。
+      {
+        spec: {
+          key: 'unitPrice',
+          title: '单价',
+          display: 'number',
+          editEntry: 'confirm',
+          value: (r) => (r.unitPrice == null ? '' : String(r.unitPrice)),
+          placeholder: '0.00',
+          color: (r) =>
+            r.priceSource === 'purchase'
               ? 'var(--status-discount-default)'
-              : record.priceSource === 'derived'
+              : r.priceSource === 'derived'
                 ? 'var(--text-placeholder-accent)'
-                : 'var(--text-default)';
-          return (
-            <WorkbenchFieldCell
-              text={record.unitPrice == null ? '' : String(record.unitPrice)}
-              placeholder="0.00"
-              align="center"
-              mono
-              color={color}
-              input="number"
-              disabled={isRowDisabled()}
-              title="单价"
-              bullets={['确认后写入当前行。', '插入价格叶子才换来源。', '取消不保存。']}
-              cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'unitPrice' }}
-              onApply={(next) => {
-                const numVal = parseFloat(next) || 0;
-                void commitCell(record, { unitPrice: numVal });
-              }}
-              pickerRender={
-                rowHasSku(record)
-                  ? (ctx) => (
+                : 'var(--text-default)',
+          disabledReason: gateReason,
+          gate: {
+            title: '单价',
+            input: 'number',
+            bullets: () => ['确认后写入当前行。', '插入价格叶子才换来源。', '取消不保存。'],
+            onApply: (r, next) => {
+              const numVal = parseFloat(next) || 0;
+              void commitCell(r, { unitPrice: numVal });
+            },
+            search: (r) =>
+              rowHasSku(r)
+                ? {
+                    kind: 'picker',
+                    render: (ctx) => (
                       <ProductPicker
                         open
                         hostedInGate
@@ -1218,80 +1244,94 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
                         hostReady={ctx.hostReady}
                         entrySlot="price"
                         lockedContext={{
-                          specId: String(record.specId),
-                          brandId: String(record.brandId),
-                          productId: record.productId,
-                          productName: record.productRef,
-                          brandName: record.brandName,
-                          specModel: record.spec ?? '',
-                          unitId: record.unitId,
-                          unitName: record.unit,
+                          specId: String(r.specId),
+                          brandId: String(r.brandId),
+                          productId: r.productId,
+                          productName: r.productRef,
+                          brandName: r.brandName,
+                          specModel: r.spec ?? '',
+                          unitId: r.unitId,
+                          unitName: r.unit,
                         }}
                         anchorRef={ctx.inputHostRef}
                         onClose={ctx.close}
                         onSelect={(_sku, unit, selectedPrice) => {
                           const priced = priceFromPick(unit, selectedPrice);
-                          void commitCell(record, { unitPrice: priced.price, priceSource: priced.priceSource });
+                          void commitCell(r, { unitPrice: priced.price, priceSource: priced.priceSource });
                           ctx.close();
                         }}
                         isStaff
                         onQuickCreate={() => {}}
                       />
-                    )
-                  : undefined
-              }
-            />
-          );
+                    ),
+                  }
+                : { kind: 'none' },
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.AMOUNT,
+          align: 'center',
+          cellSwitch: { rowIdOf },
         },
       },
+      // 7 金额：派生值（数量 × 单价），只读。
+      //   派生列不需要确认层——这也反证了其余 7 列逃进 custom 不是因为业务特殊，
+      //   而是单维 renderMode 表达不了 confirm 这个编辑入口。
       {
-        key: 'amount',
-        title: '金额',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'static',
-        render: (_v, record) => {
-          const amt = lineAmount(record);
-          return (
-            <span
-              style={{
-                color: 'var(--text-default)',
-                fontWeight: 500,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {formatMoney(amt)}
-            </span>
-          );
+        spec: {
+          key: 'amount',
+          title: '金额',
+          display: 'number',
+          editEntry: 'none',
+          value: (r) => formatMoney(lineAmount(r)),
+          color: () => 'var(--text-default)',
+        },
+        layout: {
+          minWidth: COL_WIDTHS.AMOUNT,
+          align: 'center',
         },
       },
+      // 8 备注：纯值输入，允许清空
       {
-        key: 'remark',
-        title: '备注',
-        dataIndex: 'remark',
-        minWidth: COL_WIDTHS.REMARK_S,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_v, record: PaperRow) => (
-          <WorkbenchFieldCell
-            text={record.remark || ''}
-            placeholder="备注"
-            align="center"
-            disabled={isRowDisabled()}
-            title="备注"
-            bullets={['确认后写入当前行。', '取消不保存。']}
-            cellSwitch={{ rowId: record.id ?? `__empty_${record.seq}`, colKey: 'remark' }}
-            onApply={(next) => {
-              void commitCell(record, { remark: next });
-            }}
-            allowEmpty
-          />
-        ),
+        spec: {
+          key: 'remark',
+          title: '备注',
+          display: 'text',
+          editEntry: 'confirm',
+          value: (r) => r.remark || '',
+          placeholder: '备注',
+          disabledReason: gateReason,
+          gate: {
+            title: '备注',
+            allowEmpty: true,
+            bullets: () => ['确认后写入当前行。', '取消不保存。'],
+            onApply: (r, next) => {
+              void commitCell(r, { remark: next });
+            },
+          },
+        },
+        layout: {
+          minWidth: COL_WIDTHS.REMARK_S,
+          align: 'center',
+          cellSwitch: { rowIdOf },
+        },
       },
-    ]);
+    ]));
     },
-    [isRowDisabled, lineAmount, commitCell, handleProductSelect, handleUnitSelect, handleUnitFreeText, lineFilter, applySkuDraft],
+    [
+      canWrite,
+      isVoided,
+      viewLocked,
+      salesArchived,
+      lineAmount,
+      commitCell,
+      handleProductSelect,
+      handleUnitSelect,
+      handleUnitFreeText,
+      lineFilter,
+      applySkuDraft,
+      setQuickCreateCtx,
+    ],
   );
 
   // ============================================================
@@ -1309,8 +1349,11 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
   // 识别订单提交
   // ============================================================
   const handleRecognizeSubmit = useCallback(() => {
-    if (!recognizeText.trim()) {
-      message.warning('请粘贴订单文本');
+    const block = resolveGuard('quote_recognize', {
+      form: { recognizeText: recognizeText.trim() },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     void handleRecognizeOrder(recognizeText);

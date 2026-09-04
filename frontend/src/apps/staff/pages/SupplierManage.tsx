@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { App as AntdApp, Modal } from 'antd';
 import ArchiveSlotHost from '../../../shared/components/archive/ArchiveSlotHost.js';
+import { assembleSlots } from '../../../shared/config/pageAssembler.js';
 import type {
   ArchiveEntityDef,
   ArchiveMatrixEditorProps,
@@ -451,9 +452,17 @@ export default function SupplierManage() {
     [message, openScopeId, scopeFilter],
   );
 
+  // 槽位顺序由登记表 pages.supplier.slots 决定；页面只提供每个槽位的编辑器实现。
+  //   （元模型运行时 · 阶段 F：列顺序是配置值，不是页面手写的数组顺序）
+  const assembledDef = useMemo(() => {
+    const byKey: Record<string, NonNullable<typeof def.slots>[number]> = {};
+    for (const s of def.slots ?? []) byKey[s.key] = s;
+    return { ...def, slots: assembleSlots('supplier', byKey) };
+  }, [def]);
+
   return (
     <ArchiveSlotHost
-      def={def}
+      def={assembledDef}
       extraQuery={extraQuery}
       extraChips={
         scopeFilter?.name

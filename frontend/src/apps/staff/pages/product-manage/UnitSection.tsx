@@ -1,13 +1,19 @@
+// UnitSection — 单位区（产品集合编辑矩阵 · §D）
+//
+// v27 形态修正：单位从「行切换 + 单行编辑」改回「多记录矩阵」。
+//   特征组合：单位 = 挂载子表（spec_unit 挂 spec 下，叶子层）→ 按形态推导走
+//   多记录矩阵：所有单位一行一条全摊开，换算/售价/进价/基准/默认每行直改，
+//   末尾空行输入即晋升并自动补新空行（useMatrixRecords + MatrixTable，范本：
+//   ArchiveContactMatrixEditor）。价格仍为三键跨记录数 → 行内展开面板
+//   （UnitPriceExpandPanel，Popover 承载，与列表共用同一组件）。
+//   与品牌/规格的区别：它们是中间层（下挂子记录）才走级联切换行；单位是叶子。
 import { useCallback, useMemo, useState } from 'react';
 import { Popover, message } from 'antd';
 import { Checkbox } from 'antd';
-import { DeleteOutlined, DownOutlined } from '@ant-design/icons';
-import CascadeSwitchRow from '../../../../shared/components/CascadeSwitchRow.js';
-import EntityPanel from '../../../../shared/components/EntityPanel.js';
-import DsButton from '../../../../shared/components/DsButton.js';
-import UnitManagePanel, {
-  type UnitManagePanelExtensions,
-} from '../../../../shared/components/UnitManagePanel.js';
+import { DownOutlined } from '@ant-design/icons';
+import MatrixTable, { type MatrixRowConfig } from '../../../../shared/components/MatrixTable.js';
+import useMatrixRecords from '../../../../shared/hooks/useMatrixRecords.js';
+import { resolveGuard } from '../../../../shared/config/resolveGuard.js';
 import {
   UnitPriceExpandPanel,
   type SalePriceItem,
@@ -20,7 +26,6 @@ import { isPointerOnFloatPanel } from '../../../../shared/components/PanelTree.j
 import { calcEffectivePrice } from '../../../../shared/utils/format.js';
 import { resolveUnitPriceDisplay } from '../../../../shared/engines/pricing-engine.js';
 import {
-  DisplayCell,
   PickerNameCell,
   PickerNumCell,
   ArchiveEmptyFieldCell,
@@ -32,7 +37,6 @@ const COMMON_UNITS = ['米', '根', '个', '桶', '捆', '箱', '吨', 'kg', '�
 
 // ============================================================
 // §6 单位区（SPU 级共享，独立一区）
-// 添加单位输入框 + 单位列表表格（单位/换算系数(按品牌)/基准/默认/删除）
 // v9.0：换算率从 brand_unit_conversion 按当前品牌独立展示和编辑
 // ============================================================
 
@@ -70,6 +74,16 @@ interface UnitSectionProps {
   disabled?: boolean;
 }
 
+/** 空行工厂：单位名空、非基准非默认（首个晋升时由 handleUnitsDirty 补基准/默认） */
+function blankUnit(): UnitItem {
+  return { rowKey: genRowKey('unit'), unitName: '', isBase: false, isDisplay: false };
+}
+
+/** 数据行判定：单位名非空 */
+function isUnitDataRow(u: UnitItem): boolean {
+  return Boolean(u.unitName.trim());
+}
+
 export function UnitSection({
   units,
   onUnitsChange,
@@ -92,11 +106,9 @@ export function UnitSection({
   //   问题3：defaultTab 仅首次挂载生效，重开面板 Tab 未重置
   //   修复：activePanel 携带 {unitIdx, tab} 双维度，精确控制单个面板开合
   //         unitIdx 联动 activePanel.unitIdx，切换单位即时刷新价格
-  //         brandIdx 在传入前过滤 salePrices/purchasePrices，避免品牌间数据混洧
   const [activePanel, setActivePanel] = useState<{ unitIdx: number; tab: 'sale' | 'purchase' } | null>(null);
 
   // v10.4：按当前品牌过滤价格数据，避免不同品牌价格混洧
-  //   UnitPriceExpandPanel 内部仅按 unitIdx 过滤（列表场景单品牌数据），编辑弹窗场景需在此预过滤
   const currentBrandSalePrices = useMemo(
     () => salePrices.filter((p) => p.brandIdx === brandIdx),
     [salePrices, brandIdx],
@@ -108,7 +120,6 @@ export function UnitSection({
   // 过滤后价格的变更回调需还原 brandIdx 后再写回全量数组
   const handleCurrentBrandSalePricesChange = useCallback(
     (next: SalePriceItem[]) => {
-      // 合并：保留其他品牌的价格 + 当前品牌的新价格（next 已含 brandIdx）
       const others = salePrices.filter((p) => p.brandIdx !== brandIdx);
       const currentBrandNext = next.map((p) => ({ ...p, brandIdx }));
       onSalePricesChange([...others, ...currentBrandNext]);
@@ -124,8 +135,32 @@ export function UnitSection({
     [purchasePrices, brandIdx, onPurchasePricesChange],
   );
 
+  // v27：矩阵状态机（多记录矩阵范式）。dataRows 下标 = units 下标（value 同源），
+  // 空行输入单位名 → 晋升为数据行并自动补新空行。
+  const matrix = useMatrixRecords<UnitItem>({
+    value: units,
+    isDataRow: isUnitDataRow,
+    blank: blankUnit,
+    onDirty: (rows) => {
+      let next = [...rows];
+      // 无基准/无默认 → 第一条补齐（与保存兜底口径一致）
+      if (!next.some((u) => u.isBase)) next = next.map((u, i) => (i === 0 ? { ...u, isBase: true } : u));
+      if (!next.some((u) => u.isDisplay)) next = next.map((u, i) => (i === 0 ? { ...u, isDisplay: true } : u));
+      // 换算率同步：新增单位补默认 1；被删除的单位清键
+      const nextConv: Record<string, string> = {};
+      for (const u of next) {
+        const key = u.rowKey;
+        const old = currentBrandConversions[key];
+        nextConv[key] = old !== undefined && old !== null && old !== '' ? old : '1';
+      }
+      onConversionsChange(nextConv);
+      // 父组件统一做价格 unitIdx 降位重映射（防删除单位后价格错位）
+      onUnitsChange(next);
+    },
+  });
+
   const handleUnitNameChange = (idx: number, val: string) => {
-    onUnitsChange(units.map((u, i) => (i === idx ? { ...u, unitName: val } : u)));
+    matrix.update(idx, { unitName: val });
   };
 
   // v9.0：换算率从 brand_unit_conversion 按品牌独立编辑
@@ -137,19 +172,19 @@ export function UnitSection({
   };
 
   // v1.5.5：切换基准单位
-  //   优先走父组件 onSetBase（全品牌换算率按各自新基准归一化，基准单位 SPU 级共享）
-  //   兜底（独立使用场景）：仅归一化当前品牌 + 更新单位标记
   const handleSetBase = (idx: number) => {
+    const unit = matrix.dataRows[idx];
+    if (!unit) return;
     if (onSetBase) {
       onSetBase(idx);
       return;
     }
-    const unit = units[idx];
+    // 兜底（独立使用场景）：仅归一化当前品牌 + 更新单位标记
     const factor = parseFloat(currentBrandConversions[unit.rowKey] ?? '');
     const validFactor = !isNaN(factor) && factor > 0;
     const nextConversions = { ...currentBrandConversions };
     if (validFactor) {
-      units.forEach((u) => {
+      matrix.dataRows.forEach((u) => {
         const v = parseFloat(nextConversions[u.rowKey] ?? '');
         if (!isNaN(v)) {
           nextConversions[u.rowKey] = String(Math.round((v / factor) * 10000) / 10000);
@@ -157,8 +192,8 @@ export function UnitSection({
       });
     }
     nextConversions[unit.rowKey] = '1';
-    onUnitsChange(
-      units.map((u, i) =>
+    matrix.commit(
+      matrix.dataRows.map((u, i) =>
         i === idx ? { ...u, isBase: true } : { ...u, isBase: false },
       ),
     );
@@ -166,65 +201,35 @@ export function UnitSection({
   };
 
   const handleSetDisplay = (idx: number) => {
-    onUnitsChange(
-      units.map((u, i) => (i === idx ? { ...u, isDisplay: true } : { ...u, isDisplay: false })),
-    );
+    matrix.setDefault(idx, 'isDisplay');
   };
 
   const handleDelete = (idx: number) => {
-    const unit = units[idx];
-    onUnitsChange(units.filter((_, i) => i !== idx));
-    // v9.0：同步删除该单位的换算率
-    if (unit) {
-      const newConversions = { ...currentBrandConversions };
-      delete newConversions[unit.rowKey];
-      onConversionsChange(newConversions);
-    }
+    matrix.remove(idx);
   };
 
-  // v9.1：末尾空行新增（由 UnitManagePanel 基座承载）——输入有效单位名自动追加新行；
-  //   rate 可选：空行换算率一次录入（v2.2 基座完整空行通式）
-  const handleAddUnitCommit = (nameInput?: string, rateInput?: string) => {
+  // 空行新增（输入单位名自动晋升；换算率默认 1 由 onDirty 补）
+  const handleAddUnitCommit = (nameInput?: string) => {
     const name = (nameInput ?? '').trim();
     if (!name) return;
-    if (units.some((u) => u.unitName === name)) return;
-    const isFirst = units.length === 0;
-    const newRowKey = genRowKey('unit');
-    onUnitsChange([
-      ...units,
-      {
-        rowKey: newRowKey,
-        unitName: name,
-        isBase: isFirst,
-        isDisplay: isFirst,
-      },
-    ]);
-    // v9.0：新增单位初始化换算率（基准单位为 1；空行录入 rate 则用之）
-    const rate =
-      rateInput && Number.isFinite(parseFloat(rateInput)) && parseFloat(rateInput) > 0
-        ? rateInput.trim()
-        : '1';
-    onConversionsChange({
-      ...currentBrandConversions,
-      [newRowKey]: rate,
-    });
+    if (matrix.dataRows.some((u) => u.unitName === name)) {
+      message.warning(`单位「${name}」已存在`);
+      return;
+    }
+    matrix.updateLastBlank({ unitName: name });
   };
 
   // v9.1：默认售价 = isDefault=true 的售价；无标记则兜底取最低价
-  // v10.4：基于当前品牌过滤后的价格数据计算，避免品牌切换后单位行显示其他品牌的价格
   const getDefaultSalePrice = (unitIdx: number): string => {
     if (!Array.isArray(currentBrandSalePrices)) return '';
     const unitPrices = currentBrandSalePrices.filter((p) => p.unitIdx === unitIdx);
-    // v11.3：price 可能为 number（后端进价行已 toNumber），统一 String 处理
     const valid = unitPrices.filter((p) => p.price && String(p.price).trim() !== '');
     if (valid.length === 0) return '';
-    // 优先取 isDefault=true
     const def = valid.find((p) => p.isDefault);
     if (def) {
       const n = parseFloat(def.price);
       return isNaN(n) ? '' : n.toFixed(2);
     }
-    // 兜底：取最低价
     const nums = valid
       .map((p) => parseFloat(p.price))
       .filter((n) => !isNaN(n) && n > 0);
@@ -232,11 +237,9 @@ export function UnitSection({
   };
 
   // v12.0：默认进价 = isDefault=true 的「进价」（面价 × 点位）；无标记则兜底取最低进价
-  // v10.4：基于当前品牌过滤后的价格数据计算
   const getDefaultPurchasePrice = (unitIdx: number): string => {
     if (!Array.isArray(currentBrandPurchasePrices)) return '';
     const unitPrices = currentBrandPurchasePrices.filter((p) => p.unitIdx === unitIdx);
-    // v12.0：进价 = 面价 × 点位；calcEffectivePrice 单一实现（SSOT）
     const valid = unitPrices.filter((p) => !isNaN(calcEffectivePrice(p)));
     if (valid.length === 0) return '';
     const def = valid.find((p) => p.isDefault);
@@ -249,10 +252,6 @@ export function UnitSection({
   };
 
   // v1.5.6.3：编辑弹窗单位行售价/进价推算（与列表同口径回退链）
-  //   ① 当前单位已录默认价 → 直接用
-  //   ② 未录 → 基准单位(换算率=1)已录默认价 × 当前单位换算率 推算（不写库，可录入真实价覆盖）
-  //   ③ 均不可得 → ''（显示 —）
-  //   已收敛为 pricing-engine.resolveUnitPriceDisplay（SSOT，列表/弹窗共用，禁止本地重写）
   const resolveUnitPriceDisplayLocal = (
     unitIdx: number,
     kind: 'sale' | 'purchase',
@@ -279,312 +278,280 @@ export function UnitSection({
     };
   };
 
-  // v26 单位行级联化：选项横排切换 + 选中单位单行编辑（与品牌/规格同一套标准形式）。
-  // 价格格（saleCell/purchaseCell）按 rowKey 定位 unitIdx，单行渲染不导致错位。
-  const [selectedUnitKey, setSelectedUnitKey] = useState<string | null>(null);
-  const priceColumns: NonNullable<UnitManagePanelExtensions['priceColumns']> = {
-    saleCell: (unit) => {
-      const idx = units.findIndex((u) => u.rowKey === unit.key);
-      const saleDisplay = resolveUnitPriceDisplayLocal(idx, 'sale');
-      const defaultSale = saleDisplay.price;
-      const isOpen = activePanel?.unitIdx === idx && activePanel.tab === 'sale';
-      return (
-        <Popover
-          trigger="click"
-          placement="bottomLeft"
-          destroyOnHidden={false}
-          open={isOpen}
-          onOpenChange={(open) => {
-            if (!open && isPointerOnFloatPanel()) return;
-            if (open) setActivePanel({ unitIdx: idx, tab: 'sale' });
-            else if (activePanel?.unitIdx === idx && activePanel.tab === 'sale') setActivePanel(null);
+  // 售价/进价行内展开面板格（跨记录数 · 三键 → Popover 承载，与列表共用 UnitPriceExpandPanel）
+  const renderSaleCell = (u: UnitItem) => {
+    const idx = units.findIndex((x) => x.rowKey === u.rowKey);
+    const saleDisplay = resolveUnitPriceDisplayLocal(idx, 'sale');
+    const defaultSale = saleDisplay.price;
+    const isOpen = activePanel?.unitIdx === idx && activePanel.tab === 'sale';
+    return (
+      <Popover
+        trigger="click"
+        placement="bottomLeft"
+        destroyOnHidden={false}
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open && isPointerOnFloatPanel()) return;
+          if (open) setActivePanel({ unitIdx: idx, tab: 'sale' });
+          else if (activePanel?.unitIdx === idx && activePanel.tab === 'sale') setActivePanel(null);
+        }}
+        title="售价明细"
+        getPopupContainer={smartPopupContainer}
+        autoAdjustOverflow={false}
+        content={
+          <UnitPriceExpandPanel
+            unitIdx={activePanel?.unitIdx ?? idx}
+            unitName={units[activePanel?.unitIdx ?? idx]?.unitName ?? u.unitName}
+            units={units.map((uu, i) => ({ idx: i, name: uu.unitName }))}
+            onUnitChange={(newIdx) =>
+              setActivePanel((prev) => (prev ? { ...prev, unitIdx: newIdx } : null))
+            }
+            brandIdx={brandIdx}
+            unitConversions={units.map((uu) => {
+              const v = currentBrandConversions[uu.rowKey];
+              if (v === undefined || v === null || v === '') return null;
+              const n = parseFloat(v);
+              return isNaN(n) ? null : n;
+            })}
+            salePrices={currentBrandSalePrices}
+            onSalePricesChange={handleCurrentBrandSalePricesChange}
+            purchasePrices={currentBrandPurchasePrices}
+            onPurchasePricesChange={handleCurrentBrandPurchasePricesChange}
+            priceTypes={priceTypes}
+            onPriceTypesChange={onPriceTypesChange}
+            disabled={disabled}
+            defaultTab="sale"
+            open={isOpen}
+            pointCtx={pointCtx}
+          />
+        }
+      >
+        <div
+          className="price-cell"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            fontFamily: 'var(--font-family-mono)',
+            fontSize: 'var(--body-xs-font-size)',
+            color: defaultSale
+              ? saleDisplay.derived
+                ? 'var(--text-placeholder-accent)'
+                : 'var(--text-default)'
+              : 'var(--text-quaternary)',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: 'var(--radius-2)',
+            border: '1px solid var(--cell-border, var(--border-neutral-l2))',
+            background: 'var(--cell-bg, var(--bg-base-secondary))',
           }}
-          title="售价明细"
-          getPopupContainer={smartPopupContainer}
-          autoAdjustOverflow={false}
-          content={
-            <UnitPriceExpandPanel
-              unitIdx={activePanel?.unitIdx ?? idx}
-              unitName={units[activePanel?.unitIdx ?? idx]?.unitName ?? unit.unitName}
-              units={units.map((uu, i) => ({ idx: i, name: uu.unitName }))}
-              onUnitChange={(newIdx) =>
-                setActivePanel((prev) => (prev ? { ...prev, unitIdx: newIdx } : null))
-              }
-              brandIdx={brandIdx}
-              unitConversions={units.map((uu) => {
-                const v = currentBrandConversions[uu.rowKey];
-                if (v === undefined || v === null || v === '') return null;
-                const n = parseFloat(v);
-                return isNaN(n) ? null : n;
-              })}
-              salePrices={currentBrandSalePrices}
-              onSalePricesChange={handleCurrentBrandSalePricesChange}
-              purchasePrices={currentBrandPurchasePrices}
-              onPurchasePricesChange={handleCurrentBrandPurchasePricesChange}
-              priceTypes={priceTypes}
-              onPriceTypesChange={onPriceTypesChange}
-              disabled={disabled}
-              defaultTab="sale"
-              open={isOpen}
-              pointCtx={pointCtx}
-            />
+          title={
+            saleDisplay.derived
+              ? '按基准单位售价 × 换算率推算（未录价，点击可录入真实价）'
+              : '点击编辑售价明细'
           }
         >
-          <div
-            className="price-cell"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 2,
-              fontFamily: 'var(--font-family-mono)',
-              fontSize: 'var(--body-xs-font-size)',
-              color: defaultSale
-                ? saleDisplay.derived
-                  ? 'var(--text-placeholder-accent)'
-                  : 'var(--text-default)'
-                : 'var(--text-quaternary)',
-              cursor: 'pointer',
-              padding: '2px 4px',
-              borderRadius: 'var(--radius-2)',
-              border: '1px solid var(--cell-border, var(--border-neutral-l2))',
-              background: 'var(--cell-bg, var(--bg-base-secondary))',
-            }}
-            title={
-              saleDisplay.derived
-                ? '按基准单位售价 × 换算率推算（未录价，点击可录入真实价）'
-                : '点击编辑售价明细'
-            }
-          >
-            <span>{defaultSale || '—'}</span>
-            <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />
-          </div>
-        </Popover>
-      );
-    },
-    purchaseCell: (unit) => {
-      const idx = units.findIndex((u) => u.rowKey === unit.key);
-      const purchaseDisplay = resolveUnitPriceDisplayLocal(idx, 'purchase');
-      const defaultPurchase = purchaseDisplay.price;
-      const isOpen = activePanel?.unitIdx === idx && activePanel.tab === 'purchase';
-      return (
-        <Popover
-          trigger="click"
-          placement="bottomLeft"
-          destroyOnHidden={false}
-          open={isOpen}
-          onOpenChange={(open) => {
-            if (!open && isPointerOnFloatPanel()) return;
-            if (open) setActivePanel({ unitIdx: idx, tab: 'purchase' });
-            else if (activePanel?.unitIdx === idx && activePanel.tab === 'purchase') setActivePanel(null);
-          }}
-          title="进价明细"
-          getPopupContainer={smartPopupContainer}
-          autoAdjustOverflow={false}
-          content={
-            <UnitPriceExpandPanel
-              unitIdx={activePanel?.unitIdx ?? idx}
-              unitName={units[activePanel?.unitIdx ?? idx]?.unitName ?? unit.unitName}
-              units={units.map((uu, i) => ({ idx: i, name: uu.unitName }))}
-              onUnitChange={(newIdx) =>
-                setActivePanel((prev) => (prev ? { ...prev, unitIdx: newIdx } : null))
-              }
-              brandIdx={brandIdx}
-              unitConversions={units.map((uu) => {
-                const v = currentBrandConversions[uu.rowKey];
-                if (v === undefined || v === null || v === '') return null;
-                const n = parseFloat(v);
-                return isNaN(n) ? null : n;
-              })}
-              salePrices={currentBrandSalePrices}
-              onSalePricesChange={handleCurrentBrandSalePricesChange}
-              purchasePrices={currentBrandPurchasePrices}
-              onPurchasePricesChange={handleCurrentBrandPurchasePricesChange}
-              priceTypes={priceTypes}
-              onPriceTypesChange={onPriceTypesChange}
-              disabled={disabled}
-              defaultTab="purchase"
-              open={isOpen}
-              pointCtx={pointCtx}
-            />
-          }
-        >
-          <div
-            className="price-cell"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 2,
-              fontFamily: 'var(--font-family-mono)',
-              fontSize: 'var(--body-xs-font-size)',
-              color: defaultPurchase
-                ? purchaseDisplay.derived
-                  ? 'var(--text-placeholder-accent)'
-                  : 'var(--status-discount-default)'
-                : 'var(--text-quaternary)',
-              cursor: 'pointer',
-              padding: '2px 4px',
-              borderRadius: 'var(--radius-2)',
-              border: '1px solid var(--cell-border, var(--border-neutral-l2))',
-              background: 'var(--cell-bg, var(--bg-base-secondary))',
-            }}
-            title={
-              purchaseDisplay.derived
-                ? '按基准单位进价 × 换算率推算（未录价，点击可录入真实价）'
-                : '点击编辑进价明细'
-            }
-          >
-            <span>{defaultPurchase || '—'}</span>
-            <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />
-          </div>
-        </Popover>
-      );
-    },
+          <span>{defaultSale || '—'}</span>
+          <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />
+        </div>
+      </Popover>
+    );
   };
 
-  // v26 单位行级联化：选项横排切换（选中高亮），选中单位在下方单行编辑表格
-  // （单位名确认层 / 换算 / 售价 / 进价 / 基准 / 默认 / 删除——增删改全在编辑行与确认层）。
-  // 价格格按 rowKey 定位 unitIdx，单行渲染不错位。
-  const selIdx = units.findIndex((u) => u.rowKey === selectedUnitKey);
-  const selUnit = selIdx >= 0 ? units[selIdx] : null;
-  const selRate = selUnit
-    ? currentBrandConversions[selUnit.rowKey] ?? (selUnit.isBase ? '1' : '')
-    : '';
-  const idxOf = (key: string) => units.findIndex((u) => u.rowKey === key);
+  const renderPurchaseCell = (u: UnitItem) => {
+    const idx = units.findIndex((x) => x.rowKey === u.rowKey);
+    const purchaseDisplay = resolveUnitPriceDisplayLocal(idx, 'purchase');
+    const defaultPurchase = purchaseDisplay.price;
+    const isOpen = activePanel?.unitIdx === idx && activePanel.tab === 'purchase';
+    return (
+      <Popover
+        trigger="click"
+        placement="bottomLeft"
+        destroyOnHidden={false}
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open && isPointerOnFloatPanel()) return;
+          if (open) setActivePanel({ unitIdx: idx, tab: 'purchase' });
+          else if (activePanel?.unitIdx === idx && activePanel.tab === 'purchase') setActivePanel(null);
+        }}
+        title="进价明细"
+        getPopupContainer={smartPopupContainer}
+        autoAdjustOverflow={false}
+        content={
+          <UnitPriceExpandPanel
+            unitIdx={activePanel?.unitIdx ?? idx}
+            unitName={units[activePanel?.unitIdx ?? idx]?.unitName ?? u.unitName}
+            units={units.map((uu, i) => ({ idx: i, name: uu.unitName }))}
+            onUnitChange={(newIdx) =>
+              setActivePanel((prev) => (prev ? { ...prev, unitIdx: newIdx } : null))
+            }
+            brandIdx={brandIdx}
+            unitConversions={units.map((uu) => {
+              const v = currentBrandConversions[uu.rowKey];
+              if (v === undefined || v === null || v === '') return null;
+              const n = parseFloat(v);
+              return isNaN(n) ? null : n;
+            })}
+            salePrices={currentBrandSalePrices}
+            onSalePricesChange={handleCurrentBrandSalePricesChange}
+            purchasePrices={currentBrandPurchasePrices}
+            onPurchasePricesChange={handleCurrentBrandPurchasePricesChange}
+            priceTypes={priceTypes}
+            onPriceTypesChange={onPriceTypesChange}
+            disabled={disabled}
+            defaultTab="purchase"
+            open={isOpen}
+            pointCtx={pointCtx}
+          />
+        }
+      >
+        <div
+          className="price-cell"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            fontFamily: 'var(--font-family-mono)',
+            fontSize: 'var(--body-xs-font-size)',
+            color: defaultPurchase
+              ? purchaseDisplay.derived
+                ? 'var(--text-placeholder-accent)'
+                : 'var(--status-discount-default)'
+              : 'var(--text-quaternary)',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: 'var(--radius-2)',
+            border: '1px solid var(--cell-border, var(--border-neutral-l2))',
+            background: 'var(--cell-bg, var(--bg-base-secondary))',
+          }}
+          title={
+            purchaseDisplay.derived
+              ? '按基准单位进价 × 换算率推算（未录价，点击可录入真实价）'
+              : '点击编辑进价明细'
+          }
+        >
+          <span>{defaultPurchase || '—'}</span>
+          <DownOutlined style={{ fontSize: 9, opacity: 0.6 }} />
+        </div>
+      </Popover>
+    );
+  };
+
+  // v27：单位多记录矩阵（叶子挂载子表形态）——所有单位一行一条，空行输入即晋升
+  const rows: MatrixRowConfig[] = matrix.dataRows.map((u, idx) => {
+    const rate = currentBrandConversions[u.rowKey] ?? (u.isBase ? '1' : '');
+    return {
+      rowKey: u.rowKey,
+      selectKey: u.rowKey,
+      nameCell: (
+        <PickerNameCell
+          value={u.unitName}
+          kind="unit"
+          fromId={u.rowKey}
+          placeholder="单位"
+          disabled={disabled}
+          onApply={(val) => handleUnitNameChange(idx, val)}
+        />
+      ),
+      midCells: [
+        <PickerNumCell
+          key="rate"
+          value={rate === '' ? null : Number(rate)}
+          label={u.isBase ? '1' : rate}
+          kind="conversion"
+          placeholder="1"
+          disabled={u.isBase || disabled}
+          onApply={(n) => handleRateChange(u.rowKey, String(n))}
+        />,
+        <div key="sale" style={{ display: 'flex', justifyContent: 'center' }}>
+          {renderSaleCell(u)}
+        </div>,
+        <div key="purchase" style={{ display: 'flex', justifyContent: 'center' }}>
+          {renderPurchaseCell(u)}
+        </div>,
+        <div
+          key="base"
+          className="ds-grid-check"
+          style={{ justifySelf: 'center' }}
+          title={u.isBase ? '当前基准单位' : '设为基准单位'}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={u.isBase}
+            disabled={disabled}
+            onChange={(e) => {
+              if (e.target.checked) handleSetBase(idx);
+            }}
+          />
+        </div>,
+        <div
+          key="display"
+          className="ds-grid-check"
+          style={{ justifySelf: 'center' }}
+          title={u.isDisplay ? '当前默认单位' : '设为默认单位'}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={u.isDisplay}
+            disabled={disabled}
+            onChange={(e) => {
+              if (e.target.checked) handleSetDisplay(idx);
+            }}
+          />
+        </div>,
+      ],
+      price: '',
+      onPriceChange: () => undefined,
+      isDefault: u.isDisplay,
+      onIsDefaultChange: () => handleSetDisplay(idx),
+      defaultTitle: u.isDisplay ? '当前默认单位' : '设为默认单位',
+      defaultDisabled: disabled || !isUnitDataRow(u),
+      onDelete: () => handleDelete(idx),
+      deleteTitle: '删除单位',
+      deleteDisabled: disabled || (u.isBase && matrix.dataRowCount > 1),
+    };
+  });
+
+  const usedCommon = matrix.dataRows.map((u) => u.unitName);
+  const commonOptions = COMMON_UNITS.filter((n) => !usedCommon.includes(n)).map((n) => ({
+    label: n,
+    value: n,
+  }));
 
   return (
     <div>
-      <CascadeSwitchRow
-        label="单位"
-        disabled={disabled}
-        options={units.map((u) => ({
-          key: u.rowKey,
-          label: u.unitName,
-          active: u.rowKey === selectedUnitKey,
-          editCell:
-            u.rowKey === selectedUnitKey && selUnit ? (
-              <PickerNameCell
-                value={selUnit.unitName}
-                kind="unit"
-                fromId={selUnit.rowKey}
-                placeholder="单位"
-                disabled={disabled}
-                onApply={(val) => handleUnitNameChange(selIdx, val)}
-              />
-            ) : undefined,
-        }))}
-        onSelect={(key) => setSelectedUnitKey(key)}
-        addCell={
+      <MatrixTable
+        headerName="单位"
+        midCols={['换算', '售价', '进价', '基准', '默认']}
+        showPrice={false}
+        showDefault={false}
+        rows={rows}
+        showAddButton={false}
+        template="minmax(120px,1fr) 64px 72px 72px 40px 40px 24px"
+        addNameCell={
           <ArchiveEmptyFieldCell
             placeholder="新增单位…"
             title="新增单位（查全局字典，没有则新建）"
             onApply={(name) => {
               const trimmed = name.trim();
-              if (trimmed) handleAddUnitCommit(trimmed);
-              else message.warning('请先输入单位名');
+              const block = resolveGuard('unit_quick_add', {
+                form: { name: trimmed },
+              });
+              if (block) {
+                message.warning(block);
+                return;
+              }
+              handleAddUnitCommit(trimmed);
             }}
           />
         }
+        quickOptions={commonOptions.length ? commonOptions : undefined}
+        quickOptionsUsed={usedCommon}
+        onQuickPick={(opt) => handleAddUnitCommit(String(opt.value))}
+        disabled={disabled}
       />
-      {selUnit && (
-        <EntityPanel
-          template="minmax(70px,1fr) 52px 64px 64px 34px 34px 24px"
-          header={
-            <>
-              <span style={{ textAlign: 'left', paddingLeft: 8 }}>单位</span>
-              <span style={{ textAlign: 'center' }}>换算</span>
-              <span style={{ textAlign: 'center' }}>售价</span>
-              <span style={{ textAlign: 'center' }}>进价</span>
-              <span style={{ textAlign: 'center' }}>基准</span>
-              <span style={{ textAlign: 'center' }}>默认</span>
-              <span style={{ textAlign: 'center' }}>操作</span>
-            </>
-          }
-          rows={[
-            {
-              key: selUnit.rowKey,
-              cells: (
-                <>
-                  <PickerNameCell
-                    value={selUnit.unitName}
-                    kind="unit"
-                    fromId={selUnit.rowKey}
-                    placeholder="单位"
-                    disabled={disabled}
-                    onApply={(val) => handleUnitNameChange(selIdx, val)}
-                  />
-                  <PickerNumCell
-                    value={selRate === '' ? null : Number(selRate)}
-                    label={selUnit.isBase ? '1' : selRate}
-                    kind="conversion"
-                    placeholder="1"
-                    disabled={selUnit.isBase || disabled}
-                    onApply={(n) => handleRateChange(selUnit.rowKey, String(n))}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    {priceColumns.saleCell({
-                      key: selUnit.rowKey,
-                      unitName: selUnit.unitName,
-                      isBase: selUnit.isBase,
-                      isDisplay: selUnit.isDisplay,
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    {priceColumns.purchaseCell({
-                      key: selUnit.rowKey,
-                      unitName: selUnit.unitName,
-                      isBase: selUnit.isBase,
-                      isDisplay: selUnit.isDisplay,
-                    })}
-                  </div>
-                  <div
-                    className="ds-grid-check"
-                    style={{ justifySelf: 'center' }}
-                    title={selUnit.isBase ? '当前基准单位' : '设为基准单位'}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Checkbox
-                      checked={selUnit.isBase}
-                      disabled={disabled}
-                      onChange={(e) => {
-                        if (e.target.checked) handleSetBase(selIdx);
-                      }}
-                    />
-                  </div>
-                  <div
-                    className="ds-grid-check"
-                    style={{ justifySelf: 'center' }}
-                    title={selUnit.isDisplay ? '当前默认单位' : '设为默认单位'}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Checkbox
-                      checked={selUnit.isDisplay}
-                      disabled={disabled}
-                      onChange={(e) => {
-                        if (e.target.checked) handleSetDisplay(selIdx);
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    <DsButton
-                      size="sm"
-                      variant="ghost"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => handleDelete(selIdx)}
-                      disabled={disabled || (selUnit.isBase && units.length > 1)}
-                      title={
-                        selUnit.isBase && units.length > 1 ? '基准单位不可删除' : '删除单位'
-                      }
-                    />
-                  </div>
-                </>
-              ),
-            },
-          ]}
-        />
-      )}
     </div>
   );
 }

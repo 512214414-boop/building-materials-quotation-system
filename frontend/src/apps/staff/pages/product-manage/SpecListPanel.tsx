@@ -22,6 +22,7 @@
 import { useCallback, useMemo } from 'react';
 import DictListPanel, { type DictListPanelItem } from '../../../../shared/components/DictListPanel.js';
 import { useCanvasApp } from '../../../../shared/hooks/useCanvasApp.js';
+import { resolveGuard } from '../../../../shared/config/resolveGuard.js';
 import {
   updateSpec,
   deleteSpec,
@@ -110,8 +111,12 @@ export function SpecListPanel({
       const spec = item.data as SiblingSpec;
       if (newName === spec.specModel) return;
       // 前端预检：同列表内是否有重复规格
-      if (specs.some((s) => s.id !== spec.id && s.specModel === newName)) {
-        message.warning(`规格「${newName}」已存在`);
+      const block = resolveGuard('spec_rename', {
+        collections: { specs },
+        form: { newName, specId: spec.id },
+      });
+      if (block) {
+        message.warning(block);
         throw new Error('duplicate');
       }
       try {

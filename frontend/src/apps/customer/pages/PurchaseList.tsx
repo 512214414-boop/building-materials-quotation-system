@@ -32,6 +32,7 @@ import type {
   TemplateKey,
 } from '../../../shared/components/document-form/types.js';
 import { usePurchaseListStore, type PurchaseDisplayLine } from '../../../shared/stores/purchase-list.js';
+import { resolveGuard } from '../../../shared/config/resolveGuard.js';
 import { wsClient } from '../../../shared/services/websocket.js';
 import { useSafeAsyncEffect } from '../../../shared/hooks/useSafeAsyncEffect.js';
 import {
@@ -394,8 +395,11 @@ export default function PurchaseList() {
   // 识别订单（文字 + 图片）
   // ============================================================
   const handleRecognize = async () => {
-    if (!recognizeText.trim()) {
-      message.warning('请粘贴订单文字');
+    const block = resolveGuard('purchase_recognize', {
+      form: { recognizeText: recognizeText.trim() },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setRecognizeBusy(true);
@@ -466,8 +470,11 @@ export default function PurchaseList() {
   const commitQty = useCallback(
     async (row: GridRow, newQty: number) => {
       if (!canEditQty || !documentId) return;
-      if (!Number.isFinite(newQty) || newQty <= 0) {
-        message.warning('数量必须大于 0');
+      const block = resolveGuard('purchase_commit_qty', {
+        form: { newQty },
+      });
+      if (block) {
+        message.warning(block);
         // v10.3：校验失败时显式 reload，让 gridRows 重新派生触发 UnifiedTable 重置（回滚 UI）
         if (documentId) void loadById(documentId);
         return;
@@ -543,8 +550,11 @@ export default function PurchaseList() {
   // 提交需求
   // ============================================================
   const handleSubmitDemand = async () => {
-    if (lines.length === 0) {
-      message.warning('请先添加物料');
+    const block = resolveGuard('purchase_submit_demand', {
+      rows: lines,
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     try {

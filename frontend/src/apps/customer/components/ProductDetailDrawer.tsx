@@ -26,6 +26,7 @@ import {
   type CustomerLineInput,
 } from '../../../shared/services/api/customerApi.js';
 import { usePurchaseListStore } from '../../../shared/stores/purchase-list.js';
+import { resolveGuard } from '../../../shared/config/resolveGuard.js';
 import { pickGalleryFromView, buildFullName } from './productUtils.js';
 
 export interface ProductDetailDrawerProps {
@@ -133,8 +134,11 @@ export default function ProductDetailDrawer({
 
   const handleAdd = async () => {
     if (!sku || !allowAdd) return;
-    if (qty <= 0) {
-      message.warning('请输入有效数量');
+    const block = resolveGuard('detail_add_to_doc', {
+      form: { qty },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setSubmitting(true);

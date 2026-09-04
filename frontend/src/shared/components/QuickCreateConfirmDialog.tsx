@@ -22,6 +22,7 @@
 // 交互：弹窗右上角「保存」→ 校验 + 缺省提示 → 建档；候选出现时 → 复用 or 仍要新建
 
 import { useState } from 'react';
+import { resolveGuard } from '../config/resolveGuard.js';
 import DsDialog from './DsDialog.js';
 import DsButton from './DsButton.js';
 import DsInput from './DsInput.js';
@@ -128,8 +129,11 @@ export default function QuickCreateConfirmDialog({
   const handleSave = async () => {
     if (saving) return;
     const trimmedName = productName.trim();
-    if (!trimmedName) {
-      message.warning('请输入产品名称');
+    const block = resolveGuard('quick_create_confirm', {
+      form: { productName: trimmedName },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
 

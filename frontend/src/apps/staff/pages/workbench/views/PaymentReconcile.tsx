@@ -21,6 +21,7 @@ import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
 import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
 import { WORKBENCH_TEXT } from '../../../../../shared/styles/shell-constants.js';
+import { resolveGuard } from '../../../../../shared/config/resolveGuard.js';
 import {
   listPayments,
   addPayment,
@@ -147,11 +148,14 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
   // 快录行：提交新增
   // ----------------------------------------------------------
   const commitQuickAdd = useCallback(async () => {
-    const amt = parseFloat(quickBuffer.amount);
-    if (!Number.isFinite(amt) || amt <= 0) {
-      message.warning('金额必须为正数');
+    const block = resolveGuard('payment_quick_add', {
+      form: { amount: quickBuffer.amount },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
+    const amt = parseFloat(quickBuffer.amount);
     if (addingPayment) return;
     setAddingPayment(true);
     try {

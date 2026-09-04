@@ -15,6 +15,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { App as AntdApp, Spin } from 'antd';
 import DsButton from '../../../../../shared/components/DsButton.js';
+import { resolveGuard } from '../../../../../shared/config/resolveGuard.js';
 import DsInput from '../../../../../shared/components/DsInput.js';
 import DsDialog from '../../../../../shared/components/DsDialog.js';
 import DsTag from '../../../../../shared/components/DsTag.js';
@@ -374,8 +375,11 @@ export default function ArchiveView({ documentId }: { documentId: string }) {
   // 操作：V10 分阶段定档
   // ----------------------------------------------------------
   const handleArchiveSales = useCallback(async () => {
-    if (!archiveStatus?.summaryConfirmed) {
-      message.warning('请先完成 V9 店长汇总确认');
+    const block = resolveGuard('archive_sales', {
+      state: archiveStatus?.summaryConfirmed ?? false,
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setArchiveSalesLoading(true);
@@ -391,8 +395,11 @@ export default function ArchiveView({ documentId }: { documentId: string }) {
   }, [archiveStatus, documentId, message, load]);
 
   const handleArchiveLogistics = useCallback(async () => {
-    if (!archiveStatus?.summaryConfirmed) {
-      message.warning('请先完成 V9 店长汇总确认');
+    const block = resolveGuard('archive_logistics', {
+      state: archiveStatus?.summaryConfirmed ?? false,
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setArchiveLogisticsLoading(true);
@@ -408,8 +415,11 @@ export default function ArchiveView({ documentId }: { documentId: string }) {
   }, [archiveStatus, documentId, message, load]);
 
   const handleArchiveCosts = useCallback(async () => {
-    if (!archiveStatus?.summaryConfirmed) {
-      message.warning('请先完成 V9 店长汇总确认');
+    const block = resolveGuard('archive_costs', {
+      state: archiveStatus?.summaryConfirmed ?? false,
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     setArchiveCostsLoading(true);

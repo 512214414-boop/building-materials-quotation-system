@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { App as AntdApp } from 'antd';
 import { DsButton } from '../../../shared/components/DsButton.js';
+import { resolveGuard } from '../../../shared/config/resolveGuard.js';
 import DsInput from '../../../shared/components/DsInput.js';
 import { DsSegmented } from '../../../shared/components/DsSegmented.js';
 import { useStaffAuthStore } from '../../../shared/stores/auth.js';
@@ -50,12 +51,11 @@ export default function Login() {
 
   // ----- 员工登录提交 -----
   const handleStaffLogin = async () => {
-    if (!username.trim()) {
-      message.warning('请输入用户名');
-      return;
-    }
-    if (!password) {
-      message.warning('请输入密码');
+    const block = resolveGuard('staff_login', {
+      form: { username: username.trim(), password },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     try {
@@ -68,15 +68,12 @@ export default function Login() {
   };
 
   // ----- 客户授权码准入 -----
-  const validLogin = () => /^[A-Za-z0-9_+\-.]{1,200}$/.test(phone.trim());
-
   const handleCustomerVerify = async () => {
-    if (!validLogin()) {
-      message.warning('请输入登录账号（电话或微信）');
-      return;
-    }
-    if (!authCode.trim()) {
-      message.warning('请输入授权码');
+    const block = resolveGuard('customer_verify', {
+      form: { phone: phone.trim(), authCode: authCode.trim() },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     try {
@@ -90,8 +87,11 @@ export default function Login() {
 
   // ----- 客户申请准入 -----
   const handleCustomerRequest = async () => {
-    if (!validLogin()) {
-      message.warning('请输入登录账号（电话或微信）');
+    const block = resolveGuard('customer_access_request', {
+      form: { phone: phone.trim() },
+    });
+    if (block) {
+      message.warning(block);
       return;
     }
     try {
