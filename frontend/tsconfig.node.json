@@ -6,6 +6,9 @@
     "types": ["node"],
     "skipLibCheck": true,
 
+    /* 同 tsconfig.app.json：门禁要求结果可复现，禁用增量缓存 */
+    "incremental": false,
+
     /* Bundler mode */
     "module": "nodenext",
     "allowImportingTsExtensions": true,

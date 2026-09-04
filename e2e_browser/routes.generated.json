@@ -1,0 +1,18 @@
+[
+  "/staff/documents",
+  "/staff/basic/products",
+  "/staff/basic/suppliers",
+  "/staff/basic/warehouses",
+  "/staff/basic/customers",
+  "/staff/operation/purchase-inbound",
+  "/staff/basic/inbound-tasks",
+  "/staff/basic/inventory",
+  "/staff/basic/backorders",
+  "/staff/operation/payables",
+  "/staff/ops",
+  "/staff/system/auth-codes",
+  "/staff/system/access",
+  "/staff/system/users",
+  "/staff/system/roles",
+  "/staff/system/audit"
+]

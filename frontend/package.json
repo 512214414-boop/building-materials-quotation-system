@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:check": "npm run check:dupe && tsc -b && vite build",
-    "typecheck": "tsc -b",
+    "build:check": "npm run check:dupe && npm run typecheck && vite build",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
     "check:dupe": "node scripts/check-js-dupes.mjs",
     "lint": "oxlint",
     "preview": "vite preview"

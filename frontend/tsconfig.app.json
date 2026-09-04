@@ -8,6 +8,14 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
+    /* Strictness：实测 src 全量 strict 零类型错误，故直接全局开启，无需 allowlist 棘轮 */
+    "strict": true,
+
+    /* 禁用增量：tsBuildInfoFile 会让 tsc 读写增量缓存，导致检查结果不可复现
+       （既造假绿、也造假错 —— 实测同一命令连跑结果在 0/2/4/5/20 之间跳变）。
+       门禁必须结果确定，故显式关闭增量。 */
+    "incremental": false,
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
