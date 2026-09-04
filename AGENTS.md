@@ -128,11 +128,12 @@
 
 全项目所有能打开的界面，**单一来源是生成物，禁止手写维护**：
 
-- 总表：`访问地址.md` —— `node tools/gen-access.mjs` 从 dev.sh 等代码自动提取 + 实时探测在线状态
+- 掌控台：`项目掌控台.html / .md` —— `node tools/gen-boss-view.mjs` 生成（进度 + 智能设备入口 + 待拍板事项）；终端看三套地址跑 `node tools/gen-boss-view.mjs --access`
+- 智能入口：同一服务给出 本机 / 同热点 / 公网 三套候选，页面加载时 JS 实时探测当前设备可达性，只亮能打开的——用户不需要知道自己在什么网络
 - 中文命令中心：`~/.bmq/开工.sh` —— 手机远程（UU 命令行）敲「开工」出菜单；直接敲中文命令亦可
   （启动项目 / 刷新项目 / 重启项目 / 停止项目 / 项目状态 / 建公网 / 文档站 / 看进度 / 对话 / 接回对话 / 全部地址）
-- 总表里「用中文命令启动」列与命令中心一一对应：**改命令必须同步改总表，反之亦然**——两边不一致就是第二套实现
-- 改端口只改来源（dev.sh / 各服务脚本），再重跑生成器；在总表上手改 = 违规
+- 掌控台防冗余判据：**不改变用户行动的信息不入页**；每层信息标注「看到后做什么」
+- 改端口只改来源（dev.sh / 各服务脚本），再重跑生成器；掌控台是生成物，禁止手改
 - CLI 与 IDE 同源：两边都读本卡与 `docs-coverage.md`，工具链只有一套，不因接入方式不同而分叉
 
 <!-- GEN:BEGIN -->
@@ -204,6 +205,7 @@
 - 没货就找人问：列出可能供的渠道，留得住电话。进价滞后不等于不供。出货时仓和渠道不是一份名单。
 - 当时抄死：名称、价、地址、往来按当时单上的走。改数量不刷名称。档案变更不改历史。结清只读。退货按当时卖给这个人的价，不按名册现价。
 - 三种出法三种成本：仓出按当时均价；外面刚好够这笔的算进订单成本；外面多调的不算订单成本、货进库存。
+- 自检：客观前提 · 资源部署在门店笔记本（几十用户、10 人内并发）→ 算力往前放、后端只做存储/最终校验，禁止高并发架构。数据量级巨大（SKU 几十万、业务行几千万）→ 索引驱动一切检索、候选集压到几百内、统计走聚合——任何「按几千条设计」的实现都不合格。
 
 ### 进货管货（L1）
 - 触发：货进店：点进哪一仓，仓里还有多少，多调的先进库存
@@ -236,6 +238,9 @@
 - 看这一页：看补完后追源表。那是方法要求的精度。
 - 写下一项目：回到「对话 → 指导思想」，按新现场交六条线提纲，不要抄本页的开单/配货/进货。
 - 本项目开发：新功能先归到指导思想对应页。效果原句能否决你的实现，才动手。
+- 金标准锁定：不重写 ProductPicker / UnitPicker / DsDialog，不改 FloatPanel 交互契约；ProductPicker 只许抽「渲染一行」私有文件，禁止拆空另写。做了就算失败。
+- 读用户的话五铁则：「所有/永远」九成不是字面全部，回约束与场景判断；比喻即需求（像 Excel=点格直输回车下移）；说「不好用」别问哪里不好用，自己去看打断了什么；描述矛盾看真实场景（高频不打断、危险要确认）；「就正常项目那样」=用行业成熟方式不搞奇技淫巧。
+- 自检：金标准锁定不重写 ProductPicker / UnitPicker / DsDialog，不改 FloatPanel 交互契约；ProductPicker 只许抽「渲染一行」私有文件，禁止拆空另写。做了就算失败。
 
 ### 下发文档范本（L0）
 - 触发：新项目下发文档
@@ -395,7 +400,7 @@
 - 触发：算力往前放
 - 禁止服务端实时算价：算价在前端即时完成，后端只存结果并做最终校验——每按键开事务＝违规。
 - 禁止大范围重算：改一处只重算受影响面，禁止全表/全单重算。
-- 单店规模假设写死：按「单店 50 人在线、笔记本跑得动」设计；为多门店高并发做的架构＝过度设计。
+- 单店规模假设写死：按「单店几十用户、10 人内并发、笔记本跑得动」设计；为多门店高并发做的架构＝过度设计。
 - 自检：禁止服务端实时算价算价在前端即时完成，后端只存结果并做最终校验——每按键开事务＝违规。
 
 ### 组件资产清单（L1 项目级 · 查同类先查这里）
@@ -412,5 +417,25 @@
 | 枚举记录矩阵（单位 + 换算率，列表侧） | `UnitManagePanel` · shared/components/UnitManagePanel.tsx（C19）· units/conversions/extensions{showBase,onSetBase,priceColumns}（编辑矩阵内的单位区已改用 MatrixTable，本组件用于列表侧独立单位管理） |
 | 集合编辑矩阵（集合体编辑弹窗统一形态：§A 根实体信息 → 中间层切换行 → 叶子挂载子表矩阵 → 价格展开面板） | `集合编辑矩阵（实例：ProductEditDialog）` · apps/staff/pages/product-manage/ProductEditDialog.tsx（-）· 描述时加集合体前缀（产品集合编辑矩阵 / 供应商集合编辑矩阵）；组装式：CascadeSwitchRow（中间层）+ MatrixTable（叶子挂载子表）+ ArchiveFieldCell（确认层格）+ UnitPriceExpandPanel（价格展开面板） |
 | 中间层级联切换行（品牌/规格：下挂子记录 → 行切换） | `CascadeSwitchRow` · shared/components/CascadeSwitchRow.tsx（-）· label/options{key,label,active,editCell}/onSelect/addCell/editRow（仅中间层用；叶子挂载子表一律 MatrixTable，禁止误用行切换） |
+| 模态框（三载体之一） | `DsDialog` · shared/components/DsDialog.tsx（C07）· 相对 1200px 画布居中；max-width:none，容不下走 wrap 横滚 |
+| 悬浮定位框唯一基座（三载体之一） | `FloatPanel` · shared/components/FloatPanel.tsx（C60）· 锚定触发元素；title/children/footer 三段，确认取消钉底栏；画布内水平锚点；失焦/移动画布不关、点空白才关 |
+| 文本输入唯一实现 | `DsInput` · shared/components/DsInput.tsx（C02）· plain/name/price/embedded 变体 + clickToEdit；sm 高 20px 与检索框同套 |
+| 数字输入唯一实现 | `DsNumberInput` · shared/components/DsNumberInput.tsx（C03）· text+inputMode=decimal+等宽右对齐，扣减类红；禁原生 number |
+| 输入+下拉组合 | `DsInputDropdown` · shared/components/DsInputDropdown.tsx（C61）· 展开/收起挂确认层输入框（表格格只展示）；档案列表 lockInput 点开确认层 |
+| 检索+新建+回填 | `SuggestInput` · shared/components/SuggestInput.tsx（C12）· AutoComplete + SuggestList 唯一列表；防抖 250ms（useSuggest） |
+| 匹配列表唯一实现 | `SuggestList` · shared/components/SuggestList.tsx（C13）· 新建项=「新建」+关键词卡片（禁「新建某某」文本）；highlightKeyword/countHint 可选 |
+| 确认层检索唯一实现 | `PickerEditGate` · shared/components/product-picker/PickerEditGate.tsx（-）· 两档：检索结果/完整字典（全量不过滤）；gate 参数 title/input/search/bullets/fromText/onApply/allowEmpty；行内改删+dictMerge 并档 |
+| 页面表唯一引擎 | `UnifiedTable` · shared/components/UnifiedTable.tsx（C32）· 三层=DataViewLayer(C33)+InteractionLayer(C34)+cell-editors；列宽走 colWidths.COL_WIDTHS 唯一取值处；行/表头扩展菜单；跨页勾选 TableSelectionStore |
+| 管理列表页统一壳 | `ArchiveListPage` · shared/components/ArchiveListPage.tsx（-）· ViewFrame+UnifiedTable+跨页勾选+filters 检索槽（防抖关键词+条件词+右侧状态）；新档案走 filters，禁手写查询按钮 |
+| 档案运行时宿主 | `ArchiveSlotHost` · shared/components/archive/ArchiveSlotHost.tsx（-）· 交 slots[]+API → 渲染名称列/完整弹窗/N 矩阵/检索；供应商/库房/客户已接入 |
+| 表头列筛 | `HeaderCascadeFilter` · shared/components/archive/HeaderCascadeFilter.tsx（-）· DsInputDropdown+FloatPanel+SuggestList；选项=当前结果 facets；条件升为 chip |
+| 选用检索框架（金标准对象） | `ProductPicker` · shared/components/ProductPicker.tsx（C22）· model（pickerTree 树模型）+dateFilter；顶栏由 pickerViewsFromModel 派生宽松+精准；只许抽「渲染一行」私有文件，禁止拆空另写 |
+| 选用检索派生器 | `pickerViewsFromModel / pickerTree` · shared/config/pickerTree.ts（-）· layers[] 只配存字的层（id/label/hit/grain/front/hint/dateFilter）；能从树推的档位禁止手写 views[] |
+| 选用检索 Picker 族（同框架各树） | `CustomerPicker / UnitPicker / SupplierPicker / SoldLinePicker / DocumentSourcePicker / AllocationSourcePicker / EnumPicker` · shared/components/（C23/C25/C67/C68/C69/C26/C24）· 各挂自己的树模型；配货来源一框检索两列分区禁套宽松+精准（C26）；售后单据 dateFilter=空词按日翻打字不锁日期（C69）；已卖行复用当时名和价（C68） |
+| 快速建档弹窗与预览 | `QuickCreateConfirmDialog / DefaultFillsPreview` · shared/components/（C30/C31）· 分字段编辑+缺省确认+相似候选；统一入口 confirmFillsBeforeSave；quickCreateConfig（QUICK_CREATE_LAYERS 兜底值/去重键 SSOT） |
+| 多记录展开外壳 / 快捷选项条 | `RecordExpandPanel / QuickOptionsBar` · shared/components/（C28/C27）· Tab+维度切换+常驻 DOM；无 Tab 贴边不垫灰底；预置选项行高走骨架行不撑宽面板 |
+| 列表单元格族 | `NameLinkCell / ImageThumbCell / TextCell / LongTextCell / DateTimeCell / StatusTagCell` · shared/components/cells/（C35-C40）· 主名称弹窗列/缩略图（无图进编辑补图）/短文本/长文本弹窗/日期等宽/状态标签——新列形态先查这组 |
+| 工作台骨架三件 | `ViewFrame / DocumentContextBar / StageActionBar+StageBizStrip` · shared/components/（C45/-/-）· 五槽骨架（actionBar+bizStrip+children+pre/post/dialogs）；主表行挂容器层；工具行/统计行（L2 行槽位层） |
+| 单据表单视图 | `DocumentFormView` · shared/components/document-form/DocumentFormView.tsx（-）· 客户端单据视图（documentMeta+明细行）；useFormPagination 位置化翻页；moneyToChinese 大写金额 |
 
 <!-- GEN:END -->

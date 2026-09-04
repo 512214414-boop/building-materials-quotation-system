@@ -415,6 +415,7 @@ DOC_VIZ.uiLayerTables = {
             ["单位价矩阵", "多键展开（≥3 键走展开面板）", "UnitPriceExpandPanel 槽", "unit×priceType / unit×supplier 组合"],
             ["单位价矩阵", "常用单位 chips", "quickCreateConfig COMMON_UNITS", "快速新增时快捷选常用单位"],
             ["图片区", "spec×brand 二级关联", "product_image(specId, brandId)", "图片挂二级，随 spec 级联"],
+            ["单位/售价/进价矩阵", "点位规则：面价×点位=实际价", "点位/圈组配置", "改全局=同品牌+同分类这一批（售价再加类型、进价再加渠道）；已单独改过的规格整批再调不跟变；确认修改=只改当前这条"],
             ["底部操作", "保存前必填守卫", "actions.product_save.requires", "产品名称空 → 请输入产品名称"]
           ]
         }
