@@ -14,3 +14,6 @@ backup_*/
 # 白话进度看板：由 tools/gen-boss-view.mjs 生成，现状从代码提取，不入库
 项目进度看板.html
 项目进度看板.md
+
+# 访问地址总表：由 tools/gen-access.mjs 生成（含实时探测状态），不入库
+访问地址.md

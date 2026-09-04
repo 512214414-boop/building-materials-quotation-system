@@ -131,6 +131,7 @@
 | 文档可视化 · 死内容救活 | ✅ | 16-fill / 19-law / 24-archive |
 | 白话进度看板（给不懂代码的人远程看进度） | ✅ | `tools/gen-boss-view.mjs` 从本台账 + git 自动提取，产出 `项目进度看板.html`（人看）与 `项目进度看板.md`（AI 读）。**现状从代码提取，禁止手写进度描述**（「下发文档范本」篇硬纪律）；非技术用户口径见 `.codebuddy/rules/boss-view.md` |
 | 架构重构信号（L0 · 识别该升级/该重构的时刻） | ✅ | 2026-09-04：真相源新增 `refactor-signals` 条目（gen-docs 36 条同步）。核心：三次绕行即立案、沉没成本不参与架构决策、先画目标态再看迁移路、开发期从宽发布期从严、重构必须连文档一起动、禁止拿重构逃避交付；五类信号 = 绕行/解释/重复/冻结/漂移 |
+| 访问地址总表 + 中文命令中心（单一真相源） | ✅ | `tools/gen-access.mjs` 从 dev.sh 等自动提取 + 实时探测 → `访问地址.md`；中文命令 `~/.bmq/开工.sh`（开工=菜单；启动项目/刷新项目/重启项目/停止项目/项目状态/建公网/文档站/看进度/对话/接回对话/全部地址）**只封装 dev.sh 不重写**；接入执行卡「七、访问地址与命令中心」，CLI 与 IDE 同源 |
 | 表格 UI 分层（L1 · 五层模型 + 表 × 层级矩阵页） | ✅ | 2026-09-04：真相源 `ui-layer-model` 条目（五层合一）+ 矩阵页 6 表 × 5 层实测数据。**同日缺陷修复**：① editEntry 删 inline 常驻输入（与「禁止常驻输入框」硬纪律冲突，收为 none/confirm/link/expand 四态）；② 装配序列按代码核实修正——主表行（DocumentContextBar）挂容器层 OrderWorkbench 九视图共享，报价/售后有、产品管理/采购清单无（subagent 实测 OrderWorkbench.tsx:543）；③ rules 补三条裁决：L4 声明落点＝登记表 pages 段（禁第二套）、现状数字以 auditCellSpecs/grep 实测为准、矩阵与网格＝并列引擎；④ ViewFrame/StageActionBar/StageBizStrip 注释层号对齐 L2。**阶段 1 样板已落地**（2026-09-04：采购报价 8 列全部参数化、7 处 custom 消灭，e2e 13/13 全过；门禁从静默改为按四种冻结来源提示）——剩余 19 页 128 处 custom 待推广；下轮代码还需删 cellSpec.ts 残留 inline 分支 |
 
 ---
