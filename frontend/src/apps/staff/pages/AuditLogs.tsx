@@ -1,7 +1,7 @@
 // v2.0 审计日志页
 // 日志列表（只读，分页）+ 操作类型/资源类型/时间范围筛选 + 行展开查看详情 JSON
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { App as AntdApp, DatePicker } from 'antd';
 import type { Dayjs } from 'dayjs';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
@@ -9,6 +9,8 @@ import DsButton from '../../../shared/components/DsButton.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
   listAuditLogs,
   type AuditLogView,
@@ -64,6 +66,45 @@ function getActionColor(action: string): 'brand' | 'success' | 'warning' | 'dang
   return 'default';
 }
 
+// 审计日志：可参数化列由 audit_log 实体 cellSpec 配置驱动（零手写 render）；
+// 操作类型列（按 action 子串动态着色 DsTag）保留页面级 custom。
+const auditLogHandlers: Record<string, CellHandlers<AuditLogView>> = {
+  user: { value: (r) => r.userName || r.userId || '系统', color: () => 'var(--text-default)', onApply: async () => undefined },
+  resourceType: { value: (r) => r.resourceType, color: () => 'var(--text-secondary)', onApply: async () => undefined },
+  resourceId: {
+    value: (r) => r.resourceId || '—',
+    color: (r) => (r.resourceId ? 'var(--text-secondary)' : 'var(--text-tertiary)'),
+    mono: () => true,
+    fontSize: () => 'var(--body-sm-font-size)',
+    onApply: async () => undefined,
+  },
+  ipAddress: {
+    value: (r) => r.ipAddress || '—',
+    color: (r) => (r.ipAddress ? 'var(--text-secondary)' : 'var(--text-tertiary)'),
+    mono: () => true,
+    fontSize: () => 'var(--body-sm-font-size)',
+    onApply: async () => undefined,
+  },
+  createdAt: {
+    value: (r) => (r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : '—'),
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-sm-font-size)',
+    onApply: async () => undefined,
+  },
+};
+
+const auditLogLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'user': return { minWidth: 140, align: 'left' as const };
+    case 'resourceType': return { minWidth: 130, align: 'left' as const };
+    case 'resourceId': return { minWidth: 160, align: 'left' as const };
+    case 'ipAddress': return { minWidth: 140, align: 'left' as const };
+    case 'createdAt': return { minWidth: 170, align: 'left' as const };
+    default: return {};
+  }
+};
+
 export default function AuditLogs() {
   const { message } = AntdApp.useApp();
 
@@ -107,94 +148,30 @@ export default function AuditLogs() {
   // ============================================================
   // 表格列
   // ============================================================
-  const columns: UnifiedTableColumn<AuditLogView>[] = [
-    {
-      title: '操作人',
-      key: 'user',
-      minWidth: 140,
-      renderMode: 'custom',
-      render: (_: any, record: AuditLogView) => (
-        <span style={{ color: 'var(--text-default)' }}>
-          {/* v11.0 解耦：使用 userName 快照字段 */}
-          {record.userName || record.userId || '系统'}
-        </span>
+  // 列装配：操作类型（按 action 子串动态着色）为页面级 custom；
+  // 其余 5 列由 audit_log 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  const columns: UnifiedTableColumn<AuditLogView>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['audit_log'] ?? [], (s) => auditLogHandlers[s.key], auditLogLayoutOf).map(
+        (c) => [c.key, c] as const,
       ),
-    },
-    {
-      title: '操作类型',
-      dataIndex: 'action',
-      key: 'action',
-      minWidth: 150,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <DsTag color={getActionColor(value)}>{value}</DsTag>
-      ),
-    },
-    {
-      title: '资源类型',
-      dataIndex: 'resourceType',
-      key: 'resourceType',
-      minWidth: 130,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span style={{ color: 'var(--text-secondary)' }}>{value}</span>
-      ),
-    },
-    {
-      title: '资源 ID',
-      dataIndex: 'resourceId',
-      key: 'resourceId',
-      minWidth: 160,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span
-          style={{
-            color: value ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value || '—'}
-        </span>
-      ),
-    },
-    {
-      title: 'IP 地址',
-      dataIndex: 'ipAddress',
-      key: 'ipAddress',
-      minWidth: 140,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span
-          style={{
-            color: value ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value || '—'}
-        </span>
-      ),
-    },
-    {
-      title: '操作时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-  ];
+    );
+    return [
+      specByKey.get('user')!,
+      {
+        title: '操作类型',
+        dataIndex: 'action',
+        key: 'action',
+        minWidth: 150,
+        renderMode: 'custom',
+        render: (value: string) => <DsTag color={getActionColor(value)}>{value}</DsTag>,
+      },
+      specByKey.get('resourceType')!,
+      specByKey.get('resourceId')!,
+      specByKey.get('ipAddress')!,
+      specByKey.get('createdAt')!,
+    ];
+  }, []);
 
   return (
     <ViewFrame

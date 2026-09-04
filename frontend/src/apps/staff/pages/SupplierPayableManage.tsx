@@ -12,6 +12,8 @@ import DsButton from '../../../shared/components/DsButton.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
 import {
   listSupplierPayables,
@@ -31,6 +33,33 @@ const STATUS_COLORS: Record<string, 'warning' | 'success'> = { pending: 'warning
 function formatMoney(n: number): string {
   return `¥${n.toFixed(2)}`;
 }
+
+// 供应商应付：可参数化列由 supplier_payable 实体 cellSpec 配置驱动（零手写 render）；
+// 复合列 op（结算按钮）/ bizTypeLabel（动态标签）保留页面级 custom。
+const PAYABLE_STATUS_MAP: Record<string, { color: any; text: string }> = Object.fromEntries(
+  Object.entries(STATUS_LABELS).map(([k, t]) => [k, { color: STATUS_COLORS[k as keyof typeof STATUS_COLORS] ?? 'default', text: t }]),
+);
+
+const supplierPayableHandlers: Record<string, CellHandlers<PayableRow>> = {
+  payable_no: { value: (r) => r.payable_no, color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+  supplierName: { value: (r) => r.supplierName ?? '—', color: () => 'var(--text-default)', onApply: async () => undefined },
+  biz_no: { value: (r) => r.biz_no, color: () => 'var(--text-secondary)', mono: () => true, fontSize: () => 'var(--body-xs-font-size)', onApply: async () => undefined },
+  amount: { value: (r) => formatMoney(r.amount), color: () => 'var(--status-discount-default)', bold: () => true, mono: () => true, onApply: async () => undefined },
+  status: { value: (r) => r.status, statusMap: PAYABLE_STATUS_MAP, onApply: async () => undefined },
+  created_at: { value: (r) => (r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '—'), color: () => 'var(--text-secondary)', mono: () => true, fontSize: () => 'var(--body-xs-font-size)', onApply: async () => undefined },
+};
+
+const supplierPayableLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'payable_no': return { minWidth: 160, align: 'center' as const };
+    case 'supplierName': return { minWidth: 160, align: 'center' as const };
+    case 'biz_no': return { minWidth: 150, align: 'center' as const };
+    case 'amount': return { minWidth: 110, align: 'center' as const };
+    case 'status': return { minWidth: 90, align: 'center' as const };
+    case 'created_at': return { minWidth: 150, align: 'center' as const };
+    default: return {};
+  }
+};
 
 export default function SupplierPayableManage() {
   const perm = usePermission('allocation');
@@ -117,9 +146,15 @@ export default function SupplierPayableManage() {
     [data.summary],
   );
 
-  const columns: UnifiedTableColumn<PayableRow>[] = useMemo(
-    () => [
-      // 操作列必须在前面（点即所得：字段多/手机端无需翻到最后）
+  // 列装配：复合列（op 结算按钮 / bizTypeLabel 动态标签）为页面级 custom；
+  // 其余 6 列由 supplier_payable 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  const columns: UnifiedTableColumn<PayableRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['supplier_payable'] ?? [], (s) => supplierPayableHandlers[s.key], supplierPayableLayoutOf).map(
+        (c) => [c.key, c] as const,
+      ),
+    );
+    return [
       {
         key: 'op',
         title: '操作',
@@ -136,28 +171,8 @@ export default function SupplierPayableManage() {
             <span style={{ color: 'var(--text-quaternary)' }}>—</span>
           ),
       },
-      {
-        key: 'payable_no',
-        title: '应付单号',
-        dataIndex: 'payable_no',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', color: 'var(--text-default)' }}>{val}</span>
-        ),
-      },
-      {
-        key: 'supplierName',
-        title: '供应商',
-        dataIndex: 'supplierName',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => (
-          <span style={{ color: 'var(--text-default)' }}>{val || '—'}</span>
-        ),
-      },
+      specByKey.get('payable_no')!,
+      specByKey.get('supplierName')!,
       {
         key: 'bizTypeLabel',
         title: '业务来源',
@@ -167,60 +182,12 @@ export default function SupplierPayableManage() {
         renderMode: 'custom',
         render: (val: string) => <DsTag color="default">{val}</DsTag>,
       },
-      {
-        key: 'biz_no',
-        title: '业务单号',
-        dataIndex: 'biz_no',
-        minWidth: 150,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val}
-          </span>
-        ),
-      },
-      {
-        key: 'amount',
-        title: '应付金额',
-        dataIndex: 'amount',
-        minWidth: 110,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ color: 'var(--status-discount-default)', fontFamily: 'var(--font-family-mono)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-            {formatMoney(val)}
-          </span>
-        ),
-      },
-      {
-        key: 'status',
-        title: '状态',
-        dataIndex: 'status',
-        minWidth: 90,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <DsTag color={STATUS_COLORS[val] ?? 'default'}>{STATUS_LABELS[val] ?? val}</DsTag>
-        ),
-      },
-      {
-        key: 'created_at',
-        title: '生成时间',
-        dataIndex: 'created_at',
-        minWidth: 150,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val ? new Date(val).toLocaleString('zh-CN') : '—'}
-          </span>
-        ),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canWrite],
-  );
+      specByKey.get('biz_no')!,
+      specByKey.get('amount')!,
+      specByKey.get('status')!,
+      specByKey.get('created_at')!,
+    ];
+  }, [canWrite]);
 
   return (
     <ViewFrame

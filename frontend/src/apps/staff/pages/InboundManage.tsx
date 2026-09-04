@@ -15,6 +15,8 @@ import DsDialog from '../../../shared/components/DsDialog.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
 import { resolveGuard } from '../../../shared/config/resolveGuard.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
   listInboundTasks,
   confirmInboundTask,
@@ -25,11 +27,60 @@ import {
 } from '../../../shared/services/api/inboundApi.js';
 import { listEnabledWarehouses, type WarehouseView } from '../../../shared/services/api/inventoryApi.js';
 
-const STATUS_LABELS: Record<string, string> = { pending: '待入库', done: '已入库', cancelled: '已取消' };
-const STATUS_COLORS: Record<string, 'warning' | 'success' | 'default'> = {
-  pending: 'warning',
-  done: 'success',
-  cancelled: 'default',
+// 待入库状态：由 inbound_task 实体 cellSpec（enum-tag）驱动，状态标签映射
+const INBOUND_STATUS_MAP: Record<string, { color: any; text: string }> = {
+  pending: { color: 'warning', text: '待入库' },
+  done: { color: 'success', text: '已入库' },
+  cancelled: { color: 'default', text: '已取消' },
+};
+
+// 待入库单主表：可参数化列由 inbound_task 实体 cellSpec 配置驱动（零手写 render）；
+// 复合列 op（操作按钮组）/ target（仓库名+主仓标签）保留为页面级 custom。
+const inboundTaskHandlers: Record<string, CellHandlers<InboundTask>> = {
+  inbound_no: { value: (r) => r.inbound_no, color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+  supplier: { value: (r) => r.supplierName ?? '', color: () => 'var(--text-default)', onApply: async () => undefined },
+  total_qty: { value: (r) => String(r.total_qty), mono: () => true, onApply: async () => undefined },
+  total_amount: { value: (r) => `¥${r.total_amount}`, mono: () => true, onApply: async () => undefined },
+  status: { value: (r) => r.status, statusMap: INBOUND_STATUS_MAP, onApply: async () => undefined },
+  created_at: {
+    value: (r) => (r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '—'),
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-xs-font-size)',
+    onApply: async () => undefined,
+  },
+};
+
+const inboundTaskLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'inbound_no': return { minWidth: 160, align: 'center' as const };
+    case 'supplier': return { minWidth: 160, align: 'center' as const };
+    case 'total_qty': return { minWidth: 80, align: 'center' as const };
+    case 'total_amount': return { minWidth: 90, align: 'center' as const };
+    case 'status': return { minWidth: 80, align: 'center' as const };
+    case 'created_at': return { minWidth: 150, align: 'center' as const };
+    default: return {};
+  }
+};
+
+// 待入库明细弹窗：由 inbound_line 实体 cellSpec 配置驱动（零手写 render）
+const inboundLineHandlers: Record<string, CellHandlers<InboundLine>> = {
+  product: { value: (r) => r.productName ?? '—', color: () => 'var(--text-default)', onApply: async () => undefined },
+  unit: { value: (r) => r.unitName ?? '—', color: () => 'var(--text-secondary)', onApply: async () => undefined },
+  qty: { value: (r) => String(r.qty), mono: () => true, onApply: async () => undefined },
+  unit_cost: { value: (r) => `¥${r.unit_cost}`, color: () => 'var(--status-discount-default)', mono: () => true, onApply: async () => undefined },
+  amount: { value: (r) => `¥${r.amount}`, mono: () => true, onApply: async () => undefined },
+};
+
+const inboundLineLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'product': return { minWidth: 260, align: 'center' as const };
+    case 'unit': return { minWidth: 60, align: 'center' as const };
+    case 'qty': return { minWidth: 80, align: 'center' as const };
+    case 'unit_cost': return { minWidth: 80, align: 'center' as const };
+    case 'amount': return { minWidth: 90, align: 'center' as const };
+    default: return {};
+  }
 };
 
 // ============================================================
@@ -43,68 +94,20 @@ function TaskDetailDialog({
   task: InboundTask | null;
   onClose: () => void;
 }) {
-  const lineColumns: UnifiedTableColumn<InboundLine>[] = useMemo(
-    () => [
-      {
-        key: 'product',
-        title: '产品',
-        dataIndex: 'productName',
-        minWidth: 260,
-        align: 'center',
-        renderMode: 'custom',
-        render: (_val: string, r: InboundLine) => (
-          <span style={{ color: 'var(--text-default)' }}>
-            {r.productName || '—'}
-          </span>
-        ),
-      },
-      {
-        key: 'unit',
-        title: '单位',
-        dataIndex: 'unitName',
-        minWidth: 60,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => <span style={{ color: 'var(--text-secondary)' }}>{val || '—'}</span>,
-      },
-      {
-        key: 'qty',
-        title: '数量',
-        dataIndex: 'qty',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>{val}</span>
-        ),
-      },
-      {
-        key: 'unit_cost',
-        title: '进价',
-        dataIndex: 'unit_cost',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ color: 'var(--status-discount-default)', fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>
-            ¥{val}
-          </span>
-        ),
-      },
-      {
-        key: 'amount',
-        title: '小计',
-        dataIndex: 'amount',
-        minWidth: 90,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>¥{val}</span>
-        ),
-      },
-    ],
-    [],
-  );
+  const lineColumns: UnifiedTableColumn<InboundLine>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['inbound_line'] ?? [], (s) => inboundLineHandlers[s.key], inboundLineLayoutOf).map(
+        (c) => [c.key, c] as const,
+      ),
+    );
+    return [
+      specByKey.get('product')!,
+      specByKey.get('unit')!,
+      specByKey.get('qty')!,
+      specByKey.get('unit_cost')!,
+      specByKey.get('amount')!,
+    ];
+  }, []);
 
   return (
     <DsDialog
@@ -297,9 +300,16 @@ export default function InboundManage() {
     });
   };
 
-  const columns: UnifiedTableColumn<InboundTask>[] = useMemo(
-    () => [
-      // 操作列必须在前面（点即所得：字段多/手机端无需翻到最后）
+  // 列装配：复合列（op 按钮组 / target 仓库名+主仓标签）为页面级 custom；
+  // 其余 6 列由 inbound_task 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  // 顺序：操作 → 单号 → 供应商 → 目标仓库 → 数量 → 金额 → 状态 → 生成时间（与登记表 order 一致）。
+  const columns: UnifiedTableColumn<InboundTask>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['inbound_task'] ?? [], (s) => inboundTaskHandlers[s.key], inboundTaskLayoutOf).map(
+        (c) => [c.key, c] as const,
+      ),
+    );
+    return [
       {
         key: 'op',
         title: '操作',
@@ -320,28 +330,8 @@ export default function InboundManage() {
           </span>
         ),
       },
-      {
-        key: 'inbound_no',
-        title: '待入库单号',
-        dataIndex: 'inbound_no',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', color: 'var(--text-default)' }}>{val}</span>
-        ),
-      },
-      {
-        key: 'supplier',
-        title: '供应商',
-        dataIndex: 'supplierName',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => (
-          <span style={{ color: 'var(--text-default)' }}>{val || '—'}</span>
-        ),
-      },
+      specByKey.get('inbound_no')!,
+      specByKey.get('supplier')!,
       {
         key: 'target',
         title: '目标仓库',
@@ -359,56 +349,12 @@ export default function InboundManage() {
           );
         },
       },
-      {
-        key: 'total_qty',
-        title: '数量',
-        dataIndex: 'total_qty',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>{val}</span>
-        ),
-      },
-      {
-        key: 'total_amount',
-        title: '金额',
-        dataIndex: 'total_amount',
-        minWidth: 90,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>¥{val}</span>
-        ),
-      },
-      {
-        key: 'status',
-        title: '状态',
-        dataIndex: 'status',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <DsTag color={STATUS_COLORS[val] ?? 'default'}>{STATUS_LABELS[val] ?? val}</DsTag>
-        ),
-      },
-      {
-        key: 'created_at',
-        title: '生成时间',
-        dataIndex: 'created_at',
-        minWidth: 150,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val ? new Date(val).toLocaleString('zh-CN') : '—'}
-          </span>
-        ),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [warehouses, canWrite],
-  );
+      specByKey.get('total_qty')!,
+      specByKey.get('total_amount')!,
+      specByKey.get('status')!,
+      specByKey.get('created_at')!,
+    ];
+  }, [warehouses, canWrite]);
 
   return (
     <ViewFrame

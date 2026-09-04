@@ -177,10 +177,25 @@ export function useFocusBus(): FocusBus {
  *
  * 注意：接收 store（稳定引用）而非 focusBus 对象，避免 focusBus 每次渲染新建导致 memo 失效
  */
-export function useActiveCell(store: FocusBusStore, row: number, col: number): boolean {
+/** store 缺省时的空订阅：模块级常量，引用稳定，避免反复重订阅 */
+const NOOP_SUBSCRIBE = () => () => {};
+
+/**
+ * 与旧版同义，但允许 store 为空。
+ *
+ * 目的：让调用方能**无条件**调用本 Hook。条件调用（如 `ctx ? useActiveCell(...) : false`）
+ * 违反 React Rules of Hooks：一旦 ctx 在渲染间由空变非空，Hook 数量发生变化，
+ * React 会抛 "Rendered more hooks than expected" → 组件崩溃 / 界面卡死。
+ */
+export function useActiveCell(
+  store: FocusBusStore | undefined,
+  row: number,
+  col: number,
+): boolean {
   return useSyncExternalStore(
-    store.subscribe,
+    store ? store.subscribe : NOOP_SUBSCRIBE,
     () => {
+      if (!store) return false;
       const ac = store.getActiveCell();
       return ac?.row === row && ac?.col === col;
     },

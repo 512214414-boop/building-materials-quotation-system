@@ -26,7 +26,9 @@ const PickerCellEditor = memo<CellEditorProps>(
   ({ value, record, rowIndex, colIdx, column, isDisabled, anchorRef, onCommit }) => {
     const ctx = useContext(PickerCellContext);
 
-    const isActive = ctx ? useActiveCell(ctx.store, rowIndex, colIdx) : false;
+    // 必须无条件调用：条件调用 Hook 违反 Rules of Hooks，
+    // ctx 由空变非空时 Hook 数量变化会直接导致 React 抛错、界面卡死
+    const isActive = useActiveCell(ctx?.store, rowIndex, colIdx);
 
     const displayValue = value != null && value !== '' ? String(value) : '';
 

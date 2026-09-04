@@ -9,6 +9,8 @@ import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/component
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { COL_WIDTHS } from '../../../shared/components/table/colWidths.js';
 import { usePermission } from '../../../shared/hooks/usePermission.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
   getOpsRange,
   getOpsMargin,
@@ -39,6 +41,53 @@ function daysAgoISO(n: number): string {
 function money(n: number): string {
   return `¥${Number(n || 0).toFixed(2)}`;
 }
+
+// 经营报表：各表货币/文本列由对应 report_* 实体 cellSpec 配置驱动（零手写 render）；
+// 仅 idleDays（条件色+滞销文案）、restock（条件标签）保留页面级 custom。
+// 经营报表各列 minWidth/align（与页面原 COL_WIDTHS 取值一致），按生成物 key 查表返回
+const REPORT_COL_LAYOUT: Record<string, { minWidth: number; align: 'left' | 'center' | 'right' }> = {
+  documentNo: { minWidth: 150, align: 'center' },
+  customerName: { minWidth: 150, align: 'center' },
+  salesAmount: { minWidth: 120, align: 'center' },
+  netProfit: { minWidth: 120, align: 'center' },
+  sales: { minWidth: 120, align: 'center' },
+  cost: { minWidth: 120, align: 'center' },
+  profit: { minWidth: 120, align: 'center' },
+  marginRate: { minWidth: 120, align: 'center' },
+  totalAmount: { minWidth: 120, align: 'center' },
+  outstanding: { minWidth: 120, align: 'center' },
+  product: { minWidth: 200, align: 'left' },
+  amount: { minWidth: 120, align: 'center' },
+};
+const reportLayoutOf = (s: GeneratedCellSpec) => REPORT_COL_LAYOUT[s.key] ?? { minWidth: 120, align: 'center' as const };
+
+const reportRangeHandlers: Record<string, CellHandlers<Record<string, unknown>>> = {
+  documentNo: { value: (r) => String((r as any).documentNo ?? '—'), color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+  customerName: { value: (r) => String((r as any).customerName ?? '—'), color: () => 'var(--text-default)', onApply: async () => undefined },
+  salesAmount: { value: (r) => money(Number((r as any).salesAmount)), color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+  netProfit: { value: (r) => money(Number((r as any).netProfit)), color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+};
+const reportMarginHandlers: Record<string, CellHandlers<MarginRow>> = {
+  sales: { value: (r) => money(r.sales), mono: () => true, onApply: async () => undefined },
+  cost: { value: (r) => money(r.cost), mono: () => true, onApply: async () => undefined },
+  profit: { value: (r) => money(r.profit), mono: () => true, onApply: async () => undefined },
+  marginRate: { value: (r) => Number(r.marginRate).toFixed(1) + '%', mono: () => true, onApply: async () => undefined },
+};
+const reportSalespersonHandlers: Record<string, CellHandlers<SalespersonRow>> = {
+  sales: { value: (r) => money(r.sales), mono: () => true, onApply: async () => undefined },
+};
+const reportPurchaseHandlers: Record<string, CellHandlers<PurchaseInboundRow>> = {
+  totalAmount: { value: (r) => money(r.totalAmount), mono: () => true, onApply: async () => undefined },
+};
+const reportArHandlers: Record<string, CellHandlers<ArAgingResult['list'][number]>> = {
+  outstanding: { value: (r) => money(r.outstanding), mono: () => true, onApply: async () => undefined },
+};
+const reportTurnoverHandlers: Record<string, CellHandlers<TurnoverRow>> = {
+  product: { value: (r) => r.productName || '—', color: () => 'var(--text-default)', onApply: async () => undefined },
+};
+const reportRefundHandlers: Record<string, CellHandlers<RefundStatsResult['list'][number]>> = {
+  amount: { value: (r) => money(r.amount), mono: () => true, onApply: async () => undefined },
+};
 
 const TABS: Array<{ label: string; value: TabKey }> = [
   { label: '区间经营', value: 'range' },
@@ -105,157 +154,66 @@ export default function OpsReports() {
     void load();
   }, [load]);
 
-  const rangeColumns: UnifiedTableColumn<Record<string, unknown>>[] = useMemo(
-    () => [
-      {
-        key: 'documentNo',
-        title: '单据',
-        dataIndex: 'documentNo',
-        minWidth: COL_WIDTHS.NAME_S,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: unknown) => <span style={{ fontFamily: 'var(--font-family-mono)' }}>{String(val ?? '—')}</span>,
-      },
-      {
-        key: 'customerName',
-        title: '客户',
-        dataIndex: 'customerName',
-        minWidth: COL_WIDTHS.NAME_S,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: unknown) => <span>{String(val ?? '—')}</span>,
-      },
-      {
-        key: 'salesAmount',
-        title: '销售额',
-        dataIndex: 'salesAmount',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: unknown) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(Number(val))}</span>,
-      },
-      {
-        key: 'netProfit',
-        title: '净利润',
-        dataIndex: 'netProfit',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: unknown) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(Number(val))}</span>,
-      },
-    ],
-    [],
-  );
+  const rangeColumns: UnifiedTableColumn<Record<string, unknown>>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_range'] ?? [], (s) => reportRangeHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [specByKey.get('documentNo')!, specByKey.get('customerName')!, specByKey.get('salesAmount')!, specByKey.get('netProfit')!];
+  }, []);
 
-  const marginColumns: UnifiedTableColumn<MarginRow>[] = useMemo(
-    () => [
+  const marginColumns: UnifiedTableColumn<MarginRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_margin'] ?? [], (s) => reportMarginHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [
       { key: 'categoryName', title: '分类', dataIndex: 'categoryName', minWidth: COL_WIDTHS.NAME_S, align: 'center', renderMode: 'static' },
-      {
-        key: 'sales',
-        title: '销售',
-        dataIndex: 'sales',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
-      {
-        key: 'cost',
-        title: '成本',
-        dataIndex: 'cost',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
-      {
-        key: 'profit',
-        title: '毛利',
-        dataIndex: 'profit',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
-      {
-        key: 'marginRate',
-        title: '毛利率',
-        dataIndex: 'marginRate',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(v).toFixed(1)}%</span>,
-      },
-    ],
-    [],
-  );
+      specByKey.get('sales')!,
+      specByKey.get('cost')!,
+      specByKey.get('profit')!,
+      specByKey.get('marginRate')!,
+    ];
+  }, []);
 
-  const spColumns: UnifiedTableColumn<SalespersonRow>[] = useMemo(
-    () => [
+  const spColumns: UnifiedTableColumn<SalespersonRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_salesperson'] ?? [], (s) => reportSalespersonHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [
       { key: 'salespersonName', title: '业务员', dataIndex: 'salespersonName', minWidth: COL_WIDTHS.NAME_S, align: 'center', renderMode: 'static' },
       { key: 'documentCount', title: '单数', dataIndex: 'documentCount', minWidth: COL_WIDTHS.AMOUNT, align: 'center', renderMode: 'static' },
-      {
-        key: 'sales',
-        title: '销售额',
-        dataIndex: 'sales',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
-    ],
-    [],
-  );
+      specByKey.get('sales')!,
+    ];
+  }, []);
 
-  const purchaseColumns: UnifiedTableColumn<PurchaseInboundRow>[] = useMemo(
-    () => [
+  const purchaseColumns: UnifiedTableColumn<PurchaseInboundRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_purchase'] ?? [], (s) => reportPurchaseHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [
       { key: 'purchaseNo', title: '入库单号', dataIndex: 'purchaseNo', minWidth: COL_WIDTHS.NAME_S, align: 'center', renderMode: 'static' },
       { key: 'supplierName', title: '供应商', dataIndex: 'supplierName', minWidth: COL_WIDTHS.NAME_S, align: 'center', renderMode: 'static' },
-      {
-        key: 'totalAmount',
-        title: '金额',
-        dataIndex: 'totalAmount',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
-    ],
-    [],
-  );
+      specByKey.get('totalAmount')!,
+    ];
+  }, []);
 
-  const arColumns: UnifiedTableColumn<ArAgingResult['list'][number]>[] = useMemo(
-    () => [
+  const arColumns: UnifiedTableColumn<ArAgingResult['list'][number]>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_ar'] ?? [], (s) => reportArHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [
       { key: 'documentNo', title: '单据', dataIndex: 'documentNo', minWidth: COL_WIDTHS.NAME_S, align: 'center', renderMode: 'static' },
       { key: 'customerName', title: '客户', dataIndex: 'customerName', minWidth: COL_WIDTHS.NAME_S, align: 'center', renderMode: 'static' },
       { key: 'bucket', title: '账龄', dataIndex: 'bucket', minWidth: COL_WIDTHS.TAG_M, align: 'center', renderMode: 'static' },
-      {
-        key: 'outstanding',
-        title: '未收',
-        dataIndex: 'outstanding',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
-    ],
-    [],
-  );
+      specByKey.get('outstanding')!,
+    ];
+  }, []);
 
-  const turnColumns: UnifiedTableColumn<TurnoverRow>[] = useMemo(
-    () => [
-      {
-        key: 'product',
-        title: '产品',
-        dataIndex: 'productName',
-        minWidth: COL_WIDTHS.NAME_M,
-        align: 'left',
-        wrap: true,
-        renderMode: 'custom',
-        render: (_v: string, r: TurnoverRow) => (
-          <span>{r.productName || '—'}</span>
-        ),
-      },
+  const turnColumns: UnifiedTableColumn<TurnoverRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_turnover'] ?? [], (s) => reportTurnoverHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [
+      specByKey.get('product')!,
       { key: 'qty', title: '库存', dataIndex: 'qty', minWidth: COL_WIDTHS.AMOUNT, align: 'center', renderMode: 'static' },
       {
         key: 'idleDays',
@@ -271,23 +229,17 @@ export default function OpsReports() {
           </span>
         ),
       },
-    ],
-    [],
-  );
+    ];
+  }, []);
 
-  const refundColumns: UnifiedTableColumn<RefundStatsResult['list'][number]>[] = useMemo(
-    () => [
+  const refundColumns: UnifiedTableColumn<RefundStatsResult['list'][number]>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['report_refund'] ?? [], (s) => reportRefundHandlers[s.key], reportLayoutOf).map((c) => [c.key, c] as const),
+    );
+    return [
       { key: 'productRef', title: '产品', dataIndex: 'productRef', minWidth: COL_WIDTHS.NAME_M, align: 'left', wrap: true, renderMode: 'static' },
       { key: 'refundType', title: '类型', dataIndex: 'refundType', minWidth: COL_WIDTHS.TAG_M, align: 'center', renderMode: 'static' },
-      {
-        key: 'amount',
-        title: '金额',
-        dataIndex: 'amount',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: number) => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(v)}</span>,
-      },
+      specByKey.get('amount')!,
       {
         key: 'restock',
         title: '回库',
@@ -297,9 +249,8 @@ export default function OpsReports() {
         renderMode: 'custom',
         render: (v: boolean) => (v ? <DsTag color="success">已回</DsTag> : '—'),
       },
-    ],
-    [],
-  );
+    ];
+  }, []);
 
   const hint =
     tab === 'range' && totals

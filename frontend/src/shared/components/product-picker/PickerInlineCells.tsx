@@ -50,6 +50,8 @@ export function DisplayCell({
   onOpen,
   rejectReason,
   onReject,
+  bold,
+  fontSize,
 }: {
   text: string;
   placeholder: string;
@@ -68,6 +70,8 @@ export function DisplayCell({
   rejectReason?: string;
   /** 提示方式（不传则内部兜底 message.warning） */
   onReject?: (reason: string) => void;
+  bold?: boolean;
+  fontSize?: string;
 }) {
   const empty = !text;
   const canOpen = !disabled && !!onOpen;
@@ -134,6 +138,8 @@ export function DisplayCell({
           : color ?? 'var(--text-default)',
         fontFamily: mono ? 'var(--font-family-mono)' : undefined,
         fontVariantNumeric: mono ? 'tabular-nums' : undefined,
+        fontWeight: bold ? 600 : undefined,
+        fontSize: fontSize ?? undefined,
       }}
     >
       {empty ? placeholder : text}

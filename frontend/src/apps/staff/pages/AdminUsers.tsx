@@ -1,7 +1,7 @@
 // v2.0 用户管理页
 // 用户列表（分页）+ 搜索/状态筛选 + 新增/编辑弹窗 + 重置密码 + 启用/停用 + 角色多选配置
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { Form, Menu } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
@@ -11,6 +11,8 @@ import DsDialog from '../../../shared/components/DsDialog.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { useDebounce } from '../../../shared/hooks/useDebounce.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
   listUsers,
   createUser,
@@ -53,6 +55,33 @@ const USER_STATUS_LABELS: Record<UserView['status'], string> = {
 const USER_STATUS_COLOR: Record<UserView['status'], 'success' | 'default'> = {
   active: 'success',
   disabled: 'default',
+};
+
+// 员工账号：可参数化列由 admin_user 实体 cellSpec 配置驱动（零手写 render）；
+// 角色列（多标签）保留页面级 custom。
+const ADMIN_USER_STATUS_MAP: Record<string, { color: any; text: string }> = Object.fromEntries(
+  Object.entries(USER_STATUS_LABELS).map(([k, t]) => [k, { color: USER_STATUS_COLOR[k as UserView['status']] ?? 'default', text: t }]),
+);
+
+const adminUserHandlers: Record<string, CellHandlers<UserView>> = {
+  userCode: { value: (r) => (r as any).userCode, color: () => 'var(--text-secondary)', mono: () => true, onApply: async () => undefined },
+  username: { value: (r) => r.username, color: () => 'var(--text-default)', bold: () => true, onApply: async () => undefined },
+  realName: { value: (r) => r.realName || '—', color: (r) => (r.realName ? 'var(--text-default)' : 'var(--text-tertiary)'), onApply: async () => undefined },
+  phone: { value: (r) => r.phone || '—', color: (r) => (r.phone ? 'var(--text-secondary)' : 'var(--text-tertiary)'), mono: () => true, onApply: async () => undefined },
+  status: { value: (r) => r.status, statusMap: ADMIN_USER_STATUS_MAP, onApply: async () => undefined },
+  createdAt: { value: (r) => (r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : '—'), color: (r) => (r.createdAt ? 'var(--text-secondary)' : 'var(--text-tertiary)'), mono: () => true, fontSize: () => 'var(--body-sm-font-size)', onApply: async () => undefined },
+};
+
+const adminUserLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'userCode': return { minWidth: 150, align: 'left' as const };
+    case 'username': return { minWidth: 140, align: 'left' as const };
+    case 'realName': return { minWidth: 120, align: 'left' as const };
+    case 'phone': return { minWidth: 150, align: 'left' as const };
+    case 'status': return { minWidth: 90, align: 'center' as const };
+    case 'createdAt': return { minWidth: 170, align: 'left' as const };
+    default: return {};
+  }
 };
 
 const STATUS_OPTIONS = [
@@ -247,111 +276,42 @@ export default function AdminUsers() {
   // ============================================================
   // 表格列
   // ============================================================
-  const columns: UnifiedTableColumn<UserView>[] = [
-    {
-      title: '工号',
-      key: 'userCode',
-      minWidth: 150,
-      renderMode: 'custom',
-      render: (_v: any, record: UserView) => (
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {(record as any).userCode}
-        </span>
+  // 列装配：角色列（多标签）为页面级 custom；
+  // 其余 6 列由 admin_user 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  const columns: UnifiedTableColumn<UserView>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['admin_user'] ?? [], (s) => adminUserHandlers[s.key], adminUserLayoutOf).map(
+        (c) => [c.key, c] as const,
       ),
-    },
-    {
-      title: '用户名',
-      dataIndex: 'username',
-      key: 'username',
-      minWidth: 140,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>{value}</span>
-      ),
-    },
-    {
-      title: '真实姓名',
-      dataIndex: 'realName',
-      key: 'realName',
-      minWidth: 120,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span style={{ color: value ? 'var(--text-default)' : 'var(--text-tertiary)' }}>
-          {value || '—'}
-        </span>
-      ),
-    },
-    {
-      title: '手机号',
-      dataIndex: 'phone',
-      key: 'phone',
-      minWidth: 150,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span
-          style={{
-            color: value ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-            fontFamily: 'var(--code-editor-font-family)',
-          }}
-        >
-          {value || '—'}
-        </span>
-      ),
-    },
-    {
-      title: '角色',
-      dataIndex: 'roles',
-      key: 'roles',
-      renderMode: 'custom',
-      render: (value: RoleCode[]) => (
-        <div style={{ display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', gap: 'var(--spacer-4)' }}>
-          {value && value.length > 0 ? (
-            value.map((r) => (
-              <DsTag key={r} color={roleTagColor(r)}>
-                {roleLabelMap[r] || r}
-              </DsTag>
-            ))
-          ) : (
-            <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      minWidth: 90,
-      renderMode: 'custom',
-      render: (value: UserView['status']) => (
-        <DsTag color={USER_STATUS_COLOR[value]}>{USER_STATUS_LABELS[value]}</DsTag>
-      ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: value ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-  ];
+    );
+    return [
+      specByKey.get('userCode')!,
+      specByKey.get('username')!,
+      specByKey.get('realName')!,
+      specByKey.get('phone')!,
+      {
+        title: '角色',
+        dataIndex: 'roles',
+        key: 'roles',
+        renderMode: 'custom',
+        render: (value: RoleCode[]) => (
+          <div style={{ display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', gap: 'var(--spacer-4)' }}>
+            {value && value.length > 0 ? (
+              value.map((r) => (
+                <DsTag key={r} color={roleTagColor(r)}>
+                  {roleLabelMap[r] || r}
+                </DsTag>
+              ))
+            ) : (
+              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+            )}
+          </div>
+        ),
+      },
+      specByKey.get('status')!,
+      specByKey.get('createdAt')!,
+    ];
+  }, []);
 
   return (
     <ViewFrame

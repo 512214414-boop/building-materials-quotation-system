@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp } from 'antd';
 import { HistoryOutlined, SettingOutlined, PlusOutlined } from '@ant-design/icons';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
-import { deriveTableColumns, mergeColumns } from '../../../shared/config/deriveTableColumns.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
@@ -32,17 +33,121 @@ import {
 } from '../../../shared/services/api/inventoryApi.js';
 import type { SkuSearchRow, SkuOptionUnit } from '../../../shared/services/api/baseDataApi.js';
 
-const MOVEMENT_LABELS: Record<string, string> = {
-  in: '入库',
-  out: '出库',
-  adjust: '盘点',
+// 库存流水类型 → 状态标签映射（由 inventory_ledger 实体 cellSpec + StatusTagCell 渲染）
+const MOVEMENT_STATUS_MAP: Record<string, { color: any; text: string }> = {
+  in: { color: 'success', text: '入库' },
+  out: { color: 'warning', text: '出库' },
+  adjust: { color: 'default', text: '盘点' },
 };
 
-const MOVEMENT_COLORS: Record<string, 'success' | 'warning' | 'default'> = {
-  in: 'success',
-  out: 'warning',
-  adjust: 'default',
+// 主表可参数化列的页面回调（纯函数，配置驱动；复合列 op/product/warehouse 仍为页面级 custom）
+const invHandlers: Record<string, CellHandlers<InventoryRow>> = {
+  unit: {
+    value: (r) => r.unitName ?? '',
+    color: () => 'var(--text-secondary)',
+    onApply: async () => undefined,
+  },
+  qty: {
+    value: (r) => String(r.qty),
+    color: (r) => (r.qty > 0 ? 'var(--text-default)' : 'var(--status-warning-default)'),
+    mono: () => true,
+    bold: () => true,
+    onApply: async () => undefined,
+  },
+  weighted_avg_cost: {
+    value: (r) => `¥${r.weighted_avg_cost}`,
+    color: () => 'var(--status-discount-default)',
+    mono: () => true,
+    onApply: async () => undefined,
+  },
+  last_in_at: {
+    value: (r) => (r.last_in_at ? new Date(r.last_in_at).toLocaleString('zh-CN') : ''),
+    color: (r) => (r.last_in_at ? 'var(--text-secondary)' : 'var(--text-quaternary)'),
+    mono: () => true,
+    fontSize: () => 'var(--body-xs-font-size)',
+    onApply: async () => undefined,
+  },
 };
+
+const invLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'unit':
+      return { minWidth: 60, align: 'center' as const };
+    case 'qty':
+      return { minWidth: 100, align: 'center' as const };
+    case 'weighted_avg_cost':
+      return { minWidth: 110, align: 'center' as const };
+    case 'last_in_at':
+      return { minWidth: 150, align: 'center' as const };
+    default:
+      return {};
+  }
+};
+
+// 库存流水弹窗列：由 inventory_ledger 实体 cellSpec 配置驱动（零手写 render）
+const ledgerHandlers: Record<string, CellHandlers<InventoryLedgerRow>> = {
+  movement_type: {
+    value: (r) => r.movement_type,
+    statusMap: MOVEMENT_STATUS_MAP,
+    onApply: async () => undefined,
+  },
+  qty: {
+    value: (r) => (r.qty > 0 ? `+${r.qty}` : String(r.qty)),
+    color: (r) =>
+      r.qty > 0 ? 'var(--status-success-default)' : r.qty < 0 ? 'var(--status-warning-default)' : 'var(--text-secondary)',
+    mono: () => true,
+    onApply: async () => undefined,
+  },
+  unit_cost: {
+    value: (r) => `¥${r.unit_cost}`,
+    mono: () => true,
+    onApply: async () => undefined,
+  },
+  biz_no: {
+    value: (r) => r.biz_no || r.ledger_no || '',
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-xs-font-size)',
+    onApply: async () => undefined,
+  },
+  balance_qty: {
+    value: (r) => String(r.balance_qty),
+    mono: () => true,
+    onApply: async () => undefined,
+  },
+  created_at: {
+    value: (r) => (r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : ''),
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-xs-font-size)',
+    onApply: async () => undefined,
+  },
+};
+
+const ledgerLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'movement_type':
+      return { minWidth: 70, align: 'center' as const };
+    case 'qty':
+      return { minWidth: 80, align: 'center' as const };
+    case 'unit_cost':
+      return { minWidth: 80, align: 'center' as const };
+    case 'biz_no':
+      return { minWidth: 160, align: 'center' as const };
+    case 'balance_qty':
+      return { minWidth: 80, align: 'center' as const };
+    case 'created_at':
+      return { minWidth: 160, align: 'center' as const };
+    default:
+      return {};
+  }
+};
+
+const ledgerColumns: UnifiedTableColumn<InventoryLedgerRow>[] = cellSpecsWithEditorsToColumns(
+  entityCellSpecs['inventory_ledger'] ?? [],
+  (s) => ledgerHandlers[s.key],
+  ledgerLayoutOf,
+);
 
 // ============================================================
 // 盘点调整弹窗
@@ -197,94 +302,6 @@ function LedgerDialog({
       .catch(() => setList([]))
       .finally(() => setLoading(false));
   }, [open, record]);
-
-  const ledgerColumns: UnifiedTableColumn<InventoryLedgerRow>[] = useMemo(
-    () => [
-      {
-        key: 'movement_type',
-        title: '类型',
-        dataIndex: 'movement_type',
-        minWidth: 70,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <DsTag color={MOVEMENT_COLORS[val] ?? 'default'}>{MOVEMENT_LABELS[val] ?? val}</DsTag>
-        ),
-      },
-      {
-        key: 'qty',
-        title: '数量',
-        dataIndex: 'qty',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span
-            style={{
-              color: val > 0 ? 'var(--status-success-default)' : val < 0 ? 'var(--status-warning-default)' : 'var(--text-secondary)',
-              fontFamily: 'var(--font-family-mono)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {val > 0 ? `+${val}` : val}
-          </span>
-        ),
-      },
-      {
-        key: 'unit_cost',
-        title: '单价',
-        dataIndex: 'unit_cost',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>
-            ¥{val}
-          </span>
-        ),
-      },
-      {
-        key: 'biz_no',
-        title: '业务单号',
-        dataIndex: 'biz_no',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null, row: InventoryLedgerRow) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val || row.ledger_no || '—'}
-          </span>
-        ),
-      },
-      {
-        key: 'balance_qty',
-        title: '结存',
-        dataIndex: 'balance_qty',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>
-            {val}
-          </span>
-        ),
-      },
-      {
-        key: 'created_at',
-        title: '时间',
-        dataIndex: 'created_at',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val ? new Date(val).toLocaleString('zh-CN') : '—'}
-          </span>
-        ),
-      },
-    ],
-    [],
-  );
 
   const fullName = record
     ? record.productName || '—'
@@ -499,9 +516,16 @@ export default function InventoryManage() {
     void fetchList();
   }, [fetchList]);
 
-  const columns: UnifiedTableColumn<InventoryRow>[] = useMemo(
-    () => mergeColumns(deriveTableColumns('inventory', 'inventory'), [
-      // 操作列必须在前面（点即所得：字段多/手机端无需翻到最后）
+  // 列装配：复合列（op 按钮组 / product 图+名 / warehouse 名+主仓标签）为页面级 custom；
+  // 其余 4 列由 inventory 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  // 顺序：操作 → 产品 → 单位 → 仓库 → 库存数量 → 加权平均进价 → 最近入库（与登记表 order 一致）。
+  const columns: UnifiedTableColumn<InventoryRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['inventory'] ?? [], (s) => invHandlers[s.key], invLayoutOf).map(
+        (c) => [c.key, c] as const,
+      ),
+    );
+    return [
       {
         key: 'op',
         title: '操作',
@@ -551,17 +575,7 @@ export default function InventoryManage() {
           </span>
         ),
       },
-      {
-        key: 'unit',
-        title: '单位',
-        dataIndex: 'unitName',
-        minWidth: 60,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | undefined) => (
-          <span style={{ color: 'var(--text-secondary)' }}>{val || '—'}</span>
-        ),
-      },
+      specByKey.get('unit')!,
       {
         key: 'warehouse',
         title: '仓库',
@@ -579,62 +593,11 @@ export default function InventoryManage() {
           );
         },
       },
-      {
-        key: 'qty',
-        title: '库存数量',
-        dataIndex: 'qty',
-        minWidth: 100,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span
-            style={{
-              fontWeight: 600,
-              color: val > 0 ? 'var(--text-default)' : 'var(--status-warning-default)',
-              fontFamily: 'var(--font-family-mono)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {val}
-          </span>
-        ),
-      },
-      {
-        key: 'weighted_avg_cost',
-        title: '加权平均进价',
-        dataIndex: 'weighted_avg_cost',
-        minWidth: 110,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span
-            style={{
-              color: 'var(--status-discount-default)',
-              fontFamily: 'var(--font-family-mono)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            ¥{val}
-          </span>
-        ),
-      },
-      {
-        key: 'last_in_at',
-        title: '最近入库',
-        dataIndex: 'last_in_at',
-        minWidth: 150,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => (
-          <span style={{ color: val ? 'var(--text-secondary)' : 'var(--text-quaternary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val ? new Date(val).toLocaleString('zh-CN') : '—'}
-          </span>
-        ),
-      },
-    ]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [warehouses, canWrite],
-  );
+      specByKey.get('qty')!,
+      specByKey.get('weighted_avg_cost')!,
+      specByKey.get('last_in_at')!,
+    ];
+  }, [warehouses, canWrite]);
 
   return (
     <ViewFrame

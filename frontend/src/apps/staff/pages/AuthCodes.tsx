@@ -1,7 +1,7 @@
 // v2.0 授权码管理页
 // 授权码列表（分页）+ 状态/手机号筛选 + 单个/批量创建 + 作废 + 统计信息
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Form, Menu, Statistic } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
@@ -12,6 +12,8 @@ import DsDialog from '../../../shared/components/DsDialog.js';
 import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
   listAuthCodes,
   createAuthCodes,
@@ -56,6 +58,25 @@ function getDisplayStatus(record: AuthCodeView): DisplayStatus {
   }
   return record.status;
 }
+
+// 授权码：可参数化列由 auth_code 实体 cellSpec 配置驱动（零手写 render）；
+// 状态列（前端计算 expired 动态着色 DsTag）保留页面级 custom。
+const authCodeHandlers: Record<string, CellHandlers<AuthCodeView>> = {
+  code: { value: (r) => r.code, color: () => 'var(--text-default)', bold: () => true, mono: () => true, onApply: async () => undefined },
+  phone: { value: (r) => r.phone || '未绑定', color: (r) => (r.phone ? 'var(--text-secondary)' : 'var(--text-tertiary)'), onApply: async () => undefined },
+  createdAt: { value: (r) => (r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : '—'), color: () => 'var(--text-secondary)', mono: () => true, fontSize: () => 'var(--body-sm-font-size)', onApply: async () => undefined },
+  expiresAt: { value: (r) => (r.expiresAt ? new Date(r.expiresAt).toLocaleString('zh-CN') : '—'), color: () => 'var(--text-secondary)', mono: () => true, fontSize: () => 'var(--body-sm-font-size)', onApply: async () => undefined },
+};
+
+const authCodeLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'code': return { minWidth: 200, align: 'left' as const };
+    case 'phone': return { minWidth: 150, align: 'left' as const };
+    case 'createdAt': return { minWidth: 170, align: 'left' as const };
+    case 'expiresAt': return { minWidth: 170, align: 'left' as const };
+    default: return {};
+  }
+};
 
 export default function AuthCodes() {
   const { message, modal } = useCanvasApp();
@@ -189,85 +210,31 @@ export default function AuthCodes() {
   // ============================================================
   // 表格列
   // ============================================================
-  const columns: UnifiedTableColumn<AuthCodeView>[] = [
-    {
-      title: '授权码',
-      dataIndex: 'code',
-      key: 'code',
-      minWidth: 200,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: 'var(--text-default)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontWeight: 500,
-            letterSpacing: 0.5,
-          }}
-        >
-          {value}
-        </span>
+  // 列装配：状态列（前端计算 expired 动态着色）为页面级 custom；
+  // 其余 4 列由 auth_code 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  const columns: UnifiedTableColumn<AuthCodeView>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['auth_code'] ?? [], (s) => authCodeHandlers[s.key], authCodeLayoutOf).map(
+        (c) => [c.key, c] as const,
       ),
-    },
-    {
-      title: '绑定手机',
-      dataIndex: 'phone',
-      key: 'phone',
-      minWidth: 150,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span style={{ color: value ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
-          {value || '未绑定'}
-        </span>
-      ),
-    },
-    {
-      title: '状态',
-      key: 'status',
-      minWidth: 100,
-      renderMode: 'custom',
-      render: (_: any, record: AuthCodeView) => {
-        const ds = getDisplayStatus(record);
-        return <DsTag color={AUTHCODE_STATUS_COLOR[ds]}>{AUTHCODE_STATUS_LABELS[ds]}</DsTag>;
+    );
+    return [
+      specByKey.get('code')!,
+      specByKey.get('phone')!,
+      {
+        title: '状态',
+        key: 'status',
+        minWidth: 100,
+        renderMode: 'custom',
+        render: (_: any, record: AuthCodeView) => {
+          const ds = getDisplayStatus(record);
+          return <DsTag color={AUTHCODE_STATUS_COLOR[ds]}>{AUTHCODE_STATUS_LABELS[ds]}</DsTag>;
+        },
       },
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-    {
-      title: '过期时间',
-      dataIndex: 'expiresAt',
-      key: 'expiresAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-  ];
+      specByKey.get('createdAt')!,
+      specByKey.get('expiresAt')!,
+    ];
+  }, []);
 
   return (
     <ViewFrame

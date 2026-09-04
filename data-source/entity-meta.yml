@@ -137,16 +137,211 @@ entities:
     layer: row
     primaryKey: id
     columns:
-      - { key: op, title: 操作, dataIndex: op, renderMode: custom, minWidth: 120, align: center, order: 0, scenes: [inventory] }
-      - { key: product, title: 产品, dataIndex: productName, renderMode: custom, minWidth: 240, align: center, order: 10, scenes: [inventory] }
-      - { key: unit, title: 单位, dataIndex: unitName, renderMode: custom, minWidth: 60, align: center, order: 20, scenes: [inventory] }
-      - { key: warehouse, title: 仓库, dataIndex: warehouse_id, renderMode: custom, minWidth: 110, align: center, order: 30, scenes: [inventory] }
-      - { key: qty, title: 库存数量, dataIndex: qty, renderMode: custom, minWidth: 100, align: center, order: 40, scenes: [inventory] }
-      - { key: weighted_avg_cost, title: 加权平均进价, dataIndex: weighted_avg_cost, renderMode: custom, minWidth: 110, align: center, order: 50, scenes: [inventory] }
-      - { key: last_in_at, title: 最近入库, dataIndex: last_in_at, renderMode: custom, minWidth: 150, align: center, order: 60, scenes: [inventory] }
+      - { key: op, title: 操作, dataIndex: op, renderMode: text, minWidth: 120, align: center, order: 0, scenes: [inventory] }
+      - { key: product, title: 产品, dataIndex: productName, renderMode: text, minWidth: 240, align: center, order: 10, scenes: [inventory] }
+      - { key: unit, title: 单位, dataIndex: unitName, renderMode: custom, minWidth: 60, align: center, order: 20, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: warehouse, title: 仓库, dataIndex: warehouse_id, renderMode: text, minWidth: 110, align: center, order: 30, scenes: [inventory] }
+      - { key: qty, title: 库存数量, dataIndex: qty, renderMode: custom, minWidth: 100, align: center, order: 40, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: weighted_avg_cost, title: 加权平均进价, dataIndex: weighted_avg_cost, renderMode: custom, minWidth: 110, align: center, order: 50, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: last_in_at, title: 最近入库, dataIndex: last_in_at, renderMode: custom, minWidth: 150, align: center, order: 60, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
     relations:
       - { field: productId, to: product, type: manyToOne }
       - { field: warehouseId, to: warehouse, type: manyToOne }
+
+  inventory_ledger:
+    label: 库存流水
+    table: inventory_ledger
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: movement_type, title: 类型, dataIndex: movement_type, renderMode: custom, minWidth: 70, align: center, order: 0, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: qty, title: 数量, dataIndex: qty, renderMode: custom, minWidth: 80, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: unit_cost, title: 单价, dataIndex: unit_cost, renderMode: custom, minWidth: 80, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: biz_no, title: 业务单号, dataIndex: biz_no, renderMode: custom, minWidth: 160, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: balance_qty, title: 结存, dataIndex: balance_qty, renderMode: custom, minWidth: 80, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: created_at, title: 时间, dataIndex: created_at, renderMode: custom, minWidth: 160, align: center, order: 50, cellSpec: { display: text, editEntry: none } }
+
+  inbound_task:
+    label: 待入库单
+    table: inbound_tasks
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: inbound_no, title: 待入库单号, dataIndex: inbound_no, renderMode: text, minWidth: 160, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: supplier, title: 供应商, dataIndex: supplierName, renderMode: text, minWidth: 160, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: total_qty, title: 数量, dataIndex: total_qty, renderMode: text, minWidth: 80, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: total_amount, title: 金额, dataIndex: total_amount, renderMode: text, minWidth: 90, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 80, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: created_at, title: 生成时间, dataIndex: created_at, renderMode: custom, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
+
+  inbound_line:
+    label: 待入库明细
+    table: inbound_lines
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: product, title: 产品, dataIndex: productName, renderMode: text, minWidth: 260, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: unit, title: 单位, dataIndex: unitName, renderMode: text, minWidth: 60, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: qty, title: 数量, dataIndex: qty, renderMode: text, minWidth: 80, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: unit_cost, title: 进价, dataIndex: unit_cost, renderMode: text, minWidth: 80, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: amount, title: 小计, dataIndex: amount, renderMode: text, minWidth: 90, align: center, order: 50, cellSpec: { display: text, editEntry: none } }
+
+  backorder:
+    label: 欠库
+    table: backorders
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: product, title: 产品, dataIndex: productName, renderMode: text, minWidth: 260, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: unit, title: 单位, dataIndex: unitName, renderMode: text, minWidth: 60, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: qty, title: 欠库数量, dataIndex: qty, renderMode: text, minWidth: 90, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: note, title: 备注, dataIndex: note, renderMode: text, minWidth: 120, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 80, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: created_at, title: 挂欠时间, dataIndex: created_at, renderMode: custom, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
+
+  purchase_inbound:
+    label: 采购入库单
+    table: purchase_inbounds
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: purchaseNo, title: 入库单号, dataIndex: purchaseNo, renderMode: text, minWidth: 130, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: supplierName, title: 供应商, dataIndex: supplierName, renderMode: text, minWidth: 130, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: warehouseName, title: 仓库, dataIndex: warehouseName, renderMode: text, minWidth: 140, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: totalQty, title: 数量, dataIndex: totalQty, renderMode: text, minWidth: 90, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: totalAmount, title: 金额, dataIndex: totalAmount, renderMode: text, minWidth: 90, align: center, order: 50, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 100, align: center, order: 60, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: confirmedAt, title: 确认时间, dataIndex: confirmedAt, renderMode: custom, minWidth: 150, align: center, order: 70, cellSpec: { display: text, editEntry: none } }
+
+  staff_document:
+    label: 员工端单据列表
+    table: documents
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: documentNo, title: 单据号, dataIndex: documentNo, renderMode: text, minWidth: 170, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: customer, title: 客户信息, dataIndex: customerName, renderMode: text, minWidth: 180, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: purchaseQuoteStatus, title: 本环节状态, dataIndex: purchaseQuoteStatus, renderMode: custom, minWidth: 110, align: center, order: 40, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: totalAmount, title: 金额摘要, dataIndex: totalAmount, renderMode: text, minWidth: 130, align: right, order: 60, cellSpec: { display: text, editEntry: none } }
+      - { key: updatedAt, title: 更新时间, dataIndex: updatedAt, renderMode: custom, minWidth: 170, align: left, order: 70, cellSpec: { display: text, editEntry: none } }
+
+  audit_log:
+    label: 审计日志
+    table: audit_logs
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: user, title: 操作人, dataIndex: userId, renderMode: text, minWidth: 140, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: resourceType, title: 资源类型, dataIndex: resourceType, renderMode: text, minWidth: 130, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: resourceId, title: 资源 ID, dataIndex: resourceId, renderMode: text, minWidth: 160, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: ipAddress, title: IP 地址, dataIndex: ipAddress, renderMode: text, minWidth: 140, align: left, order: 50, cellSpec: { display: text, editEntry: none } }
+      - { key: createdAt, title: 操作时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
+
+  auth_code:
+    label: 授权码
+    table: authorization_codes
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: code, title: 授权码, dataIndex: code, renderMode: text, minWidth: 200, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: phone, title: 绑定手机, dataIndex: phone, renderMode: text, minWidth: 150, align: left, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: createdAt, title: 创建时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: expiresAt, title: 过期时间, dataIndex: expiresAt, renderMode: custom, minWidth: 170, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
+
+  access_request:
+    label: 访问申请
+    table: access_requests
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: phone, title: 登录账号, dataIndex: phone, renderMode: text, minWidth: 160, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 110, align: center, order: 20, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: createdAt, title: 申请时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: reviewer, title: 审核人, dataIndex: reviewedBy, renderMode: text, minWidth: 130, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: reviewedAt, title: 审核时间, dataIndex: reviewedAt, renderMode: custom, minWidth: 170, align: left, order: 50, cellSpec: { display: text, editEntry: none } }
+      - { key: rejectReason, title: 拒绝原因, dataIndex: rejectReason, renderMode: text, minWidth: 140, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
+
+  admin_user:
+    label: 员工账号
+    table: users
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: userCode, title: 工号, dataIndex: userCode, renderMode: text, minWidth: 150, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: username, title: 用户名, dataIndex: username, renderMode: text, minWidth: 140, align: left, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: realName, title: 真实姓名, dataIndex: realName, renderMode: text, minWidth: 120, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: phone, title: 手机号, dataIndex: phone, renderMode: text, minWidth: 150, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 90, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: createdAt, title: 创建时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
+
+  supplier_payable:
+    label: 供应商应付
+    table: payables
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: payable_no, title: 应付单号, dataIndex: payable_no, renderMode: text, minWidth: 160, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: supplierName, title: 供应商, dataIndex: supplierName, renderMode: text, minWidth: 160, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: biz_no, title: 业务单号, dataIndex: biz_no, renderMode: text, minWidth: 150, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: amount, title: 应付金额, dataIndex: amount, renderMode: text, minWidth: 110, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 90, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: created_at, title: 生成时间, dataIndex: created_at, renderMode: custom, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
+
+  report_range:
+    label: 经营报表-区间单据
+    table: report_range
+    layer: row
+    primaryKey: documentId
+    columns:
+      - { key: documentNo, title: 单据, dataIndex: documentNo, renderMode: text, minWidth: 150, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: customerName, title: 客户, dataIndex: customerName, renderMode: text, minWidth: 150, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: salesAmount, title: 销售额, dataIndex: salesAmount, renderMode: text, minWidth: 120, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: netProfit, title: 净利润, dataIndex: netProfit, renderMode: text, minWidth: 120, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+  report_margin:
+    label: 经营报表-分类毛利
+    table: report_margin
+    layer: row
+    primaryKey: categoryName
+    columns:
+      - { key: sales, title: 销售, dataIndex: sales, renderMode: text, minWidth: 120, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: cost, title: 成本, dataIndex: cost, renderMode: text, minWidth: 120, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: profit, title: 毛利, dataIndex: profit, renderMode: text, minWidth: 120, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: marginRate, title: 毛利率, dataIndex: marginRate, renderMode: text, minWidth: 120, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+  report_salesperson:
+    label: 经营报表-业务员
+    table: report_salesperson
+    layer: row
+    primaryKey: salespersonId
+    columns:
+      - { key: sales, title: 销售额, dataIndex: sales, renderMode: text, minWidth: 120, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+  report_purchase:
+    label: 经营报表-采购汇总
+    table: report_purchase
+    layer: row
+    primaryKey: purchaseNo
+    columns:
+      - { key: totalAmount, title: 金额, dataIndex: totalAmount, renderMode: text, minWidth: 120, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+  report_ar:
+    label: 经营报表-客户应收
+    table: report_ar
+    layer: row
+    primaryKey: documentId
+    columns:
+      - { key: outstanding, title: 未收, dataIndex: outstanding, renderMode: text, minWidth: 120, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+  report_turnover:
+    label: 经营报表-周转滞销
+    table: report_turnover
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: product, title: 产品, dataIndex: productName, renderMode: text, minWidth: 200, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
+  report_refund:
+    label: 经营报表-退换货
+    table: report_refund
+    layer: row
+    primaryKey: id
+    columns:
+      - { key: amount, title: 金额, dataIndex: amount, renderMode: text, minWidth: 120, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
 
   document_line:
     label: 单据行（快照）

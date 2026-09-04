@@ -4,7 +4,7 @@
 //   - 欠库台账单独汇总、可批量导出，作为采购补货清单
 //   - 补货入库（待入库确认/独立采购）自动先进先出冲抵欠库
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp, Modal } from 'antd';
 import { DownloadOutlined, CloseOutlined } from '@ant-design/icons';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
@@ -20,12 +20,43 @@ import {
   type BackorderRow,
 } from '../../../shared/services/api/inboundApi.js';
 import { listEnabledWarehouses, type WarehouseView } from '../../../shared/services/api/inventoryApi.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 
-const STATUS_LABELS: Record<string, string> = { pending: '待补', fulfilled: '已补', cancelled: '已取消' };
-const STATUS_COLORS: Record<string, 'warning' | 'success' | 'default'> = {
-  pending: 'warning',
-  fulfilled: 'success',
-  cancelled: 'default',
+// 欠库状态：由 backorder 实体 cellSpec（enum-tag）驱动，状态标签映射
+const BACKORDER_STATUS_MAP: Record<string, { color: any; text: string }> = {
+  pending: { color: 'warning', text: '待补' },
+  fulfilled: { color: 'success', text: '已补' },
+  cancelled: { color: 'default', text: '已取消' },
+};
+
+// 欠库主表：可参数化列由 backorder 实体 cellSpec 配置驱动（零手写 render）；
+// 复合列 op（取消按钮）/ warehouse（仓库名+主仓标签）保留为页面级 custom。
+const backorderHandlers: Record<string, CellHandlers<BackorderRow>> = {
+  product: { value: (r) => r.productName ?? '—', color: () => 'var(--text-default)', bold: () => true, onApply: async () => undefined },
+  unit: { value: (r) => r.unitName ?? '—', color: () => 'var(--text-secondary)', onApply: async () => undefined },
+  qty: { value: (r) => String(r.qty), color: () => 'var(--status-warning-default)', bold: () => true, mono: () => true, onApply: async () => undefined },
+  note: { value: (r) => r.note ?? '—', color: (r) => (r.note ? 'var(--text-secondary)' : 'var(--text-quaternary)'), onApply: async () => undefined },
+  status: { value: (r) => r.status, statusMap: BACKORDER_STATUS_MAP, onApply: async () => undefined },
+  created_at: {
+    value: (r) => (r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '—'),
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-xs-font-size)',
+    onApply: async () => undefined,
+  },
+};
+
+const backorderLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'product': return { minWidth: 260, align: 'center' as const };
+    case 'unit': return { minWidth: 60, align: 'center' as const };
+    case 'qty': return { minWidth: 90, align: 'center' as const };
+    case 'note': return { minWidth: 120, align: 'center' as const };
+    case 'status': return { minWidth: 80, align: 'center' as const };
+    case 'created_at': return { minWidth: 150, align: 'center' as const };
+    default: return {};
+  }
 };
 
 export default function BackorderManage() {
@@ -86,6 +117,12 @@ export default function BackorderManage() {
     });
   };
 
+  // handleCancel 每次渲染都会新建：若直接进 columns 的 useMemo 依赖，会导致整表列每帧重建（性能回退）。
+  // 用 ref 中转取最新引用 —— 既拿到最新闭包（避免用旧筛选条件刷新列表），
+  // 又保持 columns 引用稳定（与 ProductEditDialog 已有的 ref 中转做法一致）。
+  const handleCancelRef = useRef(handleCancel);
+  handleCancelRef.current = handleCancel;
+
   const handleExport = async () => {
     try {
       await downloadBackorderExport();
@@ -95,9 +132,16 @@ export default function BackorderManage() {
     }
   };
 
-  const columns: UnifiedTableColumn<BackorderRow>[] = useMemo(
-    () => [
-      // 操作列必须在前面（点即所得：字段多/手机端无需翻到最后）
+  // 列装配：复合列（op 取消按钮 / warehouse 仓库名+主仓标签）为页面级 custom；
+  // 其余 6 列由 backorder 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  // 顺序：操作 → 产品 → 单位 → 所在仓库 → 欠库数量 → 备注 → 状态 → 挂欠时间（与登记表 order 一致）。
+  const columns: UnifiedTableColumn<BackorderRow>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['backorder'] ?? [], (s) => backorderHandlers[s.key], backorderLayoutOf).map(
+        (c) => [c.key, c] as const,
+      ),
+    );
+    return [
       {
         key: 'op',
         title: '操作',
@@ -107,35 +151,13 @@ export default function BackorderManage() {
         renderMode: 'custom',
         render: (_val: unknown, r: BackorderRow) =>
           r.status === 'pending' && canWrite ? (
-            <DsButton size="sm" variant="ghost" icon={<CloseOutlined />} title="取消欠库" onClick={() => handleCancel(r)} />
+            <DsButton size="sm" variant="ghost" icon={<CloseOutlined />} title="取消欠库" onClick={() => handleCancelRef.current(r)} />
           ) : (
             <span style={{ color: 'var(--text-quaternary)' }}>—</span>
           ),
       },
-      {
-        key: 'product',
-        title: '产品',
-        dataIndex: 'productName',
-        minWidth: 260,
-        align: 'center',
-        renderMode: 'custom',
-        render: (_val: string, r: BackorderRow) => (
-          <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-            {r.productName || '—'}
-          </span>
-        ),
-      },
-      {
-        key: 'unit',
-        title: '单位',
-        dataIndex: 'unitName',
-        minWidth: 60,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | undefined) => (
-          <span style={{ color: 'var(--text-secondary)' }}>{val || '—'}</span>
-        ),
-      },
+      specByKey.get('product')!,
+      specByKey.get('unit')!,
       {
         key: 'warehouse',
         title: '所在仓库',
@@ -153,58 +175,12 @@ export default function BackorderManage() {
           );
         },
       },
-      {
-        key: 'qty',
-        title: '欠库数量',
-        dataIndex: 'qty',
-        minWidth: 90,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontWeight: 600, color: 'var(--status-warning-default)', fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>
-            {val}
-          </span>
-        ),
-      },
-      {
-        key: 'note',
-        title: '备注',
-        dataIndex: 'note',
-        minWidth: 120,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => (
-          <span style={{ color: val ? 'var(--text-secondary)' : 'var(--text-quaternary)' }}>{val || '—'}</span>
-        ),
-      },
-      {
-        key: 'status',
-        title: '状态',
-        dataIndex: 'status',
-        minWidth: 80,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <DsTag color={STATUS_COLORS[val] ?? 'default'}>{STATUS_LABELS[val] ?? val}</DsTag>
-        ),
-      },
-      {
-        key: 'created_at',
-        title: '挂欠时间',
-        dataIndex: 'created_at',
-        minWidth: 150,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val ? new Date(val).toLocaleString('zh-CN') : '—'}
-          </span>
-        ),
-      },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [warehouses, canWrite],
-  );
+      specByKey.get('qty')!,
+      specByKey.get('note')!,
+      specByKey.get('status')!,
+      specByKey.get('created_at')!,
+    ];
+  }, [warehouses, canWrite]);
 
   return (
     <ViewFrame

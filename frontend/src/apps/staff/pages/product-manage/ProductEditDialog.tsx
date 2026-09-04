@@ -500,7 +500,9 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
       setSalePrices([]);
       setPurchasePrices([]);
     }
-  }, [open, productId, initialSpecId, initialKeyword, loadProduct]);
+    // initialBrandId 必须入依赖：同一 productId/specId 下切换品牌时，需按新品牌重新载入，
+    // 否则会沿用上一次的品牌数据（effect 不重跑 → 数据错品牌）
+  }, [open, productId, initialSpecId, initialKeyword, initialBrandId, loadProduct]);
 
   // ============================================================
   // 规格快切操作

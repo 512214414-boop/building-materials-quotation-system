@@ -8,7 +8,6 @@ import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/component
 import DsButton from '../../../shared/components/DsButton.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsInput from '../../../shared/components/DsInput.js';
-import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import ProductPicker, {
   buildQuickCreateSelection,
@@ -26,6 +25,42 @@ import {
 } from '../../../shared/services/api/purchaseInboundApi.js';
 import { listEnabledWarehouses, type WarehouseView } from '../../../shared/services/api/inventoryApi.js';
 import type { SkuSearchRow, SkuOptionUnit } from '../../../shared/services/api/baseDataApi.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
+
+// 采购入库历史表：由 purchase_inbound 实体 cellSpec 配置驱动（零手写 render）；草稿表仍用现代 picker/number 渲染模式，不动。
+const PURCHASE_INBOUND_STATUS_MAP: Record<string, { color: any; text: string }> = {
+  done: { color: 'success', text: '已入库' },
+};
+
+const purchaseInboundHandlers: Record<string, CellHandlers<PurchaseInbound>> = {
+  purchaseNo: { value: (r) => r.purchaseNo, color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+  supplierName: { value: (r) => r.supplierName ?? '—', color: () => 'var(--text-default)', onApply: async () => undefined },
+  warehouseName: { value: (r) => r.warehouseName ?? '—', color: () => 'var(--text-default)', onApply: async () => undefined },
+  totalQty: { value: (r) => String(r.totalQty), mono: () => true, onApply: async () => undefined },
+  totalAmount: { value: (r) => `¥${Number(r.totalAmount).toFixed(2)}`, mono: () => true, onApply: async () => undefined },
+  status: { value: (r) => r.status, statusMap: PURCHASE_INBOUND_STATUS_MAP, onApply: async () => undefined },
+  confirmedAt: {
+    value: (r) => (r.confirmedAt ? new Date(r.confirmedAt).toLocaleString('zh-CN') : '—'),
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-xs-font-size)',
+    onApply: async () => undefined,
+  },
+};
+
+const purchaseInboundLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'purchaseNo': return { minWidth: COL_WIDTHS.NAME_S, align: 'center' as const };
+    case 'supplierName': return { minWidth: COL_WIDTHS.NAME_S, align: 'center' as const };
+    case 'warehouseName': return { minWidth: COL_WIDTHS.TAG_L, align: 'center' as const };
+    case 'totalQty': return { minWidth: COL_WIDTHS.AMOUNT, align: 'center' as const };
+    case 'totalAmount': return { minWidth: COL_WIDTHS.AMOUNT, align: 'center' as const };
+    case 'status': return { minWidth: COL_WIDTHS.TAG_M, align: 'center' as const };
+    case 'confirmedAt': return { minWidth: COL_WIDTHS.DATETIME, align: 'center' as const };
+    default: return {};
+  }
+};
 
 interface DraftLine {
   key: string;
@@ -267,84 +302,24 @@ export default function PurchaseInbound() {
     [canWrite],
   );
 
-  const histColumns: UnifiedTableColumn<PurchaseInbound>[] = useMemo(
-    () => [
-      {
-        key: 'purchaseNo',
-        title: '入库单号',
-        dataIndex: 'purchaseNo',
-        minWidth: COL_WIDTHS.NAME_S,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', color: 'var(--text-default)' }}>{val}</span>
-        ),
-      },
-      {
-        key: 'supplierName',
-        title: '供应商',
-        dataIndex: 'supplierName',
-        minWidth: COL_WIDTHS.NAME_S,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => <span>{val || '—'}</span>,
-      },
-      {
-        key: 'warehouseName',
-        title: '仓库',
-        dataIndex: 'warehouseName',
-        minWidth: COL_WIDTHS.TAG_L,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => <span>{val || '—'}</span>,
-      },
-      {
-        key: 'totalQty',
-        title: '数量',
-        dataIndex: 'totalQty',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>{val}</span>
-        ),
-      },
-      {
-        key: 'totalAmount',
-        title: '金额',
-        dataIndex: 'totalAmount',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: number) => (
-          <span style={{ fontFamily: 'var(--font-family-mono)', fontVariantNumeric: 'tabular-nums' }}>¥{Number(val).toFixed(2)}</span>
-        ),
-      },
-      {
-        key: 'status',
-        title: '状态',
-        dataIndex: 'status',
-        minWidth: COL_WIDTHS.TAG_M,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string) => <DsTag color={val === 'done' ? 'success' : 'default'}>{val === 'done' ? '已入库' : val}</DsTag>,
-      },
-      {
-        key: 'confirmedAt',
-        title: '确认时间',
-        dataIndex: 'confirmedAt',
-        minWidth: COL_WIDTHS.DATETIME,
-        align: 'center',
-        renderMode: 'custom',
-        render: (val: string | null) => (
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-family-mono)', fontSize: 'var(--body-xs-font-size)' }}>
-            {val ? new Date(val).toLocaleString('zh-CN') : '—'}
-          </span>
-        ),
-      },
-    ],
-    [],
-  );
+  // 历史表：7 列全部由 purchase_inbound 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  // 草稿表（draftColumns）已用现代 picker/number 渲染模式，不在本次迁移范围。
+  const histColumns: UnifiedTableColumn<PurchaseInbound>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['purchase_inbound'] ?? [], (s) => purchaseInboundHandlers[s.key], purchaseInboundLayoutOf).map(
+        (c) => [c.key, c] as const,
+      ),
+    );
+    return [
+      specByKey.get('purchaseNo')!,
+      specByKey.get('supplierName')!,
+      specByKey.get('warehouseName')!,
+      specByKey.get('totalQty')!,
+      specByKey.get('totalAmount')!,
+      specByKey.get('status')!,
+      specByKey.get('confirmedAt')!,
+    ];
+  }, []);
 
   return (
     <ViewFrame

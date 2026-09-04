@@ -57,7 +57,7 @@ import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/W
 import { CellSwitchProvider } from '../../../../../shared/components/product-picker/cellSwitch.js';
 // L4 单元格层：列用「值形态 × 编辑入口 × 值状态」三维参数声明，由适配层转成表格列。
 // 页面不再手写 renderMode:'custom' 的 render（那正是 135 处治理盲区的来源）。
-import { cellSpecsToColumns } from '../../../../../shared/components/table/cellSpecAdapter.js';
+import { cellSpecsWithEditorsToColumns } from '../../../../../shared/components/table/editorRegistry.js';
 import { skuLineDraftToPatch } from '../../../../../shared/components/product-picker/skuLineSplit.js';
 import QuickCreateConfirmDialog from '../../../../../shared/components/QuickCreateConfirmDialog.js';
 import DocumentPaperView, {
@@ -946,7 +946,8 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
     () => {
       // 列声明已外置到 shared/config/purchaseQuoteColumns.tsx（L4 单元格层 · 配置驱动）。
       // 页面只把业务回调与实时状态注入 buildPurchaseQuoteColumns，行为参数不在此手写。
-      const purchaseQuoteSpecs = buildPurchaseQuoteColumns({
+      // 统一管线：GeneratedCellSpec + 每列 CellHandlers，由 editorRegistry 渲染（与 14 个只读页同套）。
+      const pqCols = buildPurchaseQuoteColumns({
         canWrite,
         isVoided,
         viewLocked,
@@ -963,9 +964,15 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
         formatMoney,
         lineFilter,
       });
+      const handlersMap = new Map(pqCols.map((c) => [c.spec.key, c.handlers]));
+      const layoutMap = new Map(pqCols.map((c) => [c.spec.key, c.layout]));
       return mergeColumns(
         deriveTableColumns('product', 'workbench'),
-        cellSpecsToColumns<PaperRow>(purchaseQuoteSpecs),
+        cellSpecsWithEditorsToColumns<PaperRow>(
+          pqCols.map((c) => c.spec),
+          (s) => handlersMap.get(s.key)!,
+          (s) => layoutMap.get(s.key)!,
+        ),
       );
     },
     [

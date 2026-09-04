@@ -1,16 +1,17 @@
 // v2.0 访问申请审核页
 // 申请列表（分页）+ 手机号/状态筛选 + 通过/拒绝（含拒绝原因）审核操作
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Form, Menu } from 'antd';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
-import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
   listAccessRequests,
   reviewAccessRequest,
@@ -34,6 +35,33 @@ const REQUEST_STATUS_COLOR: Record<
   pending: 'warning',
   approved: 'success',
   rejected: 'danger',
+};
+
+// 访问申请：可参数化列由 access_request 实体 cellSpec 配置驱动（零手写 render）；
+// 授权码列（复制按钮）保留页面级 custom。
+const ACCESS_REQUEST_STATUS_MAP: Record<string, { color: any; text: string }> = Object.fromEntries(
+  Object.entries(REQUEST_STATUS_LABELS).map(([k, t]) => [k, { color: REQUEST_STATUS_COLOR[k as AccessRequestView['status']] ?? 'default', text: t }]),
+);
+
+const accessRequestHandlers: Record<string, CellHandlers<AccessRequestView>> = {
+  phone: { value: (r) => r.phone, color: () => 'var(--text-default)', bold: () => true, mono: () => true, onApply: async () => undefined },
+  status: { value: (r) => r.status, statusMap: ACCESS_REQUEST_STATUS_MAP, onApply: async () => undefined },
+  createdAt: { value: (r) => (r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : '—'), color: () => 'var(--text-secondary)', mono: () => true, fontSize: () => 'var(--body-sm-font-size)', onApply: async () => undefined },
+  reviewer: { value: (r) => (r.user ? (r.user.realName || r.user.username) : '—'), color: (r) => (r.user ? 'var(--text-secondary)' : 'var(--text-tertiary)'), onApply: async () => undefined },
+  reviewedAt: { value: (r) => (r.reviewedAt ? new Date(r.reviewedAt).toLocaleString('zh-CN') : '—'), color: (r) => (r.reviewedAt ? 'var(--text-secondary)' : 'var(--text-tertiary)'), mono: () => true, fontSize: () => 'var(--body-sm-font-size)', onApply: async () => undefined },
+  rejectReason: { value: (r) => r.rejectReason || '—', color: (r) => (r.rejectReason ? 'var(--status-error-default)' : 'var(--text-tertiary)'), onApply: async () => undefined },
+};
+
+const accessRequestLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'phone': return { minWidth: 160, align: 'left' as const };
+    case 'status': return { minWidth: 110, align: 'center' as const };
+    case 'createdAt': return { minWidth: 170, align: 'left' as const };
+    case 'reviewer': return { minWidth: 130, align: 'left' as const };
+    case 'reviewedAt': return { minWidth: 170, align: 'left' as const };
+    case 'rejectReason': return { minWidth: 140, align: 'left' as const };
+    default: return {};
+  }
 };
 
 const STATUS_OPTIONS = [
@@ -154,132 +182,55 @@ export default function AccessRequests() {
   // ============================================================
   // 表格列
   // ============================================================
-  const columns: UnifiedTableColumn<AccessRequestView>[] = [
-    {
-      title: '登录账号',
-      dataIndex: 'phone',
-      key: 'phone',
-      minWidth: 160,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: 'var(--text-default)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontWeight: 500,
-          }}
-        >
-          {value}
-        </span>
+  // 列装配：授权码列（复制按钮）为页面级 custom；
+  // 其余 6 列由 access_request 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  const columns: UnifiedTableColumn<AccessRequestView>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['access_request'] ?? [], (s) => accessRequestHandlers[s.key], accessRequestLayoutOf).map(
+        (c) => [c.key, c] as const,
       ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      minWidth: 110,
-      renderMode: 'custom',
-      render: (value: AccessRequestView['status']) => (
-        <DsTag color={REQUEST_STATUS_COLOR[value]}>{REQUEST_STATUS_LABELS[value]}</DsTag>
-      ),
-    },
-    {
-      title: '申请时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span
-          style={{
-            color: 'var(--text-secondary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-    {
-      title: '审核人',
-      key: 'reviewer',
-      minWidth: 130,
-      renderMode: 'custom',
-      render: (_: any, record: AccessRequestView) => {
-        if (!record.user) {
-          return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
-        }
-        return (
-          <span style={{ color: 'var(--text-secondary)' }}>
-            {record.user.realName || record.user.username}
-          </span>
-        );
+    );
+    return [
+      specByKey.get('phone')!,
+      specByKey.get('status')!,
+      specByKey.get('createdAt')!,
+      specByKey.get('reviewer')!,
+      specByKey.get('reviewedAt')!,
+      {
+        title: '授权码',
+        key: 'issuedAuthCode',
+        minWidth: 140,
+        renderMode: 'custom',
+        render: (_: any, record: AccessRequestView) => {
+          const code = record.issuedAuthCode;
+          if (!code) {
+            return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+          }
+          return (
+            <button
+              type="button"
+              onClick={() => void copyAuthCode(code)}
+              title="点击复制，告知客户用手机号+授权码准入"
+              style={{
+                fontFamily: 'var(--code-editor-font-family)',
+                fontWeight: 600,
+                fontSize: 14,
+                letterSpacing: 1,
+                color: 'var(--text-brand)',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              {code}
+            </button>
+          );
+        },
       },
-    },
-    {
-      title: '审核时间',
-      dataIndex: 'reviewedAt',
-      key: 'reviewedAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span
-          style={{
-            color: value ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-            fontFamily: 'var(--code-editor-font-family)',
-            fontSize: 'var(--body-sm-font-size)',
-          }}
-        >
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-    {
-      title: '授权码',
-      key: 'issuedAuthCode',
-      minWidth: 140,
-      renderMode: 'custom',
-      render: (_: any, record: AccessRequestView) => {
-        const code = record.issuedAuthCode;
-        if (!code) {
-          return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
-        }
-        return (
-          <button
-            type="button"
-            onClick={() => void copyAuthCode(code)}
-            title="点击复制，告知客户用手机号+授权码准入"
-            style={{
-              fontFamily: 'var(--code-editor-font-family)',
-              fontWeight: 600,
-              fontSize: 14,
-              letterSpacing: 1,
-              color: 'var(--text-brand)',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            {code}
-          </button>
-        );
-      },
-    },
-    {
-      title: '拒绝原因',
-      dataIndex: 'rejectReason',
-      key: 'rejectReason',
-      ellipsis: true,
-      renderMode: 'custom',
-      render: (value: string | null) => (
-        <span style={{ color: value ? 'var(--status-error-default)' : 'var(--text-tertiary)' }}>
-          {value || '—'}
-        </span>
-      ),
-    },
-  ];
+      specByKey.get('rejectReason')!,
+    ];
+  }, []);
 
   return (
     <ViewFrame

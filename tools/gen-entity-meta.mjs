@@ -2,7 +2,9 @@
 /**
  * gen-entity-meta.mjs — 实体元模型真相源 → 前后端登记表（v2）
  *
- * 用法：node tools/gen-entity-meta.mjs
+ * 用法：
+ *   node tools/gen-entity-meta.mjs            # 正常生成（写 4 处生成物）
+ *   node tools/gen-entity-meta.mjs --check    # 对拍：不写盘，比对生成物是否与 yml 一致，不一致 exit 1
  *
  * 输入：data-source/entity-meta.yml（唯一真相源）
  * 输出：
@@ -13,8 +15,18 @@
  *       - SNAPSHOT_MAP（快照字段 → { entity, from }，解读器 resolveSnapshots）
  *       - AUDIT_ACTIONS（审计 action 目录）
  *       - INDICATORS（统计口径）
+ *   ③ frontend/src/shared/config/entityRelations.generated.ts（界面列 + 单元格三维规格）
+ *   ④ 文档可视化/js/data/actions.generated.js（守卫动作数据）
  *
  * 规则：*.generated.ts 禁止手改；override 写旁边的 *.override.ts。改实体只改 yml 再重跑。
+ *
+ * 为什么要有 --check（第三道锁）：
+ *   生成区隔离（禁手改）只保证了「不许改」，保证不了「yml 改了忘跑生成器」——
+ *   那种漂移没有任何信号，generated 会一直停留在旧版本且看起来完全正常。
+ *   对拍（以 yml 为输入重新生成，与磁盘逐字节比对）一个动作同时锁死两个方向：
+ *     ① yml 改了没跑生成器  ② generated 被手改
+ *   注意：不能用「快照断言」代替对拍——把实体数/列数写死在测试里，
+ *   加一个实体就假红、yml 改了没生成却假绿（backend/tests/entity-relations-parity.test.ts 的前车之鉴）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +41,49 @@ const root = path.resolve(__dirname, '..');
 const srcFile = path.join(root, 'data-source', 'entity-meta.yml');
 const feOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityMeta.generated.ts');
 const beOut = path.join(root, 'backend', 'src', 'services', 'generated', 'entityMeta.generated.ts');
+
+// --check：对拍模式。正常模式行为逐字不变；对拍模式零写副作用（只读盘收集，末尾比对后 exit）。
+const CHECK = process.argv.includes('--check');
+/** @type {Array<{file: string, expected: string, actual: string|null}>} */
+const outputs = [];
+
+/**
+ * 生成物统一出口。所有生成物必须经此函数产出——
+ * 这样「有哪些生成物」只有这一处清单，加第 5 处产物时不可能漏掉对拍覆盖。
+ */
+function emit(file, content) {
+  if (CHECK) {
+    outputs.push({ file, expected: content, actual: fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null });
+    return;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content, 'utf8');
+}
+
+/**
+ * 定位首个不同行，返回行号与上下文（前后各 3 行）。
+ * 只报首个差异 + 上下文，不 dump 全文件——全量 diff 在终端里等于噪声，
+ * 人要的是「哪一行开始不一样」，知道起点就能自己打开看。
+ */
+function firstDiff(expected, actual) {
+  const a = expected.split('\n');
+  const b = actual.split('\n');
+  const n = Math.max(a.length, b.length);
+  // 生成物单行可以很长（如整页 slots 声明），不截断会顶出终端、把真正的差异行挤到看不见
+  const clip = (s) => (s.length > 160 ? s.slice(0, 157) + '…' : s);
+  for (let i = 0; i < n; i++) {
+    if (a[i] === b[i]) continue;
+    const ctx = [];
+    for (let j = Math.max(0, i - 3); j <= Math.min(n - 1, i + 3); j++) {
+      const mark = j === i ? '>' : ' ';
+      ctx.push(`${mark} ${String(j + 1).padStart(5)} 期望 | ${clip(a[j] ?? '<文件结束>')}`);
+      if (a[j] !== b[j]) ctx.push(`  ${String(j + 1).padStart(5)} 实际 | ${clip(b[j] ?? '<文件结束>')}`);
+    }
+    return { line: i + 1, ctx: ctx.join('\n') };
+  }
+  // 逐行全等却整体不等：只可能是行尾换行符差异（生成物一律以 \n 结尾）
+  return { line: null, ctx: '(逐行内容一致，差异在文件末尾换行符)' };
+}
 
 const srcText = fs.readFileSync(srcFile, 'utf8');
 const src = yaml.load(srcText);
@@ -240,8 +295,7 @@ for (const [key, p] of Object.entries(src.pages || {})) {
   fe += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(p.label ?? '')}, list: ${p.list ? JSON.stringify(p.list) : 'undefined'}, rowKey: ${JSON.stringify(p.rowKey ?? 'id')}, fixedSlots: ${JSON.stringify(p.fixedSlots ?? [])}, slots: [${slots}] },\n`;
 }
 fe += '};\n';
-fs.mkdirSync(path.dirname(feOut), { recursive: true });
-fs.writeFileSync(feOut, fe, 'utf8');
+emit(feOut, fe);
 
 // ---------- ② 后端登记表 ----------
 let be = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
@@ -315,8 +369,7 @@ for (const [key, r] of Object.entries(src.resources || {})) {
 }
 be += '};\n';
 
-fs.mkdirSync(path.dirname(beOut), { recursive: true });
-fs.writeFileSync(beOut, be, 'utf8');
+emit(beOut, be);
 
 // ---------- ③ 前端界面列登记表（entityRelations） ----------
 // 阶段 E：界面列（E 呈现维度）由 yml 的 columns 段驱动，手写 entityRelations.ts 改为 re-export。
@@ -423,14 +476,13 @@ for (const [key, ent] of relEntities) {
     }
   }
 }
-if (customWithoutSpec.length) {
+if (customWithoutSpec.length && !CHECK) {
   console.warn(
     `⚠ 配置纪律：以下列仍是 renderMode:custom 且未登记 cellSpec（应迁移到配置驱动）：\n   - ${customWithoutSpec.join('\n   - ')}`,
   );
 }
 
-fs.mkdirSync(path.dirname(relOut), { recursive: true });
-fs.writeFileSync(relOut, rel, 'utf8');
+emit(relOut, rel);
 
 // ---------- ④ 文档可视化动作守卫数据（actions.guard 的 JS 派生） ----------
 // 集合体文档 guard 维度渲染用：集合体 js 只声明 action key（guardActions），
@@ -442,8 +494,33 @@ viz += 'window.DOC_VIZ = window.DOC_VIZ || {};\n';
 viz += 'DOC_VIZ.actionMeta = ';
 viz += JSON.stringify(src.actions || {}, null, 2);
 viz += ';\n';
-fs.mkdirSync(path.dirname(vizOut), { recursive: true });
-fs.writeFileSync(vizOut, viz, 'utf8');
+emit(vizOut, viz);
+
+// ---------- ③·check 对拍：生成物是否与 yml 一致（不一致 exit 1） ----------
+// 放在写盘之后、正常模式「生成完成」日志之前：对拍模式到此为止，不打印成功日志，也不走水位线提醒。
+if (CHECK) {
+  const diffs = [];
+  for (const o of outputs) {
+    if (o.actual === null) { diffs.push({ ...o, kind: 'missing', line: null, ctx: '(磁盘上不存在该文件)' }); continue; }
+    if (o.actual !== o.expected) diffs.push({ ...o, kind: 'changed', ...firstDiff(o.expected, o.actual) });
+  }
+  if (diffs.length === 0) {
+    console.log(`✓ 元模型对拍通过：${outputs.length} 处生成物与 data-source/entity-meta.yml 完全一致`);
+    for (const o of outputs) console.log(`    ✓ ${path.relative(root, o.file)}`);
+    process.exit(0);
+  }
+  console.error(`✗ 元模型对拍失败：${outputs.length} 处生成物中 ${diffs.length} 处与 data-source/entity-meta.yml 不一致`);
+  console.error('  两种可能：① 改了 yml 但没跑生成器  ② *.generated.ts 被手改');
+  console.error('  修法：确认差异无误后跑 node tools/gen-entity-meta.mjs 重新生成');
+  console.error('  （若差异是「手改了生成物」，请改为改 yml 或写旁侧 *.override.ts —— 生成物禁止手改）\n');
+  for (const d of diffs) {
+    const where = d.line ? `第 ${d.line} 行起` : d.kind === 'missing' ? '文件缺失' : '文件末尾';
+    console.error(`  ✗ ${path.relative(root, d.file)}（${where}）`);
+    if (d.ctx) console.error(d.ctx.split('\n').map((l) => '      ' + l).join('\n'));
+    console.error('');
+  }
+  process.exit(1);
+}
 
 console.log(`✓ 生成完成：${Object.keys(entities).length} 实体 + ${(src.auditActions || []).length} 审计 + ${(src.indicators || []).length} 指标 + ${Object.keys(src.actions || {}).length} 动作 →`);
 console.log(`  前端 ${path.relative(root, feOut)}`);

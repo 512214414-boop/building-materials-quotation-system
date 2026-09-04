@@ -119,6 +119,168 @@ export const entityMeta: Record<string, EntityMeta> = {
     fields: [
     ],
   },
+  inventory_ledger: {
+    key: "inventory_ledger",
+    label: "库存流水",
+    table: "inventory_ledger",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  inbound_task: {
+    key: "inbound_task",
+    label: "待入库单",
+    table: "inbound_tasks",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  inbound_line: {
+    key: "inbound_line",
+    label: "待入库明细",
+    table: "inbound_lines",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  backorder: {
+    key: "backorder",
+    label: "欠库",
+    table: "backorders",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  purchase_inbound: {
+    key: "purchase_inbound",
+    label: "采购入库单",
+    table: "purchase_inbounds",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  staff_document: {
+    key: "staff_document",
+    label: "员工端单据列表",
+    table: "documents",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  audit_log: {
+    key: "audit_log",
+    label: "审计日志",
+    table: "audit_logs",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  auth_code: {
+    key: "auth_code",
+    label: "授权码",
+    table: "authorization_codes",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  access_request: {
+    key: "access_request",
+    label: "访问申请",
+    table: "access_requests",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  admin_user: {
+    key: "admin_user",
+    label: "员工账号",
+    table: "users",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  supplier_payable: {
+    key: "supplier_payable",
+    label: "供应商应付",
+    table: "payables",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_range: {
+    key: "report_range",
+    label: "经营报表-区间单据",
+    table: "report_range",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_margin: {
+    key: "report_margin",
+    label: "经营报表-分类毛利",
+    table: "report_margin",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_salesperson: {
+    key: "report_salesperson",
+    label: "经营报表-业务员",
+    table: "report_salesperson",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_purchase: {
+    key: "report_purchase",
+    label: "经营报表-采购汇总",
+    table: "report_purchase",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_ar: {
+    key: "report_ar",
+    label: "经营报表-客户应收",
+    table: "report_ar",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_turnover: {
+    key: "report_turnover",
+    label: "经营报表-周转滞销",
+    table: "report_turnover",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  report_refund: {
+    key: "report_refund",
+    label: "经营报表-退换货",
+    table: "report_refund",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
   document_line: {
     key: "document_line",
     label: "单据行（快照）",

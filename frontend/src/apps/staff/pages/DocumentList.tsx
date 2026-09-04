@@ -2,7 +2,7 @@
 // 列表列：单据号 → 标题 → 客户 → 本环节状态 → 单据状态 → 金额摘要 → 更新时间 → 操作
 // 新建单据：标题必填、客户可选匹配检索 + 快速新建客户；新建后直接打开工作台标签
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { App as AntdApp, Menu } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -10,8 +10,9 @@ import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/component
 import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
-import DsTag from '../../../shared/components/DsTag.js';
 import StatusBadge from '../../../shared/components/common/StatusBadge.js';
+import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
+import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import CreateDocumentModal from '../../../shared/components/CreateDocumentModal.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
 import { useDebounce } from '../../../shared/hooks/useDebounce.js';
@@ -49,6 +50,42 @@ function formatMoney(val: string | number | null | undefined): string {
   if (!Number.isFinite(n)) return '—';
   return `¥${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+// 本环节状态 → 状态标签完整映射（颜色取自 STAGE_TAG_COLOR，文案取自 STAGE_STATUS_LABELS），供 editorRegistry 渲染
+const STAFF_DOC_STAGE_MAP: Record<string, { color: any; text: string }> = Object.fromEntries(
+  Object.entries(STAGE_STATUS_LABELS).map(([k, t]) => [k, { color: STAGE_TAG_COLOR[k as StageStatus] ?? 'default', text: t }]),
+);
+
+// 单据列表：可参数化列由 staff_document 实体 cellSpec 配置驱动（零手写 render）；
+// 复合列 单据标题（链接跳转）/ 单据状态（StatusBadge）保留页面级 custom。
+const staffDocumentHandlers: Record<string, CellHandlers<StaffDocumentListItem>> = {
+  documentNo: { value: (r) => r.documentNo, color: () => 'var(--text-default)', bold: () => true, mono: () => true, onApply: async () => undefined },
+  customer: {
+    value: (r) => formatCustomerInfo(r.customerName, r.customerPhone, r.customerContactMethod),
+    color: (r) => (formatCustomerInfo(r.customerName, r.customerPhone, r.customerContactMethod) ? 'var(--text-default)' : 'var(--text-tertiary)'),
+    onApply: async () => undefined,
+  },
+  purchaseQuoteStatus: { value: (r) => r.purchaseQuoteStatus ?? 'pending', statusMap: STAFF_DOC_STAGE_MAP, onApply: async () => undefined },
+  totalAmount: { value: (r) => formatMoney(r.totalAmount), color: () => 'var(--text-default)', mono: () => true, onApply: async () => undefined },
+  updatedAt: {
+    value: (r) => (r.updatedAt ? new Date(r.updatedAt).toLocaleString('zh-CN') : '—'),
+    color: () => 'var(--text-secondary)',
+    mono: () => true,
+    fontSize: () => 'var(--body-sm-font-size)',
+    onApply: async () => undefined,
+  },
+};
+
+const staffDocumentLayoutOf = (s: GeneratedCellSpec) => {
+  switch (s.key) {
+    case 'documentNo': return { minWidth: 170, align: 'left' as const };
+    case 'customer': return { minWidth: 180, align: 'left' as const };
+    case 'purchaseQuoteStatus': return { minWidth: 110, align: 'center' as const };
+    case 'totalAmount': return { minWidth: 130, align: 'right' as const };
+    case 'updatedAt': return { minWidth: 170, align: 'left' as const };
+    default: return {};
+  }
+};
 
 export default function DocumentList() {
   const navigate = useNavigate();
@@ -104,96 +141,51 @@ export default function DocumentList() {
     navigate(`/staff/workbench/${doc.id}`);
   };
 
-  const columns: UnifiedTableColumn<StaffDocumentListItem>[] = [
-    {
-      title: '单据号',
-      dataIndex: 'documentNo',
-      key: 'documentNo',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span style={{ fontFamily: 'var(--code-editor-font-family)', color: 'var(--text-default)', fontWeight: 500 }}>
-          {value}
-        </span>
+  // 列装配：复合列（单据标题链接 / 单据状态 StatusBadge）为页面级 custom；
+  // 其余 5 列由 staff_document 实体 cellSpec 配置驱动（entityCellSpecs + editorRegistry），零手写 render。
+  // 顺序：单据号 → 单据标题 → 客户信息 → 本环节状态 → 单据状态 → 金额摘要 → 更新时间。
+  const columns: UnifiedTableColumn<StaffDocumentListItem>[] = useMemo(() => {
+    const specByKey = new Map(
+      cellSpecsWithEditorsToColumns(entityCellSpecs['staff_document'] ?? [], (s) => staffDocumentHandlers[s.key], staffDocumentLayoutOf).map(
+        (c) => [c.key, c] as const,
       ),
-    },
-    {
-      title: '单据标题',
-      dataIndex: 'title',
-      key: 'title',
-      minWidth: 220,
-      renderMode: 'custom',
-      linkStyle: true,
-      ellipsis: true,
-      render: (_value: any, record: StaffDocumentListItem) => {
-        const display = record.title || record.note || record.documentNo;
-        return (
-          <a
-            onClick={() => navigate(`/staff/workbench/${record.id}`)}
-            style={{ color: 'var(--text-brand)', textDecoration: 'none' }}
-          >
-            {display}
-          </a>
-        );
+    );
+    return [
+      specByKey.get('documentNo')!,
+      {
+        title: '单据标题',
+        dataIndex: 'title',
+        key: 'title',
+        minWidth: 220,
+        renderMode: 'custom',
+        linkStyle: true,
+        ellipsis: true,
+        render: (_value: any, record: StaffDocumentListItem) => {
+          const display = record.title || record.note || record.documentNo;
+          return (
+            <a
+              onClick={() => navigate(`/staff/workbench/${record.id}`)}
+              style={{ color: 'var(--text-brand)', textDecoration: 'none' }}
+            >
+              {display}
+            </a>
+          );
+        },
       },
-    },
-    {
-      title: '客户信息',
-      key: 'customer',
-      minWidth: 180,
-      renderMode: 'custom',
-      ellipsis: true,
-      render: (_v: any, record: StaffDocumentListItem) => {
-        const label = formatCustomerInfo(record.customerName, record.customerPhone, record.customerContactMethod);
-        if (!label) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
-        return <span style={{ color: 'var(--text-default)' }}>{label}</span>;
+      specByKey.get('customer')!,
+      specByKey.get('purchaseQuoteStatus')!,
+      {
+        title: '单据状态',
+        dataIndex: 'status',
+        key: 'status',
+        minWidth: 120,
+        renderMode: 'custom',
+        render: (value: DocumentStatus) => <StatusBadge status={value} />,
       },
-    },
-    {
-      title: '本环节状态',
-      dataIndex: 'purchaseQuoteStatus',
-      key: 'purchaseQuoteStatus',
-      minWidth: 110,
-      renderMode: 'custom',
-      render: (value: StageStatus | undefined) => {
-        const s = value ?? 'pending';
-        return <DsTag color={STAGE_TAG_COLOR[s]}>{STAGE_STATUS_LABELS[s]}</DsTag>;
-      },
-    },
-    {
-      title: '单据状态',
-      dataIndex: 'status',
-      key: 'status',
-      minWidth: 120,
-      renderMode: 'custom',
-      render: (value: DocumentStatus) => <StatusBadge status={value} />,
-    },
-    {
-      title: '金额摘要',
-      dataIndex: 'totalAmount',
-      key: 'totalAmount',
-      minWidth: 130,
-      align: 'right',
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span style={{ color: 'var(--text-default)', fontVariantNumeric: 'tabular-nums' }}>
-          {formatMoney(value)}
-        </span>
-      ),
-    },
-    {
-      title: '更新时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
-      minWidth: 170,
-      renderMode: 'custom',
-      render: (value: string) => (
-        <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--code-editor-font-family)', fontSize: 'var(--body-sm-font-size)' }}>
-          {value ? new Date(value).toLocaleString('zh-CN') : '—'}
-        </span>
-      ),
-    },
-  ];
+      specByKey.get('totalAmount')!,
+      specByKey.get('updatedAt')!,
+    ];
+  }, []);
 
   return (
     <ViewFrame

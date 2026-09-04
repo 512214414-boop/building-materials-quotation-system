@@ -4,15 +4,16 @@
 // 页面只调用 buildPurchaseQuoteColumns(deps) 消费，行为一字不改。
 // 这是「列三路合成：禁止页面手写第四路列来源」的落地——列声明归配置，页面只装配。
 //
-// 说明：产品名/品牌/规格/单位/单价 是带组合检索词的选用 Picker 列（点开是产品选品树，
-// 检索词=产品名+品牌+规格拼在一起，选中还带回价格/单位）。目前 GeneratedCellSpec
-// （entityCellSpecs）只接住「字典检索 / 纯值」两类列，接不住这种 Picker 列，故先放
-// CellSpec 形态的配置注册表；后续框架补齐 picker 列支持后，再迁移进 entity-meta.yml 真相源。
+// 2026-09-05 统一：本文件不再产出 CellSpec，改为产出 GeneratedCellSpec + 每列 CellHandlers，
+// 由 editorRegistry 消费（与 14 个只读页同一套管线）。确认层统一走 WorkbenchFieldCell：
+// 产品名/品牌/规格/单位/单价 的 picker 检索、按行分支、数字输入、bullets、邻格快切、非标标记
+// 全部经统一门禁分支渲染，props 与旧 CellSpecRenderer 完全一致 —— 行为保真，零回归。
 
 import { type ComponentProps } from 'react';
 import { COL_WIDTHS } from '../components/table/colWidths.js';
-import type { CellSpec } from '../components/table/cellSpec.js';
-import type { CellColumnLayout } from '../components/table/cellSpecAdapter.js';
+import type { GeneratedCellSpec } from './entityRelations.generated.js';
+import type { CellHandlers } from '../components/table/editorRegistry.js';
+import type { WorkbenchGatePickerRender } from '../components/workbench/WorkbenchFieldCell.js';
 import { HeaderCascadeFilter } from '../components/archive/HeaderCascadeFilter.js';
 import ProductPicker, { type SelectedPrice } from '../components/ProductPicker.js';
 import { unitDict } from './recordDicts.js';
@@ -24,7 +25,6 @@ import { isRecognizedGoods } from '../utils/documentLineInvariants.js';
 import type { SkuSearchRow, SkuOptionUnit } from '../services/api/baseDataApi.js';
 import type { DocumentLineUpdateInput } from '../services/api/documentApi.js';
 import type { PaperRow } from '../components/DocumentPaperView.js';
-import type { WorkbenchGatePickerRender } from '../components/workbench/WorkbenchFieldCell.js';
 
 type HcfProps = ComponentProps<typeof HeaderCascadeFilter>;
 
@@ -56,21 +56,31 @@ export interface PurchaseQuoteColumnDeps {
   handleProductSelect: (record: PaperRow, sku: SkuSearchRow, unit: SkuOptionUnit, price: SelectedPrice | null) => void;
   handleUnitSelect: (
     record: PaperRow,
-    payload: { unitName: string; unitId: string | null; price?: number | null; priceSource?: 'sale' | 'purchase' | 'derived' | null },
+    payload: { unitName: string; unitId: string | null; price?: number | null; priceSource?: 'sale' | 'derived' | 'purchase' | null },
   ) => void;
   setQuickCreateCtx: (ctx: { row: PaperRow; keyword: string }) => void;
   rowHasSku: (record: PaperRow) => boolean;
-  priceFromPick: (unit: SkuOptionUnit, selectedPrice: SelectedPrice | null) => { price: number; priceSource: 'sale' | 'purchase' | 'derived' | null };
+  priceFromPick: (unit: SkuOptionUnit, selectedPrice: SelectedPrice | null) => { price: number; priceSource: 'sale' | 'derived' | 'purchase' | null };
   lineAmount: (record: PaperRow) => number;
   formatMoney: (n: number) => string;
   lineFilter: PurchaseQuoteLineFilter;
 }
 
-export type PurchaseQuoteColumn = { spec: CellSpec<PaperRow>; layout: CellColumnLayout };
+export type PurchaseQuoteColumn = {
+  spec: GeneratedCellSpec;
+  handlers: CellHandlers<PaperRow>;
+  layout: {
+    minWidth?: number;
+    align?: 'left' | 'center' | 'right';
+    className?: string;
+    cellSwitch?: { rowIdOf: (record: PaperRow) => string };
+  };
+};
 
 /**
  * 构建采购报价 8 列（产品名 / 品牌 / 规格 / 单位 / 数量 / 单价 / 金额 / 备注）。
  * 纯函数：所有行为参数由 deps 注入，本函数不持有任何组件状态。
+ * 产出 GeneratedCellSpec + 每列 CellHandlers，由 editorRegistry 消费（与 14 个只读页同管线）。
  */
 export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): PurchaseQuoteColumn[] {
   const {
@@ -184,12 +194,62 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
       />
     ) : null;
 
+  /** 单价列：该行有 SKU 走选品树的价格叶子（按行判定） */
+  const pricePickerRender = (record: PaperRow): WorkbenchGatePickerRender => (ctx) => (
+    <ProductPicker
+      open
+      hostedInGate
+      parentPanelId={ctx.panelId}
+      hostedKeyword={ctx.keyword}
+      onHostedKeywordChange={ctx.setKeyword}
+      hostedListExpanded={ctx.listExpanded}
+      hostReady={ctx.hostReady}
+      entrySlot="price"
+      lockedContext={{
+        specId: String(record.specId),
+        brandId: String(record.brandId),
+        productId: record.productId,
+        productName: record.productRef,
+        brandName: record.brandName,
+        specModel: record.spec ?? '',
+        unitId: record.unitId,
+        unitName: record.unit,
+      }}
+      anchorRef={ctx.inputHostRef}
+      onClose={ctx.close}
+      onSelect={(_sku, unit, selectedPrice) => {
+        const priced = priceFromPick(unit, selectedPrice);
+        void commitCell(record, { unitPrice: priced.price, priceSource: priced.priceSource });
+        ctx.close();
+      }}
+      isStaff
+      onQuickCreate={() => {}}
+    />
+  );
+
   return [
     // 1 产品名：名称类列左对齐；认不成货的行标非标（值右侧橙色 ⓘ）
     {
       spec: {
         key: 'productRef',
-        title: (
+        title: '产品名',
+        display: 'text',
+        editEntry: 'confirm',
+        valueState: undefined,
+        gate: { searchKind: 'picker' },
+        hidden: undefined,
+      },
+      handlers: {
+        value: (r) => displayProductName(r),
+        hidden: (r) => !!r.hideProductName,
+        fitText: (r) => (r.hideProductName ? '' : displayProductName(r)),
+        gateReason,
+        fromText: (r) => skuSearchOf(r),
+        bullets: () => skuBullets,
+        warnNonStandard: (r) => !!r.productRef && !isRecognizedGoods(r),
+        pickerRender: (r) => skuPickerRender(r),
+        onApply: (r, next) => applySkuDraft(r, next),
+        titleNode: (
           <HeaderCascadeFilter
             field="product"
             placeholder="产品名"
@@ -199,21 +259,6 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
             onClear={lineFilter.clearProductFilter}
           />
         ),
-        display: 'text',
-        editEntry: 'confirm',
-        valueState: (r) => (!!r.productRef && !isRecognizedGoods(r) ? 'non-standard' : 'standard'),
-        value: (r) => displayProductName(r),
-        // 合并单元格时子行隐藏主行字段——本质是列级参数，不该由 render 写三元表达式
-        hidden: (r) => !!r.hideProductName,
-        fitText: (r) => (r.hideProductName ? '' : displayProductName(r)),
-        disabledReason: gateReason,
-        gate: {
-          title: '产品名',
-          fromText: (r) => skuSearchOf(r),
-          bullets: () => skuBullets,
-          search: (r) => ({ kind: 'picker', render: skuPickerRender(r) }),
-          onApply: (r, next) => applySkuDraft(r, next),
-        },
       },
       layout: {
         minWidth: COL_WIDTHS.NAME_PRODUCT,
@@ -226,7 +271,24 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
     {
       spec: {
         key: 'brandName',
-        title: (
+        title: '品牌',
+        display: 'text',
+        editEntry: 'confirm',
+        valueState: undefined,
+        gate: { searchKind: 'picker' },
+        hidden: undefined,
+      },
+      handlers: {
+        value: (r) => r.brandName?.trim() || '',
+        hidden: (r) => !!r.hideBrandName,
+        fitText: (r) => (r.hideBrandName ? '' : r.brandName?.trim() || ''),
+        gateReason,
+        fromText: (r) => skuSearchOf(r),
+        bullets: () => skuBullets,
+        warnNonStandard: (r) => !!r.productRef && !isRecognizedGoods(r),
+        pickerRender: (r) => skuPickerRender(r),
+        onApply: (r, next) => applySkuDraft(r, next),
+        titleNode: (
           <HeaderCascadeFilter
             field="brand"
             placeholder="品牌"
@@ -236,19 +298,6 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
             onClear={lineFilter.clearBrandFilter}
           />
         ),
-        display: 'text',
-        editEntry: 'confirm',
-        value: (r) => r.brandName?.trim() || '',
-        hidden: (r) => !!r.hideBrandName,
-        fitText: (r) => (r.hideBrandName ? '' : r.brandName?.trim() || ''),
-        disabledReason: gateReason,
-        gate: {
-          title: '品牌',
-          fromText: (r) => skuSearchOf(r),
-          bullets: () => skuBullets,
-          search: (r) => ({ kind: 'picker', render: skuPickerRender(r) }),
-          onApply: (r, next) => applySkuDraft(r, next),
-        },
       },
       layout: {
         minWidth: COL_WIDTHS.NAME_BRAND,
@@ -261,7 +310,24 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
     {
       spec: {
         key: 'spec',
-        title: (
+        title: '规格',
+        display: 'text',
+        editEntry: 'confirm',
+        valueState: undefined,
+        gate: { searchKind: 'picker' },
+        hidden: undefined,
+      },
+      handlers: {
+        value: (r) => r.spec?.trim() || '',
+        hidden: (r) => !!r.hideSpecModel,
+        fitText: (r) => (r.hideSpecModel ? '' : r.spec?.trim() || ''),
+        gateReason,
+        fromText: (r) => skuSearchOf(r),
+        bullets: () => skuBullets,
+        warnNonStandard: (r) => !!r.productRef && !isRecognizedGoods(r),
+        pickerRender: (r) => skuPickerRender(r),
+        onApply: (r, next) => applySkuDraft(r, next),
+        titleNode: (
           <HeaderCascadeFilter
             field="specModel"
             placeholder="规格"
@@ -271,19 +337,6 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
             onClear={lineFilter.clearSpecFilter}
           />
         ),
-        display: 'text',
-        editEntry: 'confirm',
-        value: (r) => r.spec?.trim() || '',
-        hidden: (r) => !!r.hideSpecModel,
-        fitText: (r) => (r.hideSpecModel ? '' : r.spec?.trim() || ''),
-        disabledReason: gateReason,
-        gate: {
-          title: '规格',
-          fromText: (r) => skuSearchOf(r),
-          bullets: () => skuBullets,
-          search: (r) => ({ kind: 'picker', render: skuPickerRender(r) }),
-          onApply: (r, next) => applySkuDraft(r, next),
-        },
       },
       layout: {
         minWidth: COL_WIDTHS.NAME_SPEC,
@@ -292,7 +345,7 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
         cellSwitch: { rowIdOf },
       },
     },
-    // 4 单位：按行走不同检索分支——该行有 SKU 走选品树的单位槽，没 SKU 走单位字典检索。
+    // 4 单位：按行走不同检索分支——该行有 SKU 走选品树、没 SKU 走字典检索。
     //   这正是 gate.search 支持函数形式的原因：同一列不同行，检索来源不同。
     {
       spec: {
@@ -300,17 +353,18 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
         title: '单位',
         display: 'text',
         editEntry: 'confirm',
+        valueState: undefined,
+        gate: { searchKind: 'dict' },
+        hidden: undefined,
+      },
+      handlers: {
         value: (r) => r.unit || '',
-        disabledReason: gateReason,
-        gate: {
-          title: '单位',
-          bullets: () => ['确认后写入当前行。', '取消不保存。'],
-          onApply: (r, next) => handleUnitFreeText(r, next),
-          search: (r) =>
-            rowHasSku(r)
-              ? { kind: 'picker', render: unitPickerRender(r) }
-              : { kind: 'dict', dictConfig: unitDict, suggestField: 'unit' },
-        },
+        gateReason,
+        dictConfig: (r) => (rowHasSku(r) ? undefined : unitDict),
+        suggestField: (r) => (rowHasSku(r) ? undefined : 'unit'),
+        pickerRender: (r) => (rowHasSku(r) ? unitPickerRender(r) : undefined),
+        onApply: (r, next) => handleUnitFreeText(r, next),
+        bullets: () => ['确认后写入当前行。', '取消不保存。'],
       },
       layout: {
         minWidth: COL_WIDTHS.TAG_L,
@@ -325,18 +379,20 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
         title: '数量',
         display: 'number',
         editEntry: 'confirm',
+        valueState: undefined,
+        gate: { input: 'number' },
+        hidden: undefined,
+      },
+      handlers: {
         value: (r) => (r.qty == null ? '' : String(r.qty)),
+        gateReason,
+        unifiedInput: () => 'number',
         placeholder: '0',
-        disabledReason: gateReason,
-        gate: {
-          title: '数量',
-          input: 'number',
-          bullets: () => ['确认后写入当前行。改数量不刷产品名。', '取消不保存。'],
-          onApply: (r, next) => {
-            const numVal = parseFloat(next) || 0;
-            void commitCell(r, { qty: numVal });
-          },
+        onApply: (r, next) => {
+          const numVal = parseFloat(next) || 0;
+          void commitCell(r, { qty: numVal });
         },
+        bullets: () => ['确认后写入当前行。改数量不刷产品名。', '取消不保存。'],
       },
       layout: {
         minWidth: COL_WIDTHS.AMOUNT,
@@ -352,6 +408,11 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
         title: '单价',
         display: 'number',
         editEntry: 'confirm',
+        valueState: undefined,
+        gate: { input: 'number' },
+        hidden: undefined,
+      },
+      handlers: {
         value: (r) => (r.unitPrice == null ? '' : String(r.unitPrice)),
         placeholder: '0.00',
         color: (r) =>
@@ -360,53 +421,14 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
             : r.priceSource === 'derived'
               ? 'var(--text-placeholder-accent)'
               : 'var(--text-default)',
-        disabledReason: gateReason,
-        gate: {
-          title: '单价',
-          input: 'number',
-          bullets: () => ['确认后写入当前行。', '插入价格叶子才换来源。', '取消不保存。'],
-          onApply: (r, next) => {
-            const numVal = parseFloat(next) || 0;
-            void commitCell(r, { unitPrice: numVal });
-          },
-          search: (r) =>
-            rowHasSku(r)
-              ? {
-                  kind: 'picker',
-                  render: (ctx) => (
-                    <ProductPicker
-                      open
-                      hostedInGate
-                      parentPanelId={ctx.panelId}
-                      hostedKeyword={ctx.keyword}
-                      onHostedKeywordChange={ctx.setKeyword}
-                      hostedListExpanded={ctx.listExpanded}
-                      hostReady={ctx.hostReady}
-                      entrySlot="price"
-                      lockedContext={{
-                        specId: String(r.specId),
-                        brandId: String(r.brandId),
-                        productId: r.productId,
-                        productName: r.productRef,
-                        brandName: r.brandName,
-                        specModel: r.spec ?? '',
-                        unitId: r.unitId,
-                        unitName: r.unit,
-                      }}
-                      anchorRef={ctx.inputHostRef}
-                      onClose={ctx.close}
-                      onSelect={(_sku, unit, selectedPrice) => {
-                        const priced = priceFromPick(unit, selectedPrice);
-                        void commitCell(r, { unitPrice: priced.price, priceSource: priced.priceSource });
-                        ctx.close();
-                      }}
-                      isStaff
-                      onQuickCreate={() => {}}
-                    />
-                  ),
-                }
-              : { kind: 'none' },
+        gateReason,
+        unifiedInput: (r) => (rowHasSku(r) ? undefined : 'number'),
+        pickerRender: (r) => (rowHasSku(r) ? pricePickerRender(r) : undefined),
+        onApply: (r, next) => {
+          const numVal = parseFloat(next) || 0;
+          void commitCell(r, { unitPrice: numVal });
         },
+        bullets: () => ['确认后写入当前行。', '插入价格叶子才换来源。', '取消不保存。'],
       },
       layout: {
         minWidth: COL_WIDTHS.AMOUNT,
@@ -423,8 +445,15 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
         title: '金额',
         display: 'number',
         editEntry: 'none',
+        valueState: undefined,
+        gate: undefined,
+        hidden: undefined,
+      },
+      handlers: {
         value: (r) => formatMoney(lineAmount(r)),
         color: () => 'var(--text-default)',
+        mono: () => true,
+        onApply: () => {},
       },
       layout: {
         minWidth: COL_WIDTHS.AMOUNT,
@@ -438,17 +467,19 @@ export function buildPurchaseQuoteColumns(deps: PurchaseQuoteColumnDeps): Purcha
         title: '备注',
         display: 'text',
         editEntry: 'confirm',
+        valueState: undefined,
+        gate: { allowEmpty: true },
+        hidden: undefined,
+      },
+      handlers: {
         value: (r) => r.remark || '',
         placeholder: '备注',
-        disabledReason: gateReason,
-        gate: {
-          title: '备注',
-          allowEmpty: true,
-          bullets: () => ['确认后写入当前行。', '取消不保存。'],
-          onApply: (r, next) => {
-            void commitCell(r, { remark: next });
-          },
+        gateReason,
+        unifiedInput: () => 'text',
+        onApply: (r, next) => {
+          void commitCell(r, { remark: next });
         },
+        bullets: () => ['确认后写入当前行。', '取消不保存。'],
       },
       layout: {
         minWidth: COL_WIDTHS.REMARK_S,

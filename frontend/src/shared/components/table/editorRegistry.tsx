@@ -24,6 +24,13 @@ import {
   NameLinkCell,
 } from '../cells/index.js';
 import { ArchiveFieldCell, DisplayCell } from '../product-picker/PickerInlineCells.js';
+// 统一确认层单元格：原生支持 picker / 字典(input) / 数字输入 / bullets / cellSwitch /
+// 门禁 / 非标标记 全套——是「确认层统一」的落点。PickerNameCell / ArchiveFieldCell 是旧路径，
+// 仅服务实体字典与纯值（14 个只读页），不碰 picker / 动态检索 / 数字输入，故并存。
+import { WorkbenchFieldCell } from '../workbench/WorkbenchFieldCell.js';
+import type { WorkbenchGatePickerRender } from '../workbench/WorkbenchFieldCell.js';
+import type { DictRecordConfig } from '../DictRefField.js';
+import type { DictChangeKind, SuggestField } from '../../services/api/baseDataApi.js';
 
 /** 页面为某列提供的业务回调与差异 props（配置里只放静态参数，函数/差异 props 由此注入） */
 export interface CellHandlers<T = any> {
@@ -57,8 +64,34 @@ export interface CellHandlers<T = any> {
   hidden?: (record: T) => boolean;
   /** 文字色 */
   color?: (record: T) => string | undefined;
+  /** 等宽数字（金额/数量/日期对齐） */
+  mono?: (record: T) => boolean;
+  /** 加粗（关键数量列强调） */
+  bold?: (record: T) => boolean;
+  /** 字号（如日期列用 xs） */
+  fontSize?: (record: T) => string | undefined;
   /** 表头级联筛等自定义表头节点（覆盖配置里的纯文本 title） */
   titleNode?: ReactNode;
+  /** 统一门禁（WorkbenchFieldCell）占位符，如 '0' / '0.00' / '备注' */
+  placeholder?: string;
+  /** 门禁原因（函数，按行判定未满足的前置条件；视觉保持 hover，点击给提示） */
+  gateReason?: (record: T) => string | undefined;
+  /** 确认层要点提示 */
+  bullets?: (record: T) => string[];
+  /** 确认层输入底稿（分列显示拼在一起选品时用） */
+  fromText?: (record: T) => string | undefined;
+  /** 非标行标记（橙色 ⓘ） */
+  warnNonStandard?: (record: T) => boolean;
+  /** 选用 ProductPicker 的确认层渲染（searchKind: picker） */
+  pickerRender?: (record: T) => WorkbenchGatePickerRender | undefined;
+  /** 字典检索（DictRecordConfig，如单位字典） */
+  dictConfig?: (record: T) => DictRecordConfig<any> | undefined;
+  /** 字典字段（如 'unit'） */
+  dictField?: (record: T) => DictChangeKind | undefined;
+  /** 字典建议字段 */
+  suggestField?: (record: T) => SuggestField | undefined;
+  /** 统一门禁输入框类型（数字列传 'number'） */
+  unifiedInput?: (record: T) => 'text' | 'number' | undefined;
 }
 
 /**
@@ -66,7 +99,20 @@ export interface CellHandlers<T = any> {
  * 这是「配置驱动、零手写列」的核心：行为参数来自配置，差异组件由注册表按
  * (display, editEntry, searchKind) 映射到既有组件，页面只注入业务回调。
  */
-export function renderCell<T = any>(spec: GeneratedCellSpec, handlers: CellHandlers<T>, record: T): ReactNode {
+export function renderCell<T = any>(
+  spec: GeneratedCellSpec,
+  handlers: CellHandlers<T>,
+  record: T,
+  layout: {
+    minWidth?: number;
+    align?: 'left' | 'center' | 'right';
+    fixed?: 'left' | 'right';
+    className?: string;
+    fitContent?: boolean;
+    wrap?: boolean;
+    cellSwitch?: { rowIdOf: (record: T) => string };
+  } = {},
+): ReactNode {
   // 合并单元格场景：子行隐藏主行字段（与现状 render 里的 hideX 三元一致）
   if (handlers.hidden?.(record)) return <span />;
   const value = handlers.value(record);
@@ -101,6 +147,40 @@ export function renderCell<T = any>(spec: GeneratedCellSpec, handlers: CellHandl
   }
 
   if (spec.editEntry === 'confirm') {
+    // 统一门禁：声明任一能力即走 WorkbenchFieldCell（与 CellSpec 同组件、同 props，行为保真）。
+    // 14 个只读页不传这些 handler 字段 → 走下方旧路径（PickerNameCell / ArchiveFieldCell），零回归。
+    const picker = handlers.pickerRender?.(record);
+    const dictConfig = handlers.dictConfig?.(record);
+    const dictField = handlers.dictField?.(record);
+    const suggestField = handlers.suggestField?.(record);
+    const input = handlers.unifiedInput?.(record);
+    if (picker || dictConfig || dictField || suggestField || input) {
+      return (
+        <WorkbenchFieldCell
+          text={value}
+          placeholder={handlers.placeholder ?? '—'}
+          gateReason={handlers.gateReason?.(record) ?? gate?.disabledReason}
+          align={layout?.align === 'left' ? 'left' : 'center'}
+          color={handlers.color?.(record)}
+          mono={handlers.mono?.(record) ?? spec.display === 'number'}
+          embed="table"
+          input={input ?? (spec.display === 'number' ? 'number' : 'text')}
+          allowEmpty={gate?.allowEmpty}
+          title={handlers.title ?? spec.title}
+          bullets={handlers.bullets?.(record)}
+          pickerRender={picker}
+          dictConfig={dictConfig}
+          dictField={dictField}
+          suggestField={suggestField}
+          fromText={handlers.fromText?.(record)}
+          cellSwitch={
+            layout?.cellSwitch ? { rowId: layout.cellSwitch.rowIdOf(record), colKey: spec.key } : undefined
+          }
+          warnNonStandard={handlers.warnNonStandard?.(record)}
+          onApply={(next) => handlers.onApply(record, next)}
+        />
+      );
+    }
     if (gate?.searchKind === 'dict') {
       const fromId = handlers.fromId?.(record);
       return (
@@ -143,6 +223,10 @@ export function renderCell<T = any>(spec: GeneratedCellSpec, handlers: CellHandl
       align={spec.editEntry === 'none' ? 'center' : 'left'}
       embed="table"
       rejectReason={gate?.disabledReason}
+      color={handlers.color?.(record)}
+      mono={handlers.mono?.(record)}
+      bold={handlers.bold?.(record)}
+      fontSize={handlers.fontSize?.(record)}
     />
   );
 }
@@ -161,6 +245,8 @@ export function cellSpecToColumnWithEditor<T = any>(
     className?: string;
     fitContent?: boolean;
     wrap?: boolean;
+    /** 邻格快切（需外层包 CellSwitchProvider）；统一门禁透传给 WorkbenchFieldCell */
+    cellSwitch?: { rowIdOf: (record: T) => string };
   } = {},
 ): import('./cell-editors/CellEditor.types.js').UnifiedTableColumn<T> {
   return {
@@ -175,7 +261,7 @@ export function cellSpecToColumnWithEditor<T = any>(
     fitContent: layout.fitContent,
     wrap: layout.wrap,
     getFitText: (record: T) => handlers.fitText?.(record) ?? handlers.value(record),
-    render: (_v: any, record: T) => renderCell(spec, handlers, record),
+    render: (_v: any, record: T) => renderCell(spec, handlers, record, layout),
   } as import('./cell-editors/CellEditor.types.js').UnifiedTableColumn<T>;
 }
 
