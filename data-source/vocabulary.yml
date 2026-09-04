@@ -1,0 +1,70 @@
+# vocabulary.yml — 中文 ↔ 英文 取值对照表
+#
+# 用途：给人 / AI 检索用的锚点。不参与代码生成，不产出任何代码。
+# 一致性由 tools/gen-entity-meta.mjs 在生成前校验，不通过则中断生成。
+#
+# 值域来源两级：
+#   A 类 —— frontend/src/shared/config/entityRelations.types.ts 的联合类型（可填的全部值，权威）
+#   B 类 —— data-source/entity-meta.yml 自身（无 TS 定义，值域 = 已出现的值）
+#
+# 只存单向（英文值: 中文词）。grep 双向命中同一行，
+# 再写一份「中文→英文」反向表就是第二份真相，必然腐烂，禁止。
+# _source 用「路径#类型名」而非行号：行号随代码变动失效，类型名可 grep 直达。
+version: 1
+
+domains:
+
+  # ══ A 类：值域由 TS 类型定义决定（权威，可填的全部值） ══
+
+  scene:
+    _zh: 场景
+    _source: frontend/src/shared/config/entityRelations.types.ts#EntityScene
+    values: { archive: 档案, workbench: 开单台, inventory: 库存 }
+
+  fieldClass:
+    _zh: 字段类别
+    _source: frontend/src/shared/config/entityRelations.types.ts#FieldClass
+    _note: A=独立字典，可检索/可管理；B=规格绑定随 SKU。同一字段在不同场景可取不同值（brandName 在 workbench=B、archive=A，因开单台品牌随 SKU 走、档案页品牌是独立字典）
+    values: { A: 独立字典, B: 规格绑定 }
+
+  confirmStrategy:
+    _zh: 确认策略
+    _source: frontend/src/shared/config/entityRelations.types.ts#ConfirmStrategy
+    _note: 三档。yml 目前只用到 direct / dialog，global 尚未使用
+    values: { direct: 直接确认, dialog: 弹窗确认, global: 全局确认 }
+
+  renderMode:
+    _zh: 渲染形态
+    _source: frontend/src/shared/config/entityRelations.types.ts#FieldRenderMode
+    _note: 五种。yml 目前用到 static/text/picker/custom，number 尚未使用
+    values: { static: 只读展示, text: 文本, number: 数字, picker: 选择器, custom: 自定义 }
+
+  align:
+    _zh: 对齐
+    _source: frontend/src/shared/config/entityRelations.types.ts#EntityFieldSpec#align
+    values: { left: 左, center: 中, right: 右 }
+
+  fixed:
+    _zh: 固定列
+    _source: frontend/src/shared/config/entityRelations.types.ts#EntityFieldSpec#fixed
+    _note: 列固定（左/右），当前 yml 未实际使用，按 TS 联合类型登记以备
+    values: { left: 左, right: 右 }
+
+  # ══ B 类：值域由 entity-meta.yml 自身决定（无 TS 定义，覆盖已出现值） ══
+
+  layer:
+    _zh: 实体归属层
+    _source: data-source/entity-meta.yml#layer
+    _note: 实体级属性。globalDict=全局字典（可快建/可管理）；subject=主体档案（产品/客户/供应商）；row=行级记录（库存）；snapshot=单据行快照
+    values: { globalDict: 全局字典, subject: 主体档案, row: 行级记录, snapshot: 快照归档 }
+
+  dataType:
+    _zh: 字段数据类型
+    _source: data-source/entity-meta.yml#dataType
+    values: { int: 整数, string: 字符串 }
+
+  unique:
+    _zh: 唯一性约束
+    _source: data-source/entity-meta.yml#unique
+    _note: 字段级属性，当前 yml 仅出现 global（全局唯一）
+    values: { global: 全局唯一 }
