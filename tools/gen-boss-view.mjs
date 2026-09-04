@@ -115,13 +115,18 @@ const STATUSES = [
   { key: 'todo', icon: '❌', label: '还没做', cls: 's-todo' },
   { key: 'warn', icon: '⚠️', label: '有偏差', cls: 's-warn' },
   { key: 'doing', icon: '🕐', label: '已安排未做完', cls: 's-doing' },
+  // 长期目标态：方向已定、当前不阻塞业务，故不排期。可见（别丢决策）但不进开发管道
+  // （不进「下一步」、不占完成度分母）——否则「决定先不做」和「该做没做」混在一起，
+  // 用户每次看板都要重新判断一遍，等于待办列表自己制造噪音。
+  { key: 'later', icon: '⏳', label: '长期目标态 · 不排期', cls: 's-later' },
   { key: 'done', icon: '✅', label: '已完成', cls: 's-done' },
 ];
 function pickStatus(text) {
   if (text.includes('❌')) return STATUSES[0];
   if (text.includes('⚠️')) return STATUSES[1];
   if (text.includes('🕐')) return STATUSES[2];
-  if (text.includes('✅')) return STATUSES[3];
+  if (text.includes('⏳')) return STATUSES[3];
+  if (text.includes('✅')) return STATUSES[4];
   return null;
 }
 // 待拍板：卡住开发的决策（不决就动不了那条线）。从名称/备注里识别决策触发词
@@ -129,12 +134,17 @@ function isDecision(name, note) {
   return /矛盾|须弃|待定|未决|是否|怎么选|卡住|待拍板|要砍|弃旧|新旧矛盾/.test(name + ' ' + note);
 }
 const SKIP_HEADS = new Set(['集合体', '页面', '过程', '域', '文档', '状态', '优先级', '项', '阶段', '产出']);
+// 历史记录区：台账为演进留档而保留，但「已完成的事」不该占能力台账的完成度分母——
+// 否则每多记一次历史，完成度就往下掉一截，数字失去指示意义。
+// 「8.4 两大雷区」也在此列：雷区本身是标题下的编号列表（不进表格统计），
+// 该节表格里装的其实是会话记录，与 §六 重复——按历史处理，避免同一条记录被算两遍完成度。
+const HISTORY_HEADS = /本次会话已落地|最近做了什么|历史记账存档|两大雷区/;
 
 /* ---------------------------- 解析覆盖台账 ------------------------------- */
 function isNoise(cell) {
   const s = cell.replace(/\*\*/g, '').trim();
   if (!s) return true;
-  if (/^[✅🕐❌⚠️]/.test(s)) return true;
+  if (/^[✅🕐❌⚠️⏳]/.test(s)) return true;
   if (/[`_]/.test(s)) return true;
   if (/\.(ya?ml|tsx?|jsx?|mjs|json|prisma|md|sql)\b/i.test(s)) return true;
   return (s.match(/[A-Za-z][A-Za-z-]{2,}/g) || []).length >= 2;
@@ -157,6 +167,9 @@ function parseCoverage(md) {
     if (!line.startsWith('|') || line.includes('---')) continue;
     const cells = line.split('|').slice(1, -1).map((s) => s.trim());
     if (cells.length < 2) continue;
+    // 已退役行（名称整段划掉，如「~~某某~~ ✅ 已吸收已删」）不计入任何统计与待办——
+    // 台账为演进留档会保留历史行，但划掉＝这件事已经结束，再进待办就是误报。
+    if ((cells[0] ?? '').startsWith('~~')) continue;
     const status = pickStatus(cells.join(' | '));
     if (!status) continue;
     const name = cells[0].replace(/\*\*/g, '').replace(/~~/g, '').trim();
@@ -164,7 +177,7 @@ function parseCoverage(md) {
     const notes = cells.slice(1).map((c) => c.replace(/\*\*/g, '').trim()).filter((c) => !isNoise(c));
     cur.items.push({ name, note: plain(notes.slice(0, 2).join('，')).slice(0, 90), status });
   }
-  return groups.filter((g) => g.items.length);
+  return groups.filter((g) => g.items.length && !HISTORY_HEADS.test(g.title));
 }
 
 /* ---------------------------- 解析待办与拍板 ----------------------------- */
@@ -177,14 +190,57 @@ function parsePending(md) {
     if (!line.startsWith('|') || line.includes('---')) continue;
     const cells = line.split('|').slice(1, -1).map((s) => s.trim());
     if (cells.length < 3) continue;
-    const level = cells[0].replace(/\*/g, '').replace(/~~/g, '').trim();
-    if (!/^P[012]$/.test(level) || line.includes('✅')) continue;
+    const levelRaw = cells[0].replace(/\*/g, '').replace(/~~/g, '').trim();
+    // 优先级列允许带后缀（「P1（暂缓）」），只取开头的 P0/P1/P2——
+    // 此前用 ^P[012]$ 精确匹配，带后缀的行被整条吞掉，导致 P1 两项在掌控台上从不显示。
+    const level = levelRaw.match(/^(P[012])/)?.[1] ?? '';
+    if (!level || line.includes('✅')) continue;
     out.push({ level, item: cells[1].replace(/\*\*/g, '').trim(), why: cells[2] });
   }
   return out;
 }
 
-/* ------------------------------ git 现状 -------------------------------- */
+/* ------------------------------ 开发规划 -------------------------------- */
+// 开发规划.md 是「spec → 任务拆解」的唯一来源，掌控台只做呈现、不手写第二份。
+// 解析两处：§二 的「### Task N 对应的 Spec」抓 干什么/成功标准；§三 任务表抓 类型/依赖/验证。
+// 任务名列带 ✅ ＝已完成（在 开发规划.md 里改，掌控台自动跟）。
+function parsePlan(md) {
+  if (!md) return [];
+  const specs = new Map();
+  for (const m of md.matchAll(/^### (Task \d+) 对应的 Spec：(.+)$/gm)) {
+    const rest = md.slice(m.index + m[0].length);
+    const nextH = rest.search(/^###?\s/m);
+    const body = nextH > 0 ? rest.slice(0, nextH) : rest;
+    specs.set(m[1], {
+      what: body.match(/- \*\*干什么\*\*：(.+)/)?.[1]?.trim() ?? '',
+      done: body.match(/- \*\*成功标准\*\*：(.+)/)?.[1]?.trim() ?? '',
+    });
+  }
+  const table = (md.split(/^##\s+三、/m)[1] || '').split(/^##\s+/m)[0] || '';
+  const out = [];
+  for (const raw of table.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('|') || line.includes('---')) continue;
+    const cells = line.split('|').slice(1, -1).map((s) => s.trim());
+    if (cells.length < 6 || !/^\d+$/.test(cells[0])) continue;
+    const spec = specs.get(`Task ${cells[0]}`) || {};
+    out.push({
+      num: cells[0],
+      name: cells[1].replace(/✅/g, '').trim(),
+      isDone: cells[1].includes('✅'),
+      type: cells[2],
+      dep: cells[4],
+      verify: cells[5],
+      what: spec.what ?? '',
+      done: spec.done ?? '',
+    });
+  }
+  return out;
+}
+const planTasks = parsePlan(read('开发规划.md'));
+const planFirstOpen = planTasks.findIndex((t) => !t.isDone);
+
+/* ------------------------------ git 现况 -------------------------------- */
 const COMMIT_TYPES = { feat: '新功能', fix: '修问题', docs: '文档', chore: '整理', refactor: '重构', test: '测试', perf: '优化', style: '格式' };
 function humanizeCommit(subject) {
   const m = subject.match(/^(\w+)(?:\(([^)]+)\))?!?:\s*(.*)$/);
@@ -260,8 +316,13 @@ const sessions = collectSessions();
 
 const all = groups.flatMap((g) => g.items);
 const count = (k) => all.filter((i) => i.status.key === k).length;
-const tally = { done: count('done'), doing: count('doing'), warn: count('warn'), todo: count('todo') };
-const total = all.length || 1;
+const tally = { done: count('done'), doing: count('doing'), warn: count('warn'), todo: count('todo'), later: count('later') };
+// 待开发总数：台账全景里的 🕐/⚠️/❌ + 待补清单（§七）未完项——
+// 此前分母只算全景，§七 的 P1/P2 从不进统计，v23 转长期目标态后一度算出 100% 完成，
+// 那是自欺：首屏还挂着 6 条待开发，完成度却说做完了。
+const devPending = tally.doing + tally.warn + tally.todo + pending.length;
+// 长期目标态不计入分母：它是「决定先不做」，不是「该做没做」
+const total = tally.done + devPending || 1;
 const rate = Math.round((tally.done / total) * 100);
 const updated = new Date().toLocaleString('zh-CN', { hour12: false });
 
@@ -275,7 +336,12 @@ const covItems = all
   .filter((i) => i.status.key === 'doing' && !isDecision(i.name, i.note))
   .filter((i) => !pendKeys.has(i.name))
   .map((i) => ({ kind: 'cov', name: i.name, note: i.note }));
-const zone3 = [...pendItems, ...covItems];
+// 长期目标态：可见但不进开发管道（nextQueue 不含它）
+const laterItems = all
+  .filter((i) => i.status.key === 'later' && !isDecision(i.name, i.note))
+  .filter((i) => !pendKeys.has(i.name))
+  .map((i) => ({ kind: 'later', name: i.name, note: i.note }));
+const zone3 = [...pendItems, ...covItems, ...laterItems];
 // 区1 下一步：优先级队列顶端一项（P1 > P2 > 🕐 待开发），给出对 AI 说的口令
 const nextQueue = [
   ...pendItems.filter((p) => p.level === 'P1'),
@@ -297,9 +363,8 @@ const p2 = pending.filter((p) => p.level === 'P2');
 // 头条：如实反映交付/待开发/偏差/未动，禁止「全部已落地」式误导（doing 不等于 done）
 const headline =
   `已交付 ${tally.done} 项` +
-  (tally.doing ? `，已拍板待开发 ${tally.doing} 项` : '') +
-  (tally.warn ? `，有偏差 ${tally.warn} 项` : '') +
-  (tally.todo ? `，还没动 ${tally.todo} 项` : '') +
+  (devPending ? `，待开发 ${devPending} 项` : '') +
+  (tally.later ? `，**另有 ${tally.later} 项是长期目标态（方向已定、当前不阻塞，不排期）**` : '') +
   '。';
 
 /* ------------------------------ --access 模式 ---------------------------- */
@@ -361,7 +426,7 @@ const accessJson = JSON.stringify({
 const zone3Html = zone3
   .map(
     (z) =>
-      `<li class="pend ${z.kind === 'pending' ? `p-${z.level}` : 'p-dev'}"><span class="lvl">${z.kind === 'pending' ? z.level : '🕐'}</span><div class="txt"><div class="name">${esc(human(z.name))}</div>${z.note ? `<div class="note">${esc(human(z.note))}</div>` : ''}</div></li>`
+      `<li class="pend ${z.kind === 'pending' ? `p-${z.level}` : z.kind === 'later' ? 'p-later' : 'p-dev'}"><span class="lvl">${z.kind === 'pending' ? z.level : z.kind === 'later' ? '⏳' : '🕐'}</span><div class="txt"><div class="name">${esc(human(z.name))}</div>${z.note ? `<div class="note">${esc(human(z.note))}</div>` : ''}</div></li>`
   )
   .join('');
 const decisionsHtml = decisions.length
@@ -374,6 +439,25 @@ const decisionsHtml = decisions.length
           `<li class="pend p-block"><span class="lvl">⛔</span><div class="txt"><div class="name">${esc(human(d.name))}</div>${d.note ? `<div class="note">${esc(human(d.note))}</div>` : ''}</div></li>`
       )
       .join('')}</ul></div>
+  </section>`
+  : '';
+
+const planHtml = planTasks.length
+  ? `<section class="zone">
+    <h2>开发规划（点开每一项看怎么干）</h2>
+    <p class="why">来自 开发规划.md（spec 与任务清单的唯一来源）。对 AI 说「按开发规划做 Task N」直接开工；带 ✅ 的已完成。</p>
+    ${planTasks
+      .map(
+        (t, idx) => `<details class="group"${idx === planFirstOpen ? ' open' : ''}>
+      <summary><span class="gname">${t.isDone ? '✅ ' : ''}Task ${t.num} · ${esc(human(t.name))}</span><span class="gcount">${esc(t.type)} · ${esc(t.dep)}</span></summary>
+      <ul class="items">
+        <li><div class="txt"><div class="name">干什么</div><div class="note">${esc(plain(t.what))}</div></div></li>
+        <li><div class="txt"><div class="name">成功标准</div><div class="note">${esc(plain(t.done))}</div></div></li>
+        <li><div class="txt"><div class="name">怎么验</div><div class="note">${esc(plain(t.verify))}</div></div></li>
+      </ul>
+    </details>`
+      )
+      .join('')}
   </section>`
   : '';
 
@@ -431,11 +515,11 @@ const html = `<!doctype html>
   .ico{flex:0 0 auto;line-height:1.6}
   .name{font-weight:500}
   .note{font-size:13px;color:var(--sub);word-break:break-word}
-  .s-done .name{color:var(--ok)}.s-doing .name{color:var(--warn)}.s-warn .name{color:var(--warn)}.s-todo .name{color:var(--bad)}
+  .s-done .name{color:var(--ok)}.s-doing .name{color:var(--warn)}.s-warn .name{color:var(--warn)}.s-todo .name{color:var(--bad)}.s-later .name{color:#8a8f98}
   .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 14px 12px}
   .plist li{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
   .lvl{flex:0 0 auto;font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;color:#fff;height:fit-content;margin-top:3px}
-  .p-P0 .lvl{background:#c2372c}.p-P1 .lvl{background:#c9821a}.p-P2 .lvl{background:#6b7280}
+  .p-P0 .lvl{background:#c2372c}.p-P1 .lvl{background:#c9821a}.p-P2 .lvl{background:#6b7280}.p-later .lvl{background:#8a8f98}
   .clist li{padding:8px 0;border-top:1px solid var(--line);font-size:14px}
   .clist .date{color:var(--sub);margin-right:10px;font-variant-numeric:tabular-nums}
   .empty{color:var(--sub);padding:8px 0}
@@ -478,14 +562,16 @@ const html = `<!doctype html>
 
   <section class="zone dev">
     <h2>已拍板待开发（决定好了，只等落地）</h2>
-    <p class="why">🕐 已规定未实施 + 待补清单（P1/P2）。带「为什么做 / 做完解锁什么」，按优先级排。</p>
+    <p class="why">🕐 已规定未实施 + 待补清单（P1/P2），按优先级排，带「为什么做 / 做完解锁什么」。⏳ 是长期目标态：方向已定但当前不阻塞业务，**不排期、不进上面的开发管道**，等触发条件出现再启动。</p>
     <div class="box"><ul class="plist">${zone3Html}</ul></div>
   </section>
+
+  ${planHtml}
 
   <details class="box gl-box"><summary style="padding:10px 0;font-weight:600">项目全景（完成度 + 各业务块能力）</summary>
     <div class="stats">
       ${statCard('a', tally.done, '已交付')}
-      ${statCard('b', tally.doing, '待开发')}
+      ${statCard('b', devPending, '待开发')}
       ${statCard('c', tally.warn, '有偏差')}
       ${statCard('d', tally.todo, '还没动')}
     </div>
@@ -615,7 +701,16 @@ ${decisions.length ? decisions.map((d) => `- ⛔ **${plain(d.name)}**${d.note ? 
 
 ## 已拍板待开发（决定好了只等落地）
 
-${zone3.length ? zone3.map((z) => `- [${z.kind === 'pending' ? z.level : '🕐'}] ${plain(z.name)}${z.note ? `：${plain(z.note)}` : ''}`).join('\n') : '- 无'}
+> 🕐 已安排未做完 + 待补清单（P1/P2），按优先级排，即上面的开发管道。
+> ⏳ 长期目标态：方向已定但当前不阻塞业务，**不排期、不进开发管道**，等下面写的触发条件出现再启动。
+
+${zone3.length ? zone3.map((z) => `- [${z.kind === 'pending' ? z.level : z.kind === 'later' ? '⏳' : '🕐'}] ${plain(z.name)}${z.note ? `：${plain(z.note)}` : ''}`).join('\n') : '- 无'}
+
+## 开发规划（spec → 任务拆解，对 AI 说「按开发规划做 Task N」）
+
+> 来自 开发规划.md，每项的 spec（干什么/成功标准/边界）见该文件 §二；下面是任务速览。
+
+${planTasks.length ? planTasks.map((t) => `- ${t.isDone ? '✅' : '👉'} **Task ${t.num} ${plain(t.name)}**（${plain(t.type)}｜依赖：${plain(t.dep)}）：${plain(t.what)}｜怎么验：${plain(t.verify)}`).join('\n') : '- 暂无（开发规划.md 不存在或没有任务表）'}
 
 ## 项目全景（各业务块能力）
 

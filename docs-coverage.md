@@ -43,8 +43,8 @@
 |---|---|---|---|---|---|---|
 | **产品档案** | 建材行业最复杂集合体（五段：分类→产品→规格→单位；品牌全局；价格/图/换算） | 集合编辑矩阵（产品/供应商/客户/库房范本） | `product_save`（产品名必填）、`spec_rename`（同品+品+规唯一） | `product`（已登记，见 `entity-meta.yml`） | `product`（slots 顺序由配置驱动） | ✅ v30 范式收尾后落地 |
 | **供应商档案** | 范式化的标准四档档案（name/remark/status + 关联子表） | 集合编辑矩阵（联系人/地址/经营范围/备注） | `supplier_create/update/delete/quick_add` | `supplier`（含 refTargets 引用计数） | `supplier`（v 顺序：name→contacts→addresses→businessScope→remark） | ✅ 零代码验证通过 |
-| **库房档案** | 仓库 + 库区 + 联系人 | 集合编辑矩阵 | `warehouse_*` | 🕐 待登记 | 🕐 待登记 | 🕐 |
-| **客户档案** | 客户 + 联系 + 发票抬头 + 地址 | 集合编辑矩阵 | `customer_*` | 🕐 待登记 | 🕐 待登记 | 🕐 |
+| **库房档案** | 仓库 + 库区 + 联系人 | 集合编辑矩阵 | `warehouse_*` | 未登记（页面自带 def，非阻塞，后续补登记即可） | ✅ `WarehouseManage.tsx`（269 行）走 `ArchiveSlotHost` + 库区/联系人两矩阵 | ✅ 页面已落地（2026-09-05 核实） |
+| **客户档案** | 客户 + 联系 + 发票抬头 + 地址 | 集合编辑矩阵 | `customer_*` | ✅ `customer`（已登记，6 列） | ✅ `CustomerManage.tsx`（367 行）走 `ArchiveSlotHost` + 联系/地址/发票抬头三矩阵 | ✅ 已落地（2026-09-05 核实；此前台账误标为未完成） |
 
 ### 2.2 单据视图（8 过程视图）
 
@@ -108,12 +108,14 @@
 | 产品集合体宽表字段来源登记表（9 列 × 层/数据表/字典表/关系表/宽表落点） | ✅ | 2026-08-31 |
 | 范式 vs 派生表（**重要更新 v30 2026-09-02**） | ✅ | 反范式 `product_sku_search` 宽表已**物理删除**；检索/展示全面转范式多路召回（详见架构原则·元模型运行时 v30 章） |
 | **v31 库存快照列（2026-09-02 补建）** | ✅ | `inventory` 表新增 `specModel`/`brandName`/`unitName`（v28 定义但未落库的历史遗漏；修复后库存台账与周转报表 API 200） |
-| v23 产品名升全局字典 `product_name`（去 product.name） | 🕐 | 2026-08-31 裁决：升字典，跨分类不重名；代码未实施 |
-| v23 分类改关系表 `product_category`（去 product.categoryId） | 🕐 | 2026-08-31 裁决：要关系表，带 isPrimary；代码未实施 |
+| v23 产品名升全局字典 `product_name`（去 product.name） | ⏳ | **2026-09-05 用户裁决：长期目标态，不排期**（方向仍然有效，只是当前不阻塞业务）。**启动触发条件**：① 出现跨分类同名产品导致检索歧义；② 需要改名跨分类全局生效。两条满足其一再启动。**做完解锁**：改名全局生效、检索不歧义、统计按 ID。**当前不阻塞**：改名功能已能用，只是作用域限于同一分类内。与下面分类改关系表联锁，不可只做一条。实施前置：git 工作区干净、迁移脚本与结构变更分两个提交 |
+| v23 分类改关系表 `product_category`（去 product.categoryId） | ⏳ | **2026-09-05 用户裁决：长期目标态，不排期**。**启动触发条件**：随上面产品名升全局选项库一起触发，不单独启动。**做完解锁**：一个产品可挂多个分类并标记主分类，才能支撑「跨分类同名即同一产品」。**当前不阻塞业务** |
 | 俗称维持 `product.remark` 单字段 | ✅ | 2026-08-31 裁决：不建子表不进字典 |
 | v23 决策记录归档（论证+迁移口径） | ✅ 归档 | 见下方「v23 决策记录」小节（自 产品数据层.md git 历史恢复，2026-09-04） |
 
 ### v23 决策记录（三条裁决 · 联锁论证 · 迁移口径；自已退役的 产品数据层.md 归档，实施前以此为准）
+
+**排期裁决（2026-09-05 用户拍板）**：三条裁决**方向全部有效，但①③ 两条数据库结构升级转为「长期目标态 · 不排期」**——当前不阻塞业务，不占开发管道；等启动触发条件出现（跨分类同名导致检索歧义 / 需要改名跨分类全局生效）再启动，且①③ 必须一起做。② 俗称维持单字段已实施。
 
 **三条裁决（2026-08-31 v23 目标态，代码未实施）**：① 产品名升全局字典（新增 `product_name` name 全局唯一，`product.name` 废止改 `productNameId` 引用，改名全局生效）；② 俗称维持 `product.remark` 单字段；③ 分类要关系表（新增 `product_category` 带 isPrimary+sortOrder，`product.categoryId` 废止）。
 
@@ -153,13 +155,32 @@
 3. 填写「页面装配（pages）」段：list / slots（数组顺序=列表列顺序）/ editor
 4. 写每个槽位的 Editor 实现（一行/矩阵/标量，看形态）
 5. 页面用 pageAssembler.assembleSlots(entity, { key: SlotEditor }) 接入
-6. 点「保存」→ 跑生成器 + 校验
-7. 前端 vite build → 后端 npx tsc --noEmit → 跑 npx tsx scripts/verify-resource-engine.ts
-8. e2e 截图核对
-9. 回写本台账该集合体行
+6. 点「保存」→ 跑生成器（node tools/gen-entity-meta.mjs，产出 4 处生成物）
+7. 交付前跑 npm run verify（G1 门禁：S0 元模型对拍 → 前端类型/lint/dupe → 后端测试/类型，见 §5.1）
+8. 资源引擎专项（仅动了 resources 段时跑）：npx tsx scripts/verify-resource-engine.ts
+9. e2e 截图核对（npm run smoke）
+10. 回写本台账该集合体行
 ```
 
 **实证（supplier）**：用 Meta Studio 声明 supplier 资源/页面后，后端 11 项资源引擎 API 验证全过，前端装配后列顺序与登记表一致——全程零手写 handler。
+
+### 5.1 第三道锁：元模型对拍（2026-09-05 落地）
+
+零代码新增的前提是「配置改了，前后端一定跟着变、且没跟上就会被拦下来」。这靠三道锁，缺一不可：
+
+| 锁 | 机制 | 落地 |
+|---|---|---|
+| ① 生成 | yml 唯一 → 生成器产出前后端 4 处生成物 | `tools/gen-entity-meta.mjs` |
+| ② 禁手改 | `*.generated.ts` 禁改，实体差异走旁侧 `*.override.ts` | 既有铁律 |
+| ③ **会失败的对拍** | `node tools/gen-entity-meta.mjs --check`：以 yml 为输入重生成到内存，与磁盘逐字节比对，不一致 `exit 1` | **2026-09-05 新建** |
+
+**为什么第 ③ 道不能省**：①② 只保证「不许手改」，保证不了「yml 改了忘跑生成器」——那种漂移没有任何信号，generated 会一直停在旧版本，且看起来完全正常。**没有第 ③ 道，就只是集中存放，不叫自动对齐。**
+
+**为什么不能用快照断言代替对拍**：`backend/tests/entity-relations-parity.test.ts` 原本写死「4 个实体 / product 17 列」，实体涨到 22 个后整条假红（不是 bug，是快照过期）；而 yml 改了没跑生成器时 generated 没变，快照反而全绿——**该红的绿、不该红的红**。2026-09-05 已改写为业务契约测试（只断言关键配置存在，不断言数量）。两者分工：**对拍管字节一致，契约管「yml 本身没被改坏」**，互补不重叠。
+
+**覆盖的生成物 4 处**：前端 `entityMeta.generated.ts` / `entityRelations.generated.ts`、后端 `entityMeta.generated.ts`、文档站 `actions.generated.js`。**新增产物必须经生成器里的 `emit()` 出口**，否则不会被对拍覆盖——「有哪些生成物」只有那一处清单。
+
+**负向验证（2026-09-05 实测，锁必须证明自己会红）**：改 yml 一个字不跑生成器 → `exit 1`，报出 2 处受影响文件与首个差异行号；手改生成物一个字 → `exit 1`；还原 → `exit 0`。
 
 ---
 
@@ -189,10 +210,12 @@
 | ~~P1~~ ✅ | 客户端 3 页（`apps/customer`）相关 5 维度 | 已落地：`customer-app` 条目即五维结构（2026-09-04） |
 | P1（部分完成，暂缓） | 系统管理 5 页中"角色权限"与"审计日志"对齐 | none 口径已修正（sys-role）、82 action 权威已=entity-meta auditActions；剩余对齐需基于 entity-meta.yml/opsReportService——**并行会话占用中，等提交后再做** |
 | P1（暂缓） | 经营报表 5 类的「选品」与「需要」维度 | 后端 `opsReportService` 并行改动中，基于移动靶写文档违背「现状从代码提取」——等提交后再做 |
+| P1 | 元模型覆盖率：剩余 26 个实体补进 `resources` / `pages` | **2026-09-05 起账**。实测：entity-meta 登记 27 个实体，但 `resources` 段只登记 1 个（supplier）、`pages` 段只登记 1 个（supplier）——**机制全通、覆盖率 1/27**，属「骨架通了、肌肉没长」。**启动条件**：第三道锁（§5.1）已落地且门禁稳定——没有它，补得越多漂得越快。**范围按两条边界切，不可混为一谈（2026-09-05 用户裁决）**：① **配置边界**按「声明 vs 行为」切 → 27 个实体全部登记，**包括单据**；单据只「写操作」走代码，它的字段/列/校验/权限/审计/统计口径仍必须登记，不登记就必然在别处手写第二份，直接违反「呈现层零手写」。实证：27 个守卫里已有单据守卫（`purchase_inbound_confirm`/`refund_add_lines`）、82 个审计动作已含 `purchase_inbound_confirm`、`indicators` 的 `costAmount` 就在统计单据行、后端 `resolveSnapshots.ts`/`auditLogger.ts` 已在消费——**「单据走代码」≠「单据不进配置」**。② **引擎边界**按「单表 vs 事务」切 → 档案类（`globalDict`/`subject`）全走零代码 CRUD；单据类只登记读与列表，写操作走实体专属 service。此边界方法论 `meta-runtime` 篇已写死，**不得放宽**——放宽就是把状态机与跨表对账塞进配置，养出上帝配置。**分批建议**：先补字典类（category/brand/unit/price_type 等，结构最规整、风险最低）拿第二批实证，再推档案类主体 |
 | ~~P2~~ ✅ | 范式 vs 派生表的决策记录 | 已收编：meta-runtime 检索演进表（v29/v30 裁决+四条删除前置）+ §三「v23 决策记录」归档小节（2026-09-04） |
-| P2 | Meta Studio 的「新增实体向导」（关系图 → 集合体类型 → 分层 → 逐维度填空） | 当前 UI 只支持**编辑已登记实体**；新增实体需手写 yml |
-| P2 | users/roles 形态符合档案框架却各自手写（UserManage 605 行 / RolePermissions 512 行）待收框架 | 两判据（有无树/主操作是编辑还是执行）判定可归槽；收框架时同步消 actionMeta 死数据（actions.generated.js，095 删除后无消费方） |
-| P2 | 旧档案模型组退役（30-34 *-model、39-get-module-tables、10-product-model、14-tables） | 07-archive-framework 已是其吸收宿主；旧 *-model 数据文件的 intent/need 与指导思想重复，下轮裁 |
+| ~~P2~~ ✅ 已落地（2026-09-05） | Meta Studio 的「新增实体向导」 | **已交付**：`tools/meta-studio.mjs` 新增 `POST /api/entity`（preview / confirm 两段式）——自写序列化器（flow map 风格，不用 yaml.dump 避免全文件漂移）→ 定位 entities 段末插入 → js-yaml 回读校验 → 落盘后跑生成器，**生成器失败自动回滚**。UI 加四步向导（身份/字段/列/预览）＋**模板版本机制**（改模板能覆盖旧 index.html，先备份 .bak）。**验证**：纯函数 29 项 + UI 渲染 39 项 + 端到端（真写入→生成器跑通→哈希比对回滚）+ 接口冒烟全过。**注意**：8898 上跑的旧实例没有新路由，需重启服务才生效 |
+| ~~P2~~ ✅ 已结案 · 不该收（2026-09-05 核实证伪） | ~~roles 一页收档案框架~~ → **判定：不归档案框架，待办撤销**（按「该独立则独立」结案）。证据：① `RolePermissions.tsx:296-509` 是**左角色列表 + 右权限树**双栏，`ArchiveSlotHost` 只有单表（`ArchiveSlotHost.tsx:877-961`）无分栏；② 保存的是**权限集 JSON**（`ViewPermissions = Partial<Record<ViewCode,'none'/'ro'/'rw'>>`，`shared/types/index.ts:478`）走独立端点 `PUT /staff/roles/:code/permissions`，不是档案字段；③ 按 **code** 寻址（`systemApi.ts:250-257`），宿主硬编码 `rowKey="id"`（`ArchiveSlotHost.tsx:916`）；④ 权限树叶子是编译期固定键集 `ALL_VIEW_CODES`（`types/index.ts:591`）不可增删，而 matrix 语义是「本行自己的可增删子记录数组」（`archiveSlotTypes.ts:132`）；⑤ `roles` 表无 status、无 updated_at、无父子树（`migration.sql:2-13`），与档案 `ArchiveEntityDef`（`archiveSlotTypes.ts:228-291`）五条冲突。**顺带校正台账本行旧口径**：`users` 侧收的是 `cellSpecsWithEditorsToColumns`（**列配置驱动**），与 `ArchiveSlotHost`（**档案槽位驱动**）是两套框架，不能拿来证明 roles 该收档案框架 |
+| ~~P2~~ ✅ 已结案 · 证伪撤销（2026-09-05） | ~~旧档案模型组退役（30/31/32 *-model、39-get-module-tables、10-product-model、14-tables）~~ → **判定：不能删，待办撤销**。原判据「侧栏查无登记 = 死内容」**是错的**：导航不可达 ≠ 无消费方。实证这批数据是**活的**——`文档可视化/index.html:268` 加载 `070-render-scope-panel-demo.js`，其 `:278` 硬编码 `D.getModuleMeta("product-model")` 读取 productNeed/productIntent/pointModel 等，而该函数被 `060-append-archive-layers-block.js:210` 活调用；`010-render-why-beats.js:31` 的 `resolveTable` 又经 `39-get-module-tables.js` 读 `DOC_VIZ.tables`。**删掉会让产品档案页 intent/need/pointModel 三格直接空掉**。**沉淀判据：死内容的判定标准是「有无代码引用」，不是「导航能否到达」**——后者只是入口缺失，属另一类问题 |
+| ~~P2~~ ✅ | 确认层两套消费适配器统一（editorRegistry vs cellSpecAdapter） | **2026-09-05 收口**：`searchKind: picker` 框架能力已补进 `editorRegistry`——confirm 分支经 `WorkbenchFieldCell` 统一门禁，原生支持 picker / 字典(input) / 数字 / bullets / cellSwitch / 门禁 / 非标；14 个只读页不传新 handler 字段，故零回归。**采购报价 `PurchaseQuote` 已从 `cellSpecAdapter` 迁到 `editorRegistry`**（`purchaseQuoteColumns.tsx` 改产 `GeneratedCellSpec[]` + 每列 `CellHandlers`，`PurchaseQuote.tsx` 消费 `cellSpecsWithEditorsToColumns`），行为逐位保真（props 与旧 `CellSpecRenderer` 完全一致）。**残留死代码待删**（用户本轮取消删除操作）：`cellSpec.ts` / `CellSpecRenderer.tsx` / `cellSpecAdapter.tsx` 已无外部消费方，删后即单适配器——属 1 行清理，可单独立项。 |\n| P2 | workbench 视图列仍 `renderMode:'custom'`（内联 render） | **2026-09-05 核实·并非第二套适配器**：Delivery/PaymentReconcile/CostVerify/AllocationView 早已用 `UnifiedTable` + `WorkbenchFieldCell`（可编辑格已统一在 `WorkbenchFieldCell`，与 14 只读页同套）。`renderMode:'custom'` 仅列配置标记（`UnifiedTable.tsx:505/571` 跳过 auto-derive），内联 `render` = 与只读页「认输」复合列同性质。迁 `editorRegistry` 是纯声明式重构、**无行为收益**，按原裁决 `⏳ 长期目标态 / 不排期`。真正收口标志 = `cellSpec*` 三件套死代码删除（见上行待删项） |
 
 ---
 
@@ -207,7 +230,7 @@
 | 级 | 数量 | 说明 |
 |---|---|---|
 | A 已融入可删 | 3 | 内容已被真相源/站点覆盖，直接删 |
-| B 有独有内容待吸收 | 27 | **暂保留在磁盘**，按下表逐篇吸收后删除；雷区段落吸收时剔除 |
+| B 有独有内容待吸收 | 27 | **已清零**（2026-09-04 收官波）：22 篇全部吸收并 `git rm`；`用户项目开发文档/` 磁盘只剩 技术架构/2 篇（D 保留）+ 产品数据形式/2 个 xlsx |
 | C 过时作废直接删 | 2 | 与现行裁决冲突且无可回收内容 |
 | D 保留 | 2 | 仍在使用的操作资料（技术栈/部署手册），非方法论范畴 |
 | 归档 6 | 6 | `AI协作/_归档/` 文件名自带「已废弃/已并入任务书」标记，随首轮删除 |
@@ -223,7 +246,11 @@
 | 溯源映射.md | C | 「宽表承载高频列表」推导随 v30 作废；溯源职能已由真相源 L0/L1 分层+触发条件（hear）承担 |
 | AI协作/_归档/ 6 个文件 | 归档 | 文件名自带「已废弃/已并入任务书」处置标记；「已并入」的宿主（洞察结果文档.md）仍在 |
 
-### 8.3 待吸收清单（B 类 27 篇，吸收后删除）
+### 8.3 待吸收清单（B 类 27 篇 · 已清零，本节仅作历史记账存档）
+
+> **2026-09-05 核实**：本节 22 个文件已从磁盘删除，`用户项目开发文档/` 只剩 D 类保留的 技术架构/2 篇 + 产品数据形式/2 个 xlsx。
+> 此前多条行「已吸收但未标删除线」，导致掌控台把它们当成待办与待拍板（共 2 条误报：产品数据层 🕐、客户管理 ⛔）。
+> **记账纪律**：本节是演进留档，行只会加删除线不会物理删；掌控台已改为**跳过删除线行**，因此「吸收完不划掉」= 让已结束的事继续占待办位。
 
 | 文件 | 独有内容要点 | 建议融入 | 雷区（吸收时剔除/改写） |
 |---|---|---|---|
@@ -237,31 +264,31 @@
 | ~~系统全景~~ ✅ 已吸收已删（2026-09-04 第三波） | 4 引擎（算价/状态机/检索/全称生成）现行落点 | know-cause 新表「四引擎」 | 路由清单不收（menu.config.ts 自身即权威）；业务叙事与指导思想重合已剔 |
 | ~~项目设计哲学~~ ✅ 已吸收已删（2026-09-04 第三波） | 六条根本约束（人/资源/历史三组）、取舍顺序完整六位、AI 理解小白 5 铁则 | why-canon rules（客观前提三条+取舍顺序扩位）+ know-cause rules「读用户的话五铁则」 | 六原则与真相源大量重叠已剔；CASCADE 破例并入 know-metaschema（上轮）与 why-canon |
 | ~~洞察结果文档~~ ✅ 已吸收已删（2026-09-04 第三波） | 三条链不可合并（ProductPicker/UnitPicker/档案维护）、金标准锁定（不重写三家契约/ProductPicker 只许抽渲染一行） | know-cause 新表「实现三条链」+ rules「金标准锁定」 | 三载体表与 visual-canvas 重复已剔；「宽表+宽松检索 ⬜ 待办」段随 v30 作废（**两大雷区之二就此关闭**）；执行状态表为过程记录不收 |
-| 共享组件与公共能力 | C01–C70 全量索引、标识模式、去重键、快速新建接入流程、hooks/utils/engines 清单 | 扩充真相源 assets 段 | C16 已废弃（台账 2026-09-03）；C54 已删；DsDrawer 待核「禁 Drawer」裁决 |
+| ~~共享组件与公共能力~~ ✅ 已吸收已删（2026-09-04 第三波，本行为重复登记的第二条） | C01–C70 全量索引、标识模式、去重键、快速新建接入流程、hooks/utils/engines 清单 | 扩充真相源 assets 段 | C16 已废弃（台账 2026-09-03）；C54 已删；DsDrawer 待核「禁 Drawer」裁决 |
 | ~~权限与职责规范~~ ✅ 已吸收已删（2026-09-04 第二波） | 可见性原则、三段式执行、ro 预览即时算价、算力往前放职责清单 | sys-role rules（**none 口径矛盾已裁决**：按 StaffLayout.tsx 代码实证改「入口仍显示、点击提示、后端拒绝」）+ 新真相源篇 **fe-be-duties（前后端职责）** | 权限码勘误：实数 18（backend/src/types/index.ts:369 ALL_VIEW_CODES），并立「权限码数以实测为准」规则 |
 | ~~实体关系面板体系~~ ✅ 已吸收已删（2026-09-04 第二波） | 写路径三场景（档案即时/表单本地/单据引用）、断点清单、回填必须带标识、未匹配兜底 | know-table 新表「写路径三场景」+ rules 三条 | 落地段（entityRelations.ts 旧架构）弃——已改 re-export 生成物；点位口径挂矩阵页弹窗剖面不进通用篇 |
 | ~~视觉与布局规范~~ ✅ 已吸收已删（2026-09-04 第一波） | 画布模型/行盒硬数值（24px/11px/8px/4px/0，原文 12px 系讹传已按 tokens.css 改）/令牌/稳定性/移动端等比/信息密度三重约束 | 新真相源篇 **visual-canvas（视觉与画布）** | 与 33-canvas-ui.js 重叠部分（1200px 舞台/shellZoom/四层栈）已剔除；「CSS zoom」矛盾按代码改写 |
-| 数据规范 | 表角色分层/解耦三原则/9999 占位/按名称唯一复用四步/组合去重三层判定/两段式前缀粗筛/物理删除与停用 | know-metaschema（缺省值/去重）+ know-table（表角色/解耦） | **「宽表检索」整节与 v30 删宽表直接冲突，整节剔除改范式多路召回口径** |
+| ~~数据规范~~ ✅ 已吸收已删（2026-09-04 第二波） | 表角色分层/解耦三原则/9999 占位/按名称唯一复用四步/组合去重三层判定/两段式前缀粗筛/物理删除与停用 | know-metaschema（缺省值/去重）+ know-table（表角色/解耦） | **「宽表检索」整节与 v30 删宽表直接冲突，整节剔除改范式多路召回口径** |
 | ~~文档编写规范~~ ✅ 已吸收已删（2026-09-04 第二波） | 表结构锚定展开法、架构文档越权自动失效、引用代替复制、显式标注待确认（4 条） | know-precipitate rules | 「标题即 ID/300 行」与真相源现行口径重复；「规则禁写组件名/路径」与现行口径**直接冲突作废**（meta-runtime/eng-discipline 均以路径为证据落点） |
 | ~~元模型运行时~~ ✅ 已吸收已删（2026-09-04 第一波，消悬空欠账） | entity-meta.yml 双端生成、操作守卫 DSL 八类、阶段 A–F、**补齐 v29 范式检索/v30 删宽表/v31 资源引擎+页面装配+Meta Studio 三章** | 新真相源篇 **meta-runtime（元模型运行时）** | 「宽表检索」旧口径未带入；两条文档-代码矛盾按代码改写 |
 | **功能文档/**（11 篇全部 B：真相源只覆盖业务规则层，表结构/接口契约/算法等规格层独有） | | | |
-| 采购报价 | 接口契约全集、金额/税额公式、组合去重+相似度 60% 阈值+reused 可感知、表头级联筛选、翻页位置化 | 订单中心组 + know-metaschema（建档去重口径） | 「SKU 关联四件套」「宽表组合去重」需按 v22+/v30 改写 |
-| 产品管理 | 编辑弹窗区块行为、v23 分类多选主分类口径、表头筛选细节 | 订单中心/基础数据组 | 「数据来自宽表」「宽表 keywords」改范式多路召回 |
-| 产品数据层 | v23 三条裁决+迁移口径（台账 🕐 未实施的有效决策记录）、点位圈组链、单位全局字典行为、写入层按域切分 | 决策记录入「范式 vs 派生表」P2 项 + know-meta | **主体作废**：宽表字段登记表/表结构/检索走宽表全段剔除 |
-| 单据与状态机 | documents/lines 表结构+8 档状态机+单据编号格式（真相源确认无此内容） | why-flow（单怎么过手）或订单中心全局规则篇 | 无重大 |
-| 发货管理 | delivery_records 表、pending/shipped/signed 子状态机、签收事务、运费按比例分摊 | why-flow/配货履约配套规格 | 头部旧「抽屉递进」表述（现行禁 Drawer） |
-| 供应商管理 | API 契约、按名称唯一复用/合并细则（P2002 竞态、面价渠道默认）、默认联系人后端规范化、contact_method 字典表 | know-metaschema（唯一复用口径）+基础数据组 | 无重大 |
-| 客户管理 | customers/contact/invoice/addresses 表结构+接口契约（客户 🕐 补登记时用） | 基础数据组 | **内部新旧矛盾**：前半新裁决（集合编辑弹窗），后半旧 UI（下钻+折扣率列）须弃 |
-| 配货与成本核算推演方案 | inventory/ledger/backorders/inbound/allocation/cost/payable 7 张表字段、加权平均进价算法、超额归属算法、两条进货流程边界 | 对应 L1 各篇补规格层 | 头部「宽表承载」旧提法 |
-| 收款对账 | payment_records 表、deposit/final/balance 三型、核销推进 payment_settled 条件、汇总口径 | 收付款往来配套规格 | 无重大 |
-| 售后管理 | refund_lines/archived_refunds/reimbursement 表、强继承/超退双校验/定档联动规则 | 售后篇配套规格 | v16.3 报销前端已删是现状记录非规则 |
-| 系统管理 | roles/users/authorization_codes/access_requests/audit_logs/field_change_logs 表结构、82 action 审计清单、超管硬编码、权限并集规则 | sys-* 各篇补规格层 | 18 个权限码 vs 他文 17 个须对齐 |
+| ~~采购报价~~ ✅ 已吸收已删（2026-09-04 收官波） | 接口契约全集、金额/税额公式、组合去重+相似度 60% 阈值+reused 可感知、表头级联筛选、翻页位置化 | 订单中心组 + know-metaschema（建档去重口径） | 「SKU 关联四件套」「宽表组合去重」需按 v22+/v30 改写 |
+| ~~产品管理~~ ✅ 已吸收已删（2026-09-04 收官波） | 编辑弹窗区块行为、v23 分类多选主分类口径、表头筛选细节 | 订单中心/基础数据组 | 「数据来自宽表」「宽表 keywords」改范式多路召回 |
+| ~~产品数据层~~ ✅ 已吸收已删（2026-09-04 收官波） | v23 三条裁决+迁移口径（**v23 本身台账 🕐 未实施，决策记录已归 §三，与本行文档退役无关**）、点位圈组链、单位全局字典行为、写入层按域切分 | 决策记录入「范式 vs 派生表」P2 项 + know-meta | **主体作废**：宽表字段登记表/表结构/检索走宽表全段剔除 |
+| ~~单据与状态机~~ ✅ 已吸收已删（2026-09-04 收官波） | documents/lines 表结构+8 档状态机+单据编号格式（真相源确认无此内容） | why-flow（单怎么过手）或订单中心全局规则篇 | 无重大 |
+| ~~发货管理~~ ✅ 已吸收已删（2026-09-04 收官波） | delivery_records 表、pending/shipped/signed 子状态机、签收事务、运费按比例分摊 | why-flow/配货履约配套规格 | 头部旧「抽屉递进」表述（现行禁 Drawer） |
+| ~~供应商管理~~ ✅ 已吸收已删（2026-09-04 收官波） | API 契约、按名称唯一复用/合并细则（P2002 竞态、面价渠道默认）、默认联系人后端规范化、contact_method 字典表 | know-metaschema（唯一复用口径）+基础数据组 | 无重大 |
+| ~~客户管理~~ ✅ 已吸收已删（2026-09-04 收官波） | customers/contact/invoice/addresses 表结构+接口契约（客户档案已于 2026-09-05 核实为 ✅ 已落地） | 基础数据组 | **内部新旧矛盾已裁决**：前半新裁决（集合编辑弹窗）已落地，后半旧 UI（下钻+折扣率列）随文档一并作废 |
+| ~~配货与成本核算推演方案~~ ✅ 已吸收已删（2026-09-04 收官波） | inventory/ledger/backorders/inbound/allocation/cost/payable 7 张表字段、加权平均进价算法、超额归属算法、两条进货流程边界 | 对应 L1 各篇补规格层 | 头部「宽表承载」旧提法 |
+| ~~收款对账~~ ✅ 已吸收已删（2026-09-04 收官波） | payment_records 表、deposit/final/balance 三型、核销推进 payment_settled 条件、汇总口径 | 收付款往来配套规格 | 无重大 |
+| ~~售后管理~~ ✅ 已吸收已删（2026-09-04 收官波） | refund_lines/archived_refunds/reimbursement 表、强继承/超退双校验/定档联动规则 | 售后篇配套规格 | v16.3 报销前端已删是现状记录非规则 |
+| ~~系统管理~~ ✅ 已吸收已删（2026-09-04 收官波） | roles/users/authorization_codes/access_requests/audit_logs/field_change_logs 表结构、82 action 审计清单、超管硬编码、权限并集规则 | sys-* 各篇补规格层 | 18 个权限码 vs 他文 17 个须对齐 |
 | **根目录/** | | | |
 | ~~顶层设计规范~~ ✅ 已吸收已删（2026-09-04 第一波） | 画布固定/骨架行盒/令牌类别/三载体派发（与视觉与布局规范合并吸收） | 新真相源篇 **visual-canvas（视觉与画布）** | 交互部分已被 ui-layer-model/cell-gate-path 覆盖 |
-| 术语表 | 全库术语唯一定义处（有效部分） | 有效术语并入各对应篇+站点术语页 | **SKU=规格×品牌×单位为旧口径**（现行 spec×unit、品牌挂 product）；「宽表 product_sku_search」条目作废 |
-| 系统全景 | 真实路由清单、8 视图结构、4 引擎（pricing/state-machine/search/full-name）、v16.5 单位对齐发现 | 「对照本项目」篇或订单中心组 | 业务叙事与本章定位/总纲领重合部分不重复搬 |
-| 项目设计哲学 | 六条根本约束（不懂代码/Token 贵/笔记本部署/Excel 用户/历史法律事实/数据量级）——项目级决策前提 | 总纲领篇增补「项目约束」节或独立 L1 篇 | 无重大 |
-| AI协作/洞察结果文档 | 三条链不可合并、金标准（不重写 ProductPicker/FloatPanel 契约等）、三载体表 | 与 AGENTS 硬纪律/assets 比对去重后并入相应篇 | **「宽表+宽松检索架构 ⬜ 待办」段与 v30 直接冲突必须作废**；「C16 定调」段过时 |
+| ~~术语表~~ ✅ 已吸收已删（2026-09-04 第三波） | 全库术语唯一定义处（有效部分） | 有效术语并入各对应篇+站点术语页 | **SKU=规格×品牌×单位为旧口径**（现行 spec×unit、品牌挂 product）；「宽表 product_sku_search」条目作废 |
+| ~~系统全景~~ ✅ 已吸收已删（2026-09-04 第三波） | 真实路由清单、8 视图结构、4 引擎（pricing/state-machine/search/full-name）、v16.5 单位对齐发现 | 「对照本项目」篇或订单中心组 | 业务叙事与本章定位/总纲领重合部分不重复搬 |
+| ~~项目设计哲学~~ ✅ 已吸收已删（2026-09-04 第三波） | 六条根本约束（不懂代码/Token 贵/笔记本部署/Excel 用户/历史法律事实/数据量级）——项目级决策前提 | 总纲领篇增补「项目约束」节或独立 L1 篇 | 无重大 |
+| ~~AI协作/洞察结果文档~~ ✅ 已吸收已删（2026-09-04 第三波） | 三条链不可合并、金标准（不重写 ProductPicker/FloatPanel 契约等）、三载体表 | 与 AGENTS 硬纪律/assets 比对去重后并入相应篇 | **「宽表+宽松检索架构 ⬜ 待办」段与 v30 直接冲突必须作废**；「C16 定调」段过时 |
 
 ### 8.4 两大雷区（吸收时最容易把旧口径带回真相源）
 
@@ -277,19 +304,43 @@
 | **文档体系三层解耦·侧栏全生成（2026-09-04，架构级）** | **起因**：用户质疑「文档一膨胀就改结构、调导航、全部重做一遍」的循环已发生三次（手写 js 数组 → yml 单文件 → 分片目录），且已影响项目开发。**根因**：身份/存储/呈现三层绑死——内容存哪决定怎么读，怎么读决定导航怎么排，导航决定 UI，所以每次换存储形态都传导成全站重做；次级根因是文档只有加法（只增不减、只加不合）。**架构**：L1 身份层（id / 标题 / 副标题 / 触发条件，永不改变）· L2 存储层（存 1 个还是 100 个文件，随时可换）· L3 呈现层（侧栏 / 加载清单 / 技能索引 / 执行卡，全部生成）。核心不变量：**L2 怎么变，L1 与 L3 一个字都不用改**——分片因此不再需要「依据什么规则」，退化为随时可切且无人察觉的实现细节，循环从根上消失。① **侧栏从手写改为生成**：`05-nav-groups.js`（259 行 / 68 登记项）数组段由 `gen-docs.mjs` 第 ⑥ 段产出，手写注释头原样保留（演进不改历史）；排版由组的 `style: compact 或 expanded` 声明驱动（呈现参数留在声明层，不污染内容层）。② **加一篇从三步变两步**：items/ 建文件 → `_index.yml` 的 groups 里加一行，侧栏不再需要任何手写登记。确认 `order`（NN 序号与加载顺序）与 `groups`（侧栏阅读顺序）是两套顺序、不可合并，故 order 设为可选，新篇不写则自动追加到末尾。③ **抓出 16 处既成漂移**：把侧栏手写的 title/subtitle 与真相源 `nav.title` / `nav.subtitle` 逐条比对，42 篇中 **16 处已经不一致**（例：know-meta 侧栏写「九组视角填登记表→五面自动产出」，真相源是「填一份登记表→五个面自动产出」）——重复声明必然漂移的实锤，此前无人察觉。处置：**一律以真相源为准**；其中 2 处（ui-layer-model 侧栏称「总纲 · 五层模型」、customer-app 侧栏称「客户自助端 · 三页」）确属组内需要不同叫法，用声明层 override 保留——呈现差异不等于内容漂移。④ **五类守卫**逐个造错验证，均报错退出并给补法：未登记进任何组 / 组里登记查无出处的条目 / standalone 出现真相源已有的篇（第二套声明）/ absorbed 缺 successor / standalone 的 group 不存在。⑤ **验收**：侧栏数组段与改造前逐字节相同（上述 16 处为有意变更）；gen 42 篇、AGENTS.md、index.html、06-modules.js 四处零变更；`check-docs` 体检通过；浏览器实测 9 组 59 条、展开收起状态与声明一致（界面基座/客户端/档案管理 三个 defaultOpen=false 的组确为收起）、点击跳转正常。**四条不变量**：任何内容只声明一次 · 呈现层零手写 · 存储形态可换且换时不改内容 · 历史只归档不删除 |
 
 | **产品管理列表配置驱动 + 确认层两 bug 修复（2026-09-04 续）** | **代码任务**。命中「分层却允许手写＝框架开后门」信号（用户顶层诉求：每表一份配置、各层按参数消费、框架禁止页面手写）。① **配置驱动机制**：`gen-entity-meta.mjs` ③段加法产出 `entityCellSpecs`（每列静态三维 display×editEntry×valueState + gate 描述符 + hidden + disabledReason），不动其余 19 页旧输出（零回归）。`data-source/entity-meta.yml` 的 `product` 段 9 列登记 `cellSpec`（分类/图/产品名/品牌/系列规格/备注/状态/更新时间 + `__skuPriceSlot__`）。② **差异组件注册表** `editorRegistry.tsx`：按 `(display, editEntry, searchKind)` 映射到既有差异组件（PickerNameCell/PickerNumCell/ArchiveFieldCell/ImageThumbCell/StatusTagCell/DateTimeCell/NameLinkCell），页面零手写列 render。③ **产品管理列表迁移**：`ProductManage.tsx` 删 `mergeColumns(deriveTableColumns, 手写render覆盖)`，改 `cellSpecsWithEditorsToColumns(entityCellSpecs['product'], handlers)`，列纯消费配置、行为保真（含「改全局」/合并行隐藏/表头级联筛），单位/售价/进价由 `createSkuPriceColumns` 挂 `slot:'skuPrice'`。④ **确认层定位 bug 修**：`FloatPanel` 加受控 `repositionKey`，`PickerEditGate` 换锚点 / `confirmAndGo→reopen` 复用同面板时自增重算定位。⑤ **确认层层级 bug 修**：`canvasStage.resolveOverlayLayer` 把 `.ant-popover` 视同 modal 层，列表价格矩阵确认层落入 modal 浮层（z≈1050）高于承载 Popover（z≈1030）。⑥ **编辑弹窗矩阵已统一**：`UnitSection`/`UnitPriceExpandPanel` 走 `PickerNameCell/PickerNumCell`→`PickerEditGate`，`ProductEditDialog` 走 `ArchiveFieldCell`→`PickerNameCell`，grep 实证无第二套确认层（`usePickerEditGate` 单钩子）。验收：`npm run build` 通过、`npx tsc --noEmit` 0 错误、`node tools/check-docs.mjs` 无阻断。下轮：其余 19 页 custom 推广；矩阵页 `52-ui-layer-tables.js` 产品参数回登记来源为 `entity-meta.yml` + `editorRegistry` |
+| **库存台账配置驱动迁移（2026-09-04）** | **代码任务**。命中「分层却允许手写＝框架开后门」信号，继续确认层统一范式推广（用户选定库存台账）。① **entity-meta 登记**：`inventory` 4 列登记 `cellSpec: {display: text, editEntry: none}`（单位/库存数量/加权平均进价/最近入库）；3 处真·复合列（操作按钮组/产品图+名/仓库名+主标签）改 `renderMode: text` 脱离 custom 自校验、保留为页面级 custom；新增 `inventory_ledger` 实体 6 列（类型/数量/单价/业务单号/结存/时间）承载流水弹窗，均登记 cellSpec（类型走 enum-tag+statusMap）。② **消费重写**：`InventoryManage.tsx` 主表删 `mergeColumns(deriveTableColumns, 7手写render覆盖)`，改 `cellSpecsWithEditorsToColumns(entityCellSpecs['inventory'], invHandlers, invLayoutOf)` + 复合列按 key 装配保序；流水弹窗删 6 手写 render，改消费 `entityCellSpecs['inventory_ledger']`。③ **共享基建扩展**（惠及全站）：`editorRegistry` 的 `CellHandlers` 加 `mono`/`bold`/`fontSize` 回调并转发 `DisplayCell`（此前 `color` 未转发系死代码，一并修复）；`DisplayCell` 支持 `bold`/`fontSize`。④ **行为保真**：色阈（库存=0 警告色/进价折扣色/日期次级）/等宽（金额数量日期）/加粗（库存数量 600）/字号（日期 xs）/状态标签（入库绿/出库黄/盘点默认）全部对应原渲染；13 处 custom 消除 10 处，3 处复合列按 custom=认输 保留。验收：`tsc -b` 0 错误、`vite build` 通过、`oxlint` 无新增（既有告警在 RefundAfterSale/ProductPicker）。生成器自校验零新增告警（仅 `product.workbench` 列历史告警，属 cellSpecAdapter 另一套机制） |
+| **待入库配置驱动迁移（2026-09-05）** | **代码任务**。继续确认层统一范式推广（用户选定只读展示页）。① **entity-meta 登记**：新增 `inbound_task`（单号/供应商/数量/金额/状态/生成时间）+ `inbound_line`（产品/单位/数量/进价/小计）两实体，列均登记 `cellSpec`（状态走 enum-tag+statusMap，INBOUND_STATUS_MAP）。② **消费重写**：`InboundManage.tsx` 主表删 8 处手写 render，改 `cellSpecsWithEditorsToColumns(entityCellSpecs['inbound_task'], inboundTaskHandlers, inboundTaskLayoutOf)` + 复合列按 key 装配保序；明细弹窗删 5 处手写 render，改消费 `entityCellSpecs['inbound_line']`；复合列 op/目标仓库（仓库名+主仓标签）保留页面级 custom。③ **行为保真**：等宽（单号/数量/金额/日期 mono）/折扣色（进价 ¥ 红 `status-discount`）/次级+小字号（生成时间 xs）/状态标签（待入库黄·已入库绿·已取消默认）全部对应原渲染；13 处 custom 消除 11 处，2 处复合列按 custom=认输 保留。验收：`tsc -b` 0 错误、`vite build` 通过（`build:check` 全过）。下轮：欠库/采购入库等只读展示页同模式推广；两套适配器统一待 picker cellSpec 框架能力就位后单独立项 |
+| **欠库台账配置驱动迁移（2026-09-05）** | **代码任务**。继续确认层统一范式推广。① **entity-meta 登记**：新增 `backorder` 实体 6 列（产品/单位/欠库数量/备注/状态/挂欠时间），状态走 enum-tag+statusMap（BACKORDER_STATUS_MAP：待补黄·已补绿·已取消默认）。② **消费重写**：`BackorderManage.tsx` 主表删 8 处手写 render，改 `cellSpecsWithEditorsToColumns(entityCellSpecs['backorder'], backorderHandlers, backorderLayoutOf)`；复合列 op（取消按钮）/所在仓库（仓库名+主仓标签）保留页面级 custom。③ **行为保真**：加粗（产品/欠库数量 600）+ 警告色（欠库数量 `status-warning`）+ 备注按有无值取 secondary/quaternary + 状态标签 + 挂欠时间（次级+等宽+小字号）全部对应原渲染；8 处 custom 消除 6 处，2 处复合列保留。`build:check` 全过 |
+| **采购入库历史表配置驱动迁移（2026-09-05）** | **代码任务**。继续确认层统一范式推广。① **entity-meta 登记**：新增 `purchase_inbound` 实体 7 列（入库单号/供应商/仓库/数量/金额/状态/确认时间），状态走 enum-tag+statusMap（已入库 success）。② **消费重写**：`PurchaseInbound.tsx` 历史表删 7 处手写 render，改 `cellSpecsWithEditorsToColumns(entityCellSpecs['purchase_inbound'], purchaseInboundHandlers, purchaseInboundLayoutOf)`；草稿表 `draftColumns` 已用现代 picker/number/static 渲染模式，不在范围、不动。③ **行为保真**：等宽（单号/数量/金额 ¥toFixed(2)）+ 状态标签（已入库绿）+ 确认时间（次级+等宽+小字号）全部对应原渲染；删无效 `DsTag` import（`noUnusedLocals`）。7 处 custom 全部消除。`build:check` 全过 |
+| **单据列表配置驱动迁移（2026-09-05）** | **代码任务**。继续确认层统一范式推广。① **entity-meta 登记**：新增 `staff_document` 实体 5 列（单据号/客户信息/本环节状态/金额/更新时间），本环节状态走 enum-tag+statusMap（合并 STAGE_TAG_COLOR/STAGE_STATUS_LABELS）。② **消费重写**：`DocumentList.tsx` 主表删 5 处手写 render；复合列 单据标题（链接跳转 workbench）/ 单据状态（StatusBadge）保留页面级 custom。③ **行为保真**：等宽加粗（单据号）/ 客户信息条件色（空灰）/ 金额 `¥` mono / 更新时间（次级+等宽+小字号）全部对应原渲染；删无效 `DsTag` import。`build:check` 全过 |
+| **审计日志配置驱动迁移（2026-09-05）** | **代码任务**。① **entity-meta 登记**：新增 `audit_log` 实体 5 列（操作人/资源类型/资源ID/IP/操作时间）。② **消费重写**：`AuditLogs.tsx` 删 5 处手写 render；操作类型（按 action 子串动态着色 DsTag）保留页面级 custom。③ **行为保真**：操作人（userName‖userId‖系统）/ 资源ID·IP·时间（条件色+等宽+小字号）全部对应原渲染。`build:check` 全过 |
+| **授权码配置驱动迁移（2026-09-05）** | **代码任务**。① **entity-meta 登记**：新增 `auth_code` 实体 4 列（授权码/绑定手机/创建/过期时间）。② **消费重写**：`AuthCodes.tsx` 删 4 处手写 render；状态列（前端计算 expired 动态着色）保留页面级 custom。③ **行为保真**：授权码（等宽加粗）/ 绑定手机条件色 / 时间（次级+等宽+小字号）对应原渲染。DblTag 仍用（状态列）。`build:check` 全过 |
+| **访问申请配置驱动迁移（2026-09-05）** | **代码任务**。① **entity-meta 登记**：新增 `access_request` 实体 6 列（登录账号/状态/申请时间/审核人/审核时间/拒绝原因），状态走 enum-tag+statusMap（合并 REQUEST_STATUS_COLOR/LABELS）。② **消费重写**：`AccessRequests.tsx` 删 6 处手写 render；授权码列（点击复制按钮）保留页面级 custom。③ **行为保真**：账号（等宽加粗）/ 审核人·时间条件色 / 拒绝原因（红·灰）对应原渲染；删无效 `DsTag` import。`build:check` 全过 |
+| **员工账号配置驱动迁移（2026-09-05）** | **代码任务**。① **entity-meta 登记**：新增 `admin_user` 实体 6 列（工号/用户名/真实姓名/手机号/状态/创建时间），状态走 enum-tag+statusMap（合并 USER_STATUS_COLOR/LABELS）。② **消费重写**：`AdminUsers.tsx` 删 6 处手写 render；角色列（多标签 DsTag）保留页面级 custom。③ **行为保真**：工号（次级+等宽）/ 用户名加粗 / 手机号条件色 / 状态标签 / 创建时间（次级+等宽+小字号）对应原渲染。`build:check` 全过 |
+| **供应商应付配置驱动迁移（2026-09-05）** | **代码任务**。① **entity-meta 登记**：新增 `supplier_payable` 实体 6 列（应付单号/供应商/业务单号/金额/状态/生成时间），状态走 enum-tag+statusMap（复用 STATUS_LABELS/STATUS_COLORS）。② **消费重写**：`SupplierPayableManage.tsx` 删 6 处手写 render；复合列 op（结算按钮）/ bizTypeLabel（动态标签）保留页面级 custom。③ **行为保真**：单号（等宽）/ 业务单号（次级+等宽+小字号）/ 金额（`¥` 红+加粗+等宽）/ 状态标签 / 生成时间（次级+等宽+小字号）对应原渲染。`build:check` 全过 |
+| **经营报表配置驱动迁移（2026-09-05）** | **代码任务**。① **entity-meta 登记**：新增 7 个 `report_*` 实体（range/margin/salesperson/purchase/ar/turnover/refund）。② **消费重写**：`OpsReports.tsx` 7 张表货币/文本列全部改 `cellSpecsWithEditorsToColumns(entityCellSpecs['report_*'], …, reportLayoutOf)`；仅 `idleDays`（条件色+滞销文案）、`restock`（条件标签）保留页面级 custom。③ **行为保真**：各表金额 `¥` toFixed(2)（mono）、毛利率 `x.x%`、产品/客户/单号文本全部对应原渲染。**员工端只读展示页推广至此收口**——workbench 四视图（Delivery/CostVerify/PaymentReconcile/AllocationView）走 CellSpec 另一套机制，属适配器立项、不在本推广范围。`build:check` 全过 |
+| **掌控台待办全量核实·清误报（2026-09-05）** | **核实任务（用户原话：中控台的所有待办核实是否有必要，该清的清）**。逐条对代码取证，9 条待办的裁决：**清 3 条**（客户档案/库房档案＝代码已落地、台账却误标为未完成；产品数据层＝台账 §8.3 已退役却未划删除线导致的解析误报；客户管理「内部新旧矛盾」＝同一误报源，且矛盾的前半已落地、后半随文档作废）。**收窄 2 条**（users/roles → 只剩 roles 一页，users 侧 admin_user 已登记并走 cellSpecs；actionMeta 死数据 → 只有文档站那份是死的，前端 resolveGuard 在用）。**保留 6 条**（Meta Studio 新增实体向导、旧档案模型组退役、两套适配器统一 + 两条 P1 文档对齐）。**v23 两条经用户拍板转 ⏳ 长期目标态**：方向有效、当前不阻塞业务、不排期，已写入启动触发条件（跨分类同名导致检索歧义 / 需要改名跨分类全局生效），①③ 不可只做一条。**生成器修 4 处**：① 删除线行不再解析为待办（`parseCoverage` 加 `~~` 跳过）；② 优先级列带后缀不再被吞（`^P[012]$` → `^(P[012])`，此前 P1（暂缓）两条从不显示）；③ 新增 ⏳ 长期目标态档（可见但不进开发管道、不占完成度分母）；④ **完成度分母补上待补清单**——§七 的 P1/P2 此前从不计入，v23 转 ⏳ 后一度算出 100%，首屏却还挂着 6 条待开发，属自欺。另加 HISTORY_HEADS 排除历史记录区（§六 / 8.4 表格实为会话记录，与 §六 重复）。台账回写：§2.1 两条改已落地、§8.3 补 17 行删除线、§8.1 B 类改已清零、§三 v23 两条改 ⏳ 并写触发条件 |
+| **开发规划 spec→任务拆解 + 管道落账（2026-09-05）** | **规划任务（用户原话：中控台帮我从 spec 到任务拆解做完整规划）**。产出 `开发规划.md`（项目根，spec+任务表的唯一来源）。管道 3 项逐条代码核实：两条 P1 的卡点实为「已干完未提交」（46 个文件在工作区，`opsReportService` 已不在改动列＝不再移动）；P2 向导**后端已实现**（工作区 `meta-studio.mjs` +271 行，POST /api/entity 含 preview/confirm/.bak/回滚），只缺 `MetaStudio/index.html` 界面入口，台账「没有写入口」说法过时；cellSpec 三件套核实零消费方可删。**掌控台新增「开发规划」区块**（`gen-boss-view.mjs` 加 `parsePlan` 读规划文件渲染 HTML/MD，呈现层不手写第二份）。**提交落账 5 批**（先跑 `verify:static` 6/6 全绿才入库）：配置驱动迁移收口 / backorder 快照迁移 / 架构蓝图 v2+G1 门禁体系（verify.mjs+gen-routes.mjs+冒烟+tsconfig 全量 strict——台账此前未记的一批工作）/ Meta Studio 向导后端 / 掌控台+规划+台账。未推送（推送时机由用户定）。**Task 3（Meta Studio 向导）同日完成**：后端+界面由凌晨并行会话实现（工作区 +628 行服务端 +316 行界面），本会话补端到端验证并修两处缺陷（① 落盘失败报错三件套全空→补 exit 码+stderr；② 预检未查 vocabulary.yml 词表，非法 layer 落盘才炸→preview 即拒并列合法值）；验证路径：非法实体预览拒/合法实体确认落盘+生成器全通/失败自动回滚（实测有效）。剩余 Task 1/2/4 见 开发规划.md，卡点已解除可并行 |
+| **Meta Studio 新增实体向导（2026-09-05）** | **代码任务**。起因：28 个实体全靠手写 yml，最近两轮手加 6 个，属重复劳动（三次原则）。① **写入策略是本次最关键决策**：`entity-meta.yml` 的写回模型是「整文件编辑、整文件写回」，用 `yaml.dump` 重写会丢注释、改缩进、把 flow map 冲成 block 风格 → **自写序列化器**只输出片段，定位 entities 段末插入。② **三道闸门**：序列化后 js-yaml 全文回读比对（label/table/layer/字段数/列数不符即拒绝落盘）→ 落盘前备份 .bak → 跑 `gen-entity-meta.mjs`，**失败即回滚**。③ **段末插入的坑**：entities 段末尾跟着下一段的说明注释，必须从段尾倒着跳过空行与注释，落在最后一个真实内容行之后。④ **模板更新坑**：`ensureUI()` 原本「文件存在就不写」，改了模板永远不生效 → 加 `UI_VERSION`，版本不同则备份后覆盖。⑤ **可测性**：加主模块守卫（`import` 时不启服务）后纯函数可单测，不必起服务、不必动磁盘 yml。⑥ 验证：29 项纯函数 + 39 项 UI 渲染 + 端到端（真写入→生成物含新实体→哈希比对回滚成功）+ 接口冒烟（预览正确 / 重名被拒）全过。顺带把配置台配色统一到设计规范（`#2563EB` 系） |
+| **两项 P2 经核实为「非真实需要」· 撤销（2026-09-05）** | **核实任务**（延续上一轮「该清的清」）。① **roles 收档案框架 → 不该收**：双栏（列表＋权限树）、写权限集 JSON、按 code 寻址、表无 status —— 五条与 `ArchiveEntityDef` 冲突，硬收等于重写一个正常工作的页面。② **旧档案模型组退役 → 证伪，不能删**：原判据「侧栏查无登记＝死内容」**是错的**；实证 `070-render-scope-panel-demo.js:278` 硬编码 `D.getModuleMeta("product-model")` 且在 `index.html:268` 加载、被 `060-append-archive-layers-block.js:210` 活调用，删了产品档案页三格会空。**沉淀两条判据进真相源**：`know-layout` 加「死内容看有没有代码引用，不看导航能不能点到」；`know-table` 修订「两判据定框架边界」（含准确读法：编译期固定坐标轴不算树、提交配置图不算编辑档案）+「该独立则独立」补 roles 第四例 |
+| **元模型第三道锁·平台化边界裁决（2026-09-05）** | **双任务（先裁决后代码）**。用户原话问「元配置按表还是按集合、前后端各消费几层、能否做成低代码平台」。① **回答并纠正两处**：配置粒度是三层不是两层（字段＝原子 / 实体表＝声明单元 / 集合＝组装方式——实证：`product` 同一张表挂 `scenes:[workbench]` 与 `scenes:[archive]` 两套列，表一份、摆法多种）；前端消费实测 5 层（数据维度 / 界面列 / 单元格编辑器三维 / 操作守卫 DSL / 页面装配 slots），后端消费 5 类（资源引擎 / 权限叶子 / 可写字段白名单 / 审计目录 / 检索与统计口径）。**元数据驱动 ≠ 低代码平台**：能配置化的是「结构」（变化轴有限可枚举），不能配置化的是「行为」（事务 / 状态机 / 跨表对账 / 金额算法），后者必须留在代码里——硬塞进配置就是返工循环的入口。准确画像＝**元数据驱动的档案层 + 代码驱动的单据层**，与 Salesforce/Odoo 的「配置 + 受控代码扩展点」同构。② **纠正 AI 上一轮「单据类只走档案类」的答案**：那是**引擎边界**，不是**配置边界**，两条线不可混为一谈（详见 §七 P1 覆盖率行的两条边界裁决）。③ **代码落地·第三道锁**：`tools/gen-entity-meta.mjs` 加 `--check` 对拍模式——`emit()` 统一出口收集 4 处生成物，重生成到内存与磁盘逐字节比对，不一致 `exit 1`，报首个差异行号 + 上下文 3 行（长行截 160 字符防刷屏）；**所有生成物必须经 `emit()` 出口**，新增产物不可能漏掉对拍覆盖。新建 `tools/verify.mjs` 门禁串联器：S0 对拍 → S1-S3 前端类型/lint/dupe → S4-S5 后端测试/类型 → S6 冒烟，`--skip-smoke` 跳过、`--only=Sx` 指定阶段、**跑完全部阶段再汇总**（一次看全红项，比修一个跑一次快），落 `verify-report.json`（已 gitignore）。**顺带修好一个悬空欠账**：根 `package.json` 早在提交 `3b14ff9` 就写了 `verify` / `verify:static` / `smoke` / `routes` 四条脚本，但 `tools/verify.mjs` **一直不存在**——悬空了整个项目周期，正是「门禁写在配置里＝没有门禁」的实证，故实现去对齐已有 `--skip-smoke` 约定而非自创参数。④ **修假红测试**：`backend/tests/entity-relations-parity.test.ts` 原本写死「4 实体 / product 17 列」，实体涨到 22 个后整条假红；改写为业务契约测试（断言 sku 组 / skuPrice 槽 / category 字典 / 四类关系**存在**，不断言**数量**），后端测试由 1 红恢复为 **65 pass / 0 fail**。⑤ **负向验证**：注入两处破坏（改 yml 不跑生成器 / 手改生成物）均 `exit 1` 并精确定位到文件与首个差异行，还原后 `exit 0`。⑥ **回归防线**：改造后正常（无 `--check`）模式重跑，4 处生成物与改造前**逐字相同**——既有「改完跑 `node tools/gen-entity-meta.mjs`」的口径全部继续有效。`npm run verify:static` 6/6 全绿，S1 前端全量类型检查 38s / S5 后端 25s |
 
 ## 九、自检清单（任何改动后跑）
 
 ```bash
+# 0. 统一门禁（推荐：一条命令串起下面 1–3，非零退出码即不许交付）
+npm run verify              # 完整门禁：含浏览器冒烟（需 8080 / 3000 在线）
+npm run verify:static       # 静态门禁：服务不在线时跑这个
+npm run verify -- --only=S0 # 只跑元模型对拍（改了 yml 后最快的一道）
+# 判定依据是退出码，不是控制台文字；verify-report.json 是运行产物，已 gitignore。
+
 # 1. 文档体检
 node tools/check-docs.mjs
 
 # 2. 后端类型 + 测试
-cd backend && npx tsc --noEmit
-npx tsx --test tests/*.test.ts       # 62 pass / 0 fail
+cd backend && npm run lint
+npm test                             # 65 pass / 0 fail
 
 # 3. 前端类型 + 构建
-cd frontend && npx tsc -b && npx vite build
+cd frontend && npm run typecheck && npm run build
+# 用 npm run typecheck（已关增量），不要用 npx tsc -b：
+# tsc -b 走增量缓存，结果不可复现——同一命令连跑曾在 0/2/4/5/20 个错之间跳变，既假绿也假错。
 
 # 4. 资源引擎（仅资源引擎改动后）
 npx tsx scripts/verify-resource-engine.ts   # 11 pass / 0 fail
