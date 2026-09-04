@@ -142,7 +142,7 @@ for (const item of items) {
   const code =
     `/**\n` +
     ` * whyBiz["${navId}"] — 由 tools/gen-docs.mjs 生成，禁止手改\n` +
-    ` * 真相源：data-source/methodology.yml → items[${item.id}]\n` +
+    ` * 真相源：data-source/methodology/items/${item.navId}.yml\n` +
     ` * 分层：${item.layer}（${layerTitle(item.layer)}）\n` +
     ` */\n` +
     `DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};\n` +
@@ -188,7 +188,7 @@ function deriveCard(item) {
 }
 
 const lines = [];
-lines.push('## 方法论指令（由 tools/gen-docs.mjs 生成，禁止手改 · 真相源 文档可视化/data-source/methodology.yml）');
+lines.push('## 方法论指令（由 tools/gen-docs.mjs 生成，禁止手改 · 真相源 文档可视化/data-source/methodology/）');
 lines.push('');
 for (const item of items) {
   const card = deriveCard(item);

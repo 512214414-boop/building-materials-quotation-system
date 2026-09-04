@@ -1,6 +1,6 @@
 /**
  * whyBiz["why-habit"] — 由 tools/gen-docs.mjs 生成，禁止手改
- * 真相源：data-source/methodology.yml → items[why-habit]
+ * 真相源：data-source/methodology/items/why-habit.yml
  * 分层：L1（项目规范）
  */
 DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};

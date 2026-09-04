@@ -1,6 +1,6 @@
 /**
  * whyBiz["order-backorder"] — 由 tools/gen-docs.mjs 生成，禁止手改
- * 真相源：data-source/methodology.yml → items[backorder-ledger]
+ * 真相源：data-source/methodology/items/order-backorder.yml
  * 分层：L1（项目规范）
  */
 DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};

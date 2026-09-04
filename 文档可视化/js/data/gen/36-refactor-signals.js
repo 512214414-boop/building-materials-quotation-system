@@ -1,6 +1,6 @@
 /**
  * whyBiz["refactor-signals"] — 由 tools/gen-docs.mjs 生成，禁止手改
- * 真相源：data-source/methodology.yml → items[refactor-signals]
+ * 真相源：data-source/methodology/items/refactor-signals.yml
  * 分层：L0（通用方法论）
  */
 DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};

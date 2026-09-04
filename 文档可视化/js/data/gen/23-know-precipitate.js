@@ -1,6 +1,6 @@
 /**
  * whyBiz["know-precipitate"] — 由 tools/gen-docs.mjs 生成，禁止手改
- * 真相源：data-source/methodology.yml → items[know-precipitate]
+ * 真相源：data-source/methodology/items/know-precipitate.yml
  * 分层：L0（通用方法论）
  */
 DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};

@@ -1,6 +1,6 @@
 /**
  * whyBiz["eng-discipline"] — 由 tools/gen-docs.mjs 生成，禁止手改
- * 真相源：data-source/methodology.yml → items[eng-discipline]
+ * 真相源：data-source/methodology/items/eng-discipline.yml
  * 分层：L0（通用方法论）
  */
 DOC_VIZ.whyBiz = DOC_VIZ.whyBiz || {};
