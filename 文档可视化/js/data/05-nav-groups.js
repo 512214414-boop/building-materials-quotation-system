@@ -229,6 +229,20 @@ DOC_VIZ.navGroups = [
     ]
   },
   {
+    id: "customer-app",
+    title: "客户端",
+    hint: "客户自助三页 · 看不见价 · 清单就是店里那张单",
+    defaultOpen: false,
+    items: [
+      {
+        id: "customer-app",
+        title: "客户自助端 · 三页",
+        subtitle: "授权码准入 · 产品中心/采购清单/地址管理 · 后端不对称原则",
+        enabled: true
+      }
+    ]
+  },
+  {
     id: "archive-rules",
     title: "档案管理",
     hint: "五段怎么走 · 槽位定律 · 交互范式（自旧「表格功能框架模型」组迁出，内容不变）",
