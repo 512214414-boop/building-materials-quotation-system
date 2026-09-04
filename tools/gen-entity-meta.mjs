@@ -30,8 +30,20 @@ const srcFile = path.join(root, 'data-source', 'entity-meta.yml');
 const feOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityMeta.generated.ts');
 const beOut = path.join(root, 'backend', 'src', 'services', 'generated', 'entityMeta.generated.ts');
 
-const src = yaml.load(fs.readFileSync(srcFile, 'utf8'));
+const srcText = fs.readFileSync(srcFile, 'utf8');
+const src = yaml.load(srcText);
 const entities = src.entities || {};
+
+/**
+ * 增长水位线阈值。当前 512 行 / 9 实体，留约 60% 余量。
+ * 为什么是这两个数：
+ *   800 行 —— yml 是配置不是散文，密度高；且这个文件要整体协调看
+ *             （加实体要同时动 entities + resources + pages），
+ *             不能简单套用文档站「250 行上限」那条判据
+ *   16 实体 —— 9 个实体占 163 行（约 18 行/实体），16 个约 290 行；
+ *             与行数互补：行数没到但实体变多时也能兜住
+ */
+const WATERMARK = { lines: 800, entities: 16 };
 
 // ---------- 0 一致性校验：vocabulary.yml ↔ 真相源 ----------
 // 纯旁路：vocabulary.yml 不参与生成，仅作中文↔英文取值检索锚点。
@@ -376,3 +388,31 @@ console.log(`  前端 ${path.relative(root, feOut)}`);
 console.log(`  前端 ${path.relative(root, relOut)}`);
 console.log(`  后端 ${path.relative(root, beOut)}`);
 console.log(`  可视化 ${path.relative(root, vizOut)}`);
+
+// ---------- ⑤ 增长水位线：到点提醒评估，不阻断生成 ----------
+/**
+ * 与第 0 段 vocabulary 一致性校验的区别：那个不通过意味着产物是错的，必须拦；
+ * 这个越线只意味着文件变大了，产物依然正确。用 exit 1 会逼人立刻动手，
+ * 等于替用户做了「现在必须重构」的决定——所以只提醒，退出码保持 0。
+ *
+ * 提醒语刻意不写「该分片了」：本文件保持单文件是有理由的
+ * （Meta Studio 整文件编辑模型 + relations 跨实体引用），
+ * 分片只是选项之一，不是唯一出路。
+ */
+{
+  const lines = srcText.split('\n').length;
+  const n = Object.keys(entities).length;
+  const over = [];
+  if (lines > WATERMARK.lines) over.push(`行数 ${lines} > ${WATERMARK.lines}`);
+  if (n > WATERMARK.entities) over.push(`实体 ${n} > ${WATERMARK.entities}`);
+  if (over.length) {
+    console.warn(`⚠ entity-meta.yml 已过增长水位线（${over.join('；')}）——该整体评估一次了`);
+    console.warn('  动手前必须先答三个问题：');
+    console.warn('    ① Meta Studio 的「整文件编辑 → 整文件写回」模型怎么改（见 tools/meta-studio.mjs:315/329-330）');
+    console.warn('    ② relations 跨实体引用怎么不割裂（拆开后改一条关系要同时开两个文件）');
+    console.warn('    ③ 阈值要不要再调（到那时可能已有更好的判据）');
+    console.warn('  参照：methodology.yml 已完成分片（3598 行 → 42 篇，生成物零变更），做法见 methodology/items/know-layout.yml');
+  } else {
+    console.log(`✓ 增长水位线：${lines}/${WATERMARK.lines} 行 · ${n}/${WATERMARK.entities} 实体（未越线）`);
+  }
+}
