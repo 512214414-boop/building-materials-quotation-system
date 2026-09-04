@@ -28,7 +28,10 @@ DOC_VIZ.navGroups = [
       { id: "know-metaschema", title: "登记表填写口径", subtitle: "触发：要填登记表 · 一份口径三处共用 · 三段填完前后端自动产出", enabled: true },
       { id: "know-layout", title: "文档项目怎么分层", subtitle: "触发：建/改文档站点 · 一章一文件", enabled: true },
       { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true },
-      { id: "refactor-signals", title: "架构重构信号", subtitle: "触发：历史做法限制当下 · 识别信号 · 该变就变", enabled: true }
+      { id: "refactor-signals", title: "架构重构信号", subtitle: "触发：历史做法限制当下 · 识别信号 · 该变就变", enabled: true },
+      { id: "meta-runtime", title: "元模型运行时", subtitle: "触发：一份 yml 驱动全栈 · 守卫声明化 · 派生表只许读时计算", enabled: true },
+      { id: "visual-canvas", title: "视觉与画布", subtitle: "触发：尺寸缩放令牌 · 物理大小恒定 · 三载体派发", enabled: true },
+      { id: "eng-discipline", title: "工程纪律", subtitle: "触发：src 只许 .ts/.tsx · 同名 .js 遮蔽 .ts · 构建校验全绿", enabled: true }
     ]
   },
   {
