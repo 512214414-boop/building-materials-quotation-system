@@ -111,6 +111,15 @@
 | v23 产品名升全局字典 `product_name`（去 product.name） | 🕐 | 2026-08-31 裁决：升字典，跨分类不重名；代码未实施 |
 | v23 分类改关系表 `product_category`（去 product.categoryId） | 🕐 | 2026-08-31 裁决：要关系表，带 isPrimary；代码未实施 |
 | 俗称维持 `product.remark` 单字段 | ✅ | 2026-08-31 裁决：不建子表不进字典 |
+| v23 决策记录归档（论证+迁移口径） | ✅ 归档 | 见下方「v23 决策记录」小节（自 产品数据层.md git 历史恢复，2026-09-04） |
+
+### v23 决策记录（三条裁决 · 联锁论证 · 迁移口径；自已退役的 产品数据层.md 归档，实施前以此为准）
+
+**三条裁决（2026-08-31 v23 目标态，代码未实施）**：① 产品名升全局字典（新增 `product_name` name 全局唯一，`product.name` 废止改 `productNameId` 引用，改名全局生效）；② 俗称维持 `product.remark` 单字段；③ 分类要关系表（新增 `product_category` 带 isPrimary+sortOrder，`product.categoryId` 废止）。
+
+**①③ 联锁不能只做一条**：产品名升字典后名字全局唯一，不能再靠「同一分类下唯一」区分同名产品——同名即同一产品，此时分类必须一对多挂（先升字典 → 分类必须走关系表）。**跨分类重名的代价与收益**：两种货同名（PPR弯头/PVC弯头）必须靠名称本身区分，建档同名会复用已有词而非新建（即「边用边建、幂等直接建即选」的字典行为）；收益=改名全局生效、检索不歧义、统计按 ID。**product 与 product_name 1:1 但不合并**：字典只管「这个词」（快建/并档/引用计数/改名全局生效），产品实体承载俗称与品牌/规格子树——分层不同、可变性不同，不因 1:1 叠成一张表。改名全局生效的边界：改 `product_name.name` → 产品/检索全跟，已开单据行是快照不改。
+
+**迁移口径（实施时照此执行，顺序不可颠倒）**：① 建 `product_name`：从 product.name 去重抽取；② 建 `product_category`：原 categoryId 各插一条 isPrimary=true；③ 同名多 product 合并：其余 categoryId 插 isPrimary=false、product_brand/spec 改挂合并后的 product.id，**同 brandId+同 specModel 的 spec 冲突只出清单不自动取舍**（俗称多条非空不同一并进清单）；④ product 删 name/categoryId 列加 productNameId FK，唯一约束 [categoryId,name]→[productNameId]；⑤ 重刷检索：分类取 isPrimary，keywords 拼全部所属分类名；⑥ 写入层：产品名按 name 幂等 ensure（与品牌/单位/分类同一套），保存事务内维护 product_category。**实施前置：git status 必须干净，迁移脚本与 schema 变更分开两个提交。**
 | 单据 documents + document_lines + 标注层 + 双区存储 | ✅ | 订单中心·全局规则 |
 | 资源引擎（**新增 2026-09-03**） | ✅ | 后端通用接口声明在 `entity-meta.yml` 的 `resources` 段；`/api/staff/r/:resource` 一组路由服务所有已登记资源。验证 11/11 |
 
@@ -176,10 +185,10 @@
 |---|---|---|
 | ~~P0~~ ✅ | 同步 `meta-schema.md` 到真相源 `methodology.yml`（gen-docs） | 已落地：`know-metaschema`（登记表填写口径），含三段填空表 + 三个真踩过的坑 |
 | ~~P0~~ ✅ | 3 个未覆盖页面的文档（§2.8） | 已落地：真相源新条目 `customer-app`（客户端三页合一，2026-09-04） |
-| P1 | 客户端 3 页（`apps/customer`）相关 5 维度 | 已确认未覆盖 |
-| P1 | 系统管理 5 页中"角色权限"与"审计日志"（其余 3 页可后置） | 元模型 v29 阶段 D 已登记审计 82 action，需对齐文档 |
-| P1 | 经营报表 5 类（range/margin/turnover/ar-aging/...）的「选品」与「需要」维度 | 后端 `opsReportService` 范式化完成，需补业务规则 |
-| P2 | 范式 vs 派生表的决策记录（为什么最终走范式、为什么在 v30 节点删） | 防止后人重复「为宽表是否要做」的讨论 |
+| ~~P1~~ ✅ | 客户端 3 页（`apps/customer`）相关 5 维度 | 已落地：`customer-app` 条目即五维结构（2026-09-04） |
+| P1（部分完成，暂缓） | 系统管理 5 页中"角色权限"与"审计日志"对齐 | none 口径已修正（sys-role）、82 action 权威已=entity-meta auditActions；剩余对齐需基于 entity-meta.yml/opsReportService——**并行会话占用中，等提交后再做** |
+| P1（暂缓） | 经营报表 5 类的「选品」与「需要」维度 | 后端 `opsReportService` 并行改动中，基于移动靶写文档违背「现状从代码提取」——等提交后再做 |
+| ~~P2~~ ✅ | 范式 vs 派生表的决策记录 | 已收编：meta-runtime 检索演进表（v29/v30 裁决+四条删除前置）+ §三「v23 决策记录」归档小节（2026-09-04） |
 | P2 | Meta Studio 的「新增实体向导」（关系图 → 集合体类型 → 分层 → 逐维度填空） | 当前 UI 只支持**编辑已登记实体**；新增实体需手写 yml |
 | P2 | users/roles 形态符合档案框架却各自手写（UserManage 605 行 / RolePermissions 512 行）待收框架 | 两判据（有无树/主操作是编辑还是执行）判定可归槽；收框架时同步消 actionMeta 死数据（actions.generated.js，095 删除后无消费方） |
 | P2 | 旧档案模型组退役（30-34 *-model、39-get-module-tables、10-product-model、14-tables） | 07-archive-framework 已是其吸收宿主；旧 *-model 数据文件的 intent/need 与指导思想重复，下轮裁 |
