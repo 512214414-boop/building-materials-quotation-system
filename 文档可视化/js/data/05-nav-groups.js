@@ -31,7 +31,9 @@ DOC_VIZ.navGroups = [
       { id: "refactor-signals", title: "架构重构信号", subtitle: "触发：历史做法限制当下 · 识别信号 · 该变就变", enabled: true },
       { id: "meta-runtime", title: "元模型运行时", subtitle: "触发：一份 yml 驱动全栈 · 守卫声明化 · 派生表只许读时计算", enabled: true },
       { id: "visual-canvas", title: "视觉与画布", subtitle: "触发：尺寸缩放令牌 · 物理大小恒定 · 三载体派发", enabled: true },
-      { id: "eng-discipline", title: "工程纪律", subtitle: "触发：src 只许 .ts/.tsx · 同名 .js 遮蔽 .ts · 构建校验全绿", enabled: true }
+      { id: "eng-discipline", title: "工程纪律", subtitle: "触发：src 只许 .ts/.tsx · 同名 .js 遮蔽 .ts · 构建校验全绿", enabled: true },
+      { id: "app-navigation", title: "导航与位置记忆", subtitle: "触发：目录即配置 · 导航=权限树 · 离开记账回访还原", enabled: true },
+      { id: "fe-be-duties", title: "前后端职责", subtitle: "触发：算力往前放 · 前端管体验后端管底线 · 笔记本性能封顶", enabled: true }
     ]
   },
   {
