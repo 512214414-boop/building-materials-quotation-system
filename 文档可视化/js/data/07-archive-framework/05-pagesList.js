@@ -7,7 +7,7 @@
  */
 DOC_VIZ.archiveFramework = DOC_VIZ.archiveFramework || {};
 DOC_VIZ.archiveFramework.pagesList = [
-    { name: "产品管理", file: "apps/staff/pages/ProductManage.tsx", note: "点值：列表格+维护浮层+产品集合编辑矩阵（ProductEditDialog）。私有：宽表 SKU，暂不迁 ArchiveSlotHost" },
+    { name: "产品管理", file: "apps/staff/pages/ProductManage.tsx", note: "点值：列表格+维护浮层+产品集合编辑矩阵（ProductEditDialog）。私有：唯一绕开 ArchiveSlotHost 的深树集合体（见矩阵页·弹窗剖面）" },
     { name: "供应商管理", file: "apps/staff/pages/SupplierManage.tsx", note: "ArchiveSlotHost + slots[]。私有：经营范围双栏勾选" },
     { name: "库房管理", file: "apps/staff/pages/WarehouseManage.tsx", note: "ArchiveSlotHost + slots[]。私有：主仓" },
     { name: "客户管理", file: "apps/staff/pages/CustomerManage.tsx", note: "ArchiveSlotHost + slots[]。点姓名弹窗含联系/地址/开票 N。私有：无勾选、地址懒加载" }

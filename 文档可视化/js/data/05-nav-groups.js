@@ -4,6 +4,10 @@
  * 切片自：js/data.js 原 1010-1170 行（已按分层规范拆出，原单文件不再维护）
  *
  * 约定：本文件只承载这一段内容。改这一段，只读/只改本文件，不必读全量。
+ *
+ * 2026-09-04 收敛：删「表格功能框架模型」「实体关系槽位」两组（内容已由
+ * 「表格 UI 分层」五层体系与真相源 know-table/know-metaschema 承接）；
+ * 「档案管理 · 全局规则」迁出为独立组（内容不变，渲染入口 070 按 item id 分发，与组无关）。
  */
 DOC_VIZ.navGroups = [
   {
@@ -18,13 +22,13 @@ DOC_VIZ.navGroups = [
       { id: "know-cause", title: "对照本项目", subtitle: "触发：要看方法做通的实样 · 只参照不复制", enabled: true },
       { id: "know-brief", title: "下发文档范本", subtitle: "触发：新项目下发文档 · 范式+不变量+一个闭环", enabled: true },
       { id: "know-loop", title: "接到需求先归类", subtitle: "触发：接到功能需求 · 先打包归类共性差异再动手", enabled: true },
-      { id: "refactor-signals", title: "架构重构信号", subtitle: "触发：历史做法限制当下 · 三次绕行即立案 · 该变就变", enabled: true },
       { id: "cell-gate-path", title: "格子点击 → 确认层", subtitle: "触发：设计格子交互 · 路径由值来源层级定 · 确认层检索一套收/展", enabled: true },
       { id: "know-table", title: "表功能方法论", subtitle: "触发：识别到表功能 · 画图→集合体→分层→插槽", enabled: true },
       { id: "know-meta", title: "表功能元模型", subtitle: "触发：要新增一个表功能 · 九组视角填登记表→五面自动产出", enabled: true },
       { id: "know-metaschema", title: "登记表填写口径", subtitle: "触发：要填登记表 · 一份口径三处共用 · 三段填完前后端自动产出", enabled: true },
       { id: "know-layout", title: "文档项目怎么分层", subtitle: "触发：建/改文档站点 · 一章一文件", enabled: true },
-      { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true }
+      { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true },
+      { id: "refactor-signals", title: "架构重构信号", subtitle: "触发：历史做法限制当下 · 识别信号 · 该变就变", enabled: true }
     ]
   },
   {
@@ -205,20 +209,6 @@ DOC_VIZ.navGroups = [
     ]
   },
   {
-    id: "entity-slot",
-    title: "实体关系槽位",
-    hint: "数据关系图扔进槽位 · 五面自动产出 · 图形化说明",
-    defaultOpen: false,
-    items: [
-      {
-        id: "entity-slot-model",
-        title: "实体关系槽位模型",
-        subtitle: "模型形状 · 示例表结构 · 关系怎么插 · 槽位机制",
-        enabled: true
-      }
-    ]
-  },
-  {
     id: "ui-layer",
     title: "表格 UI 分层",
     hint: "从使用角度组织 · 横向切表、纵向切层级 · 每格是这个表在这一层的真实配置参数",
@@ -234,63 +224,15 @@ DOC_VIZ.navGroups = [
     ]
   },
   {
-    id: "table-framework",
-    title: "表格功能框架模型",
-    hint: "【数据视角 · 已由上方「表格 UI 分层」页承接】集合体接入框架 · 框架方面 · 槽位 · 共享组件 · 特征与组合 · 按集合体分章",
+    id: "archive-rules",
+    title: "档案管理",
+    hint: "五段怎么走 · 槽位定律 · 交互范式（自旧「表格功能框架模型」组迁出，内容不变）",
     defaultOpen: false,
     items: [
-      {
-        id: "table-framework",
-        title: "总纲 · 集合体接入框架",
-        subtitle: "框架方面 · 槽位清单 · 共享组件 · 理想状态",
-        enabled: true
-      },
       {
         id: "archive-framework",
         title: "档案管理 · 全局规则",
         subtitle: "五段怎么走 · 各页只写差异 · 边用边建 · 槽位定律 · 交互范式",
-        enabled: true
-      },
-      {
-        id: "table-features",
-        title: "特征表与特征组合",
-        subtitle: "特征维度 · 63 张表特征 · 唯一特征集合统计",
-        enabled: true
-      },
-      {
-        id: "table-aggregate-product",
-        title: "集合体 · 产品档案",
-        subtitle: "19 表 · 深树 · 唯一绕开框架的集合体",
-        enabled: true
-      },
-      {
-        id: "table-aggregate-supplier",
-        title: "集合体 · 供应商档案",
-        subtitle: "5 表 · 最标准的档案集合体",
-        enabled: true
-      },
-      {
-        id: "table-aggregate-customer",
-        title: "集合体 · 客户档案",
-        subtitle: "6 表 · 与供应商高度同构",
-        enabled: true
-      },
-      {
-        id: "table-aggregate-warehouse",
-        title: "集合体 · 库房档案",
-        subtitle: "5 表 · 五键库存的极端案例",
-        enabled: true
-      },
-      {
-        id: "table-aggregate-order",
-        title: "集合体 · 单据",
-        subtitle: "20 表 · 快照语义 · 形似神不似",
-        enabled: true
-      },
-      {
-        id: "table-aggregate-permission",
-        title: "集合体 · 系统权限",
-        subtitle: "8 表 · 对照组 · 哪些不该进框架",
         enabled: true
       }
     ]

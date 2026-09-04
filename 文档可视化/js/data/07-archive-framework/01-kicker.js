@@ -31,7 +31,7 @@ DOC_VIZ.archiveFramework.implOrder = {
     note: "五段是规则。下面是接新档案时的动手顺序，不要跳过壳手拼表格。",
     steps: [
       ["1 点值", "PickerEditGateProvider 包 subtree。弹窗标量 = ArchiveDialogField；矩阵/▾格 = ArchiveFieldCell。禁止弹窗与 MatrixTable 内 DsInput / SuggestInput / DictRefField / DictFieldInput 常驻。"],
-      ["2 对槽", "各页只交 slots[] + API 给 ArchiveSlotHost。名称弹窗、N 矩阵、点值、检索由宿主渲染。不要再抄一份管理页。产品宽表暂不迁，仍是第一份私有页。"],
+      ["2 对槽", "各页只交 slots[] + API 给 ArchiveSlotHost。v31 起列顺序由 entity-meta.yml pages.slots 驱动（pageAssembler，SupplierManage 已接 assembleSlots 实证），页面只装配。名称弹窗、N 矩阵、点值、检索由宿主渲染。不要再抄一份管理页。产品是唯一绕开宿主的私有页（深树集合体，例外已登记）。"],
       ["3 壳", "ArchiveListPage：actionBar + filters 槽 + UnifiedTable + dialogs。不要跳过壳手拼表格。"],
       ["4 勾选批量", "TableSelectionStore 跨页保留；工具栏单动作；表头 ⋯ 读全量 selectedRows。"],
       ["5 私有", "各页只写：列字段形态、facet 从哪取、本页放不下的交互、这棵树存字的层（顶栏由模型派生）。名称弹窗、无业务编码、N 可追加矩阵、宽松/精准按钮不是私有，不许各页另发明。"]

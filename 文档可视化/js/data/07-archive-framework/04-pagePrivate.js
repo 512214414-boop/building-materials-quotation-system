@@ -30,7 +30,7 @@ DOC_VIZ.archiveFramework.shell = {
   };
 
 DOC_VIZ.archiveFramework.stack = [
-    ["ArchiveSlotHost", "运行时宿主：slots[] → 名称列/完整弹窗/N 矩阵。供应商/库房/客户已接。产品宽表暂不迁。"],
+    ["ArchiveSlotHost", "运行时宿主：slots[] → 名称列/完整弹窗/N 矩阵。供应商/库房/客户已接（v31 pageAssembler：列顺序由登记表 pages.slots 驱动）。产品是唯一绕开宿主的私有页（集合编辑矩阵）。"],
     ["ArchiveListPage", "ViewFrame + UnifiedTable + selection。filters 槽生成检索条；各页不要再手写 bizStrip 检索。"],
     ["HeaderCascadeFilter", "表头列筛。DsInputDropdown + FloatPanel + SuggestList。档案页选项=当前结果 facets；订单中心选项=当前单据所有行 facets。"],
     ["UnifiedTable", "DataViewLayer（展示）+ InteractionLayer（编辑/菜单）。勾选走 TableSelectionStore，不 lifted 到 React state。"],
@@ -87,7 +87,7 @@ DOC_VIZ.archiveFramework.checklist = {
     ["1 壳", "ArchiveListPage … selection 可选；无批量页设 selectable={false}；一对多默认 ▾ 矩阵，必须整页下钻才用 ViewFrame"],
     ["2 点值", "PickerEditGateProvider + ArchiveDialogField/ArchiveFieldCell。弹窗 grep 禁止 DsInput。矩阵 onDirty→ref"],
     ["3 勾选", "useArchiveTableSelection({ formatSummary })，批量菜单读 headerMoreMenuRenderer 传入的 rows"],
-    ["4 列", "各页交 slots[]。宿主生成名称 NameLinkCell → 完整弹窗（含 N）。禁止业务编码列。N 列必须可追加矩阵；列跟这一层字段走，单字段 N 不要套默认/价格列。产品宽表另有维护浮层，暂不迁宿主。"],
+    ["4 列", "各页交 slots[]（v31 起由 entity-meta.yml pages.slots 声明，页面只装配）。宿主生成名称 NameLinkCell → 完整弹窗（含 N）。禁止业务编码列。N 列必须可追加矩阵；列跟这一层字段走，单字段 N 不要套默认/价格列。产品是唯一绕开宿主的私有页（见矩阵页·弹窗剖面）。"],
     ["5 筛选", "走 filters 槽，不要手写 bizStrip。可按列收窄的列用 HeaderCascadeFilter + facets"],
     ["6 选用检索", "若开单/引用处要按这棵树取一条：把存字的层放进选用检索模型，顶栏自动出宽松+精准。禁止手写一遍按钮，禁止另写检索面板"],
     ["7 批量 API", "后端 batch-* 接口 + runParallelLimit；不要 N 次单条串行"],
