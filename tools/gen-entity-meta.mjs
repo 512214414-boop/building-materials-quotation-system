@@ -33,6 +33,90 @@ const beOut = path.join(root, 'backend', 'src', 'services', 'generated', 'entity
 const src = yaml.load(fs.readFileSync(srcFile, 'utf8'));
 const entities = src.entities || {};
 
+// ---------- 0 一致性校验：vocabulary.yml ↔ 真相源 ----------
+// 纯旁路：vocabulary.yml 不参与生成，仅作中文↔英文取值检索锚点。
+// 校验规则（不通过则中断生成，process.exit(1)）：
+//   A 类（_source 指向 entityRelations.types.ts）：vocab.values 键集须 === TS 联合类型成员
+//   B 类（_source 指向 entity-meta.yml）：vocab.values 键集须覆盖 yml 中已出现的值
+// vocabulary.yml 缺失 → 仅告警跳过，不改变既有生成行为。
+function extractTsUnions(tsText) {
+  const types = {};
+  const ifaceMembers = {};
+  const typeRe = /export\s+type\s+(\w+)\s*=\s*((?:'[^']+'\s*\|\s*)*'[^']+')/g;
+  let m;
+  while ((m = typeRe.exec(tsText))) {
+    types[m[1]] = new Set(m[2].match(/'[^']+'/g).map((s) => s.slice(1, -1)));
+  }
+  const im = /interface\s+EntityFieldSpec\s*\{([\s\S]*?)\n\}/.exec(tsText);
+  if (im) {
+    const memRe = /(\w+)\s*\??:\s*((?:'[^']+'\s*\|\s*)*'[^']+')/g;
+    let mm;
+    while ((mm = memRe.exec(im[1]))) {
+      ifaceMembers[mm[1]] = new Set(mm[2].match(/'[^']+'/g).map((s) => s.slice(1, -1)));
+    }
+  }
+  return { types, ifaceMembers };
+}
+
+function resolveTsValues(domain, ts) {
+  const src0 = domain._source || '';
+  const afterPath = src0.slice(src0.indexOf('.ts') + 3); // 去掉路径，保留 #...
+  const parts = afterPath.split('#').filter(Boolean);
+  if (parts.length === 2) return ts.ifaceMembers[parts[1]]; // Interface#member
+  if (parts.length === 1) return ts.types[parts[0]]; // Type
+  return undefined;
+}
+
+function collectYmlFieldValues(srcObj, field) {
+  const vals = new Set();
+  for (const ent of Object.values(srcObj.entities || {})) {
+    if (ent[field] != null) vals.add(String(ent[field]));
+    for (const f of Object.values(ent.fields || {})) {
+      if (f[field] != null) vals.add(String(f[field]));
+    }
+  }
+  return vals;
+}
+
+function validateVocabularyConsistency() {
+  const vocabPath = path.join(root, 'data-source', 'vocabulary.yml');
+  if (!fs.existsSync(vocabPath)) {
+    console.warn('⚠ vocabulary.yml 不存在，跳过一致性校验（建议补建 data-source/vocabulary.yml）');
+    return;
+  }
+  const vocab = yaml.load(fs.readFileSync(vocabPath, 'utf8'));
+  const domains = (vocab && vocab.domains) || {};
+  const tsPath = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityRelations.types.ts');
+  const ts = extractTsUnions(fs.readFileSync(tsPath, 'utf8'));
+  const errors = [];
+  for (const [key, d] of Object.entries(domains)) {
+    if (!d || typeof d !== 'object') { errors.push(`domain ${key}: 格式非法`); continue; }
+    if (!d._zh) errors.push(`domain ${key}: 缺 _zh（中文槽位名）`);
+    if (!d._source) errors.push(`domain ${key}: 缺 _source`);
+    const vals = d.values || {};
+    const vocabKeys = Object.keys(vals);
+    if (vocabKeys.length === 0) errors.push(`domain ${key}: values 为空`);
+    const src0 = d._source || '';
+    if (/entityRelations\.types\.ts/.test(src0)) {
+      const tsVals = resolveTsValues(d, ts);
+      if (!tsVals) { errors.push(`domain ${key}: _source ${src0} 无法解析 TS 联合类型`); continue; }
+      for (const v of tsVals) if (!vocabKeys.includes(v)) errors.push(`domain ${key}: 缺 TS 定义值 "${v}"`);
+      for (const v of vocabKeys) if (!tsVals.has(v)) errors.push(`domain ${key}: 含 TS 未定义值 "${v}"`);
+    } else {
+      const used = collectYmlFieldValues(src, key);
+      for (const v of used) if (!vocabKeys.includes(v)) errors.push(`domain ${key}: yml 用到 "${v}" 但 vocabulary 未登记`);
+    }
+  }
+  if (errors.length) {
+    console.error('✗ vocabulary.yml 一致性校验未通过：');
+    for (const e of errors) console.error('  - ' + e);
+    process.exit(1);
+  }
+  console.log(`✓ vocabulary.yml 一致性校验通过（${Object.keys(domains).length} 个域）`);
+}
+
+validateVocabularyConsistency();
+
 // ---------- ① 前端登记表 ----------
 let fe = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
 fe += '// 元模型运行时 · 实体×字段维度（渲染/确认/检索/门禁/快照声明）。\n\n';
@@ -74,6 +158,74 @@ for (const [key, ent] of Object.entries(entities)) {
   }
   fe += '    ],\n';
   fe += '  },\n';
+}
+fe += '};\n\n';
+
+// ①-b 动作守卫登记表（顶层 actions 段 → actionMeta）
+fe += 'export interface GuardFieldGroup { fields: string[]; reason: string; }\n';
+fe += 'export interface GuardNumberCheck { field: string; op: "gt" | "ge" | "lt" | "le"; ref?: number; refField?: string; reason: string; }\n';
+fe += 'export interface GuardFormatCheck { field: string; pattern: string; reason: string; }\n';
+fe += 'export interface GuardRequireAnyGroup { fields: string[]; reason: string; }\n';
+fe += 'export interface GuardUniqueKey { field: string; against: string; }\n';
+fe += 'export interface GuardUniqueExcept { field: string; against: string; }\n';
+fe += 'export interface GuardUniqueCheck { in: string; keys: GuardUniqueKey[]; except?: GuardUniqueExcept; reason: string; }\n';
+fe += 'export interface GuardMeta {\n';
+fe += '  requires?: GuardFieldGroup[];\n';
+fe += '  requiresAny?: GuardRequireAnyGroup[];\n';
+fe += '  minSelected?: { n: number; reason: string };\n';
+fe += '  numbers?: GuardNumberCheck[];\n';
+fe += '  rowNumerics?: GuardNumberCheck[];\n';
+fe += '  formats?: GuardFormatCheck[];\n';
+fe += '  states?: { allow?: Array<string | boolean>; forbid?: Array<string | boolean>; reason: string };\n';
+fe += '  rowUnique?: GuardUniqueCheck[];\n';
+fe += '}\n';
+fe += 'export interface ActionMeta { key: string; label?: string; guard?: GuardMeta; }\n\n';
+fe += 'export const actionMeta: Record<string, ActionMeta> = {\n';
+for (const [key, a] of Object.entries(src.actions || {})) {
+  fe += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(a.label ?? '')}, guard: ${a.guard ? JSON.stringify(a.guard) : 'undefined'} },\n`;
+}
+fe += '};\n\n';
+
+// ①-c 资源接口 / 页面装配（零代码新增的两类新维度：接口与页面都由配置产出）
+fe += '/** 资源接口声明（yml resources 段）：驱动后端资源引擎，替代实体手写 handler */\n';
+fe += 'export interface ResourceMeta {\n';
+fe += '  key: string;\n';
+fe += '  label?: string;\n';
+fe += '  table: string;\n';
+fe += '  /** Prisma 模型名（与 @@map 的表名可能不同，如 customer→customers） */\n';
+fe += '  model?: string;\n';
+fe += '  primaryKey?: string;\n';
+fe += '  /** 权限叶子（对应 VIEW_PERMISSION_MATRIX） */\n';
+fe += '  permission?: string;\n';
+fe += '  softDelete?: { field: string; off: number | string };\n';
+fe += '  /** 可写字段白名单（越界字段由资源引擎直接拒绝） */\n';
+fe += '  writable?: string[];\n';
+fe += '  include?: string[];\n';
+fe += '  audit?: string[];\n';
+fe += '  search?: { fields?: string[]; mode?: string; dictUnique?: string };\n';
+fe += '  /** 引用计数目标：删除前统计"会影响哪些数据" */\n';
+fe += '  refTargets?: Array<{ label: string; table: string; field: string }>;\n';
+fe += '}\n\n';
+fe += '/** 页面槽位声明（yml pages 段） */\n';
+fe += 'export interface PageSlotMeta { key: string; title?: string; slot: string; editor?: string; }\n';
+fe += 'export interface PageMeta {\n';
+fe += '  key: string;\n';
+fe += '  label?: string;\n';
+fe += '  list?: string;\n';
+fe += '  rowKey?: string;\n';
+fe += '  fixedSlots?: string[];\n';
+fe += '  /** 数组顺序 = 列表列顺序 */\n';
+fe += '  slots?: PageSlotMeta[];\n';
+fe += '}\n\n';
+fe += 'export const resources: Record<string, ResourceMeta> = {\n';
+for (const [key, r] of Object.entries(src.resources || {})) {
+  fe += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(r.label ?? '')}, table: ${JSON.stringify(r.table ?? key)}, model: ${JSON.stringify(r.model ?? r.table ?? key)}, primaryKey: ${JSON.stringify(r.primaryKey ?? 'id')}, permission: ${r.permission ? JSON.stringify(r.permission) : 'undefined'}, softDelete: ${r.softDelete ? JSON.stringify(r.softDelete) : 'undefined'}, writable: ${JSON.stringify(r.writable ?? [])}, include: ${JSON.stringify(r.include ?? [])}, audit: ${JSON.stringify(r.audit ?? [])}, search: ${r.search ? JSON.stringify(r.search) : 'undefined'}, refTargets: ${JSON.stringify(r.refTargets ?? [])} },\n`;
+}
+fe += '};\n\n';
+fe += 'export const pages: Record<string, PageMeta> = {\n';
+for (const [key, p] of Object.entries(src.pages || {})) {
+  const slots = (p.slots || []).map((s) => JSON.stringify(s)).join(', ');
+  fe += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(p.label ?? '')}, list: ${p.list ? JSON.stringify(p.list) : 'undefined'}, rowKey: ${JSON.stringify(p.rowKey ?? 'id')}, fixedSlots: ${JSON.stringify(p.fixedSlots ?? [])}, slots: [${slots}] },\n`;
 }
 fe += '};\n';
 fs.mkdirSync(path.dirname(feOut), { recursive: true });
@@ -128,7 +280,28 @@ be += 'export const INDICATORS: Array<{ id: string; label: string; aggregate?: s
 for (const i of src.indicators || []) {
   be += `  { id: ${JSON.stringify(i.id)}, label: ${JSON.stringify(i.label)}, aggregate: ${i.aggregate ? JSON.stringify(i.aggregate) : 'undefined'}, filter: ${i.filter ? JSON.stringify(i.filter) : 'undefined'}, formula: ${i.formula ? JSON.stringify(i.formula) : 'undefined'} },\n`;
 }
-be += '];\n';
+be += '];\n\n';
+
+// ②-e 资源接口（后端只消费 resources 段：权限叶子 / 可写字段 / 软删除 / 关联 / 审计）
+be += 'export const RESOURCES: Record<string, {\n';
+be += '  key: string;\n';
+be += '  label?: string;\n';
+be += '  table: string;\n';
+be += '  /** Prisma 模型名（与 @@map 的表名可能不同） */\n';
+be += '  model: string;\n';
+be += '  primaryKey: string;\n';
+be += '  permission?: string;\n';
+be += '  softDelete?: { field: string; off: number | string };\n';
+be += '  writable: string[];\n';
+be += '  include: string[];\n';
+be += '  audit: string[];\n';
+be += '  refTargets: Array<{ label: string; table: string; field: string }>;\n';
+be += '  search?: { fields?: string[]; mode?: string; dictUnique?: string };\n';
+be += '}> = {\n';
+for (const [key, r] of Object.entries(src.resources || {})) {
+  be += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(r.label ?? '')}, table: ${JSON.stringify(r.table ?? key)}, model: ${JSON.stringify(r.model ?? r.table ?? key)}, primaryKey: ${JSON.stringify(r.primaryKey ?? 'id')}, permission: ${r.permission ? JSON.stringify(r.permission) : 'undefined'}, softDelete: ${r.softDelete ? JSON.stringify(r.softDelete) : 'undefined'}, writable: ${JSON.stringify(r.writable ?? [])}, include: ${JSON.stringify(r.include ?? [])}, audit: ${JSON.stringify(r.audit ?? [])}, refTargets: ${JSON.stringify(r.refTargets ?? [])}, search: ${r.search ? JSON.stringify(r.search) : 'undefined'} },\n`;
+}
+be += '};\n';
 
 fs.mkdirSync(path.dirname(beOut), { recursive: true });
 fs.writeFileSync(beOut, be, 'utf8');
@@ -185,7 +358,21 @@ rel += '};\n';
 fs.mkdirSync(path.dirname(relOut), { recursive: true });
 fs.writeFileSync(relOut, rel, 'utf8');
 
-console.log(`✓ 生成完成：${Object.keys(entities).length} 实体 + ${(src.auditActions || []).length} 审计 + ${(src.indicators || []).length} 指标 →`);
+// ---------- ④ 文档可视化动作守卫数据（actions.guard 的 JS 派生） ----------
+// 集合体文档 guard 维度渲染用：集合体 js 只声明 action key（guardActions），
+// 判定结构与提示语从这里取，不复制——唯一真相源仍是 entity-meta.yml。
+const vizOut = path.join(root, '文档可视化', 'js', 'data', 'actions.generated.js');
+let viz = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
+viz += '// 操作守卫动作登记：集合体文档 guard 维度渲染用（集合体只声明 action key，不复制文案）。\n\n';
+viz += 'window.DOC_VIZ = window.DOC_VIZ || {};\n';
+viz += 'DOC_VIZ.actionMeta = ';
+viz += JSON.stringify(src.actions || {}, null, 2);
+viz += ';\n';
+fs.mkdirSync(path.dirname(vizOut), { recursive: true });
+fs.writeFileSync(vizOut, viz, 'utf8');
+
+console.log(`✓ 生成完成：${Object.keys(entities).length} 实体 + ${(src.auditActions || []).length} 审计 + ${(src.indicators || []).length} 指标 + ${Object.keys(src.actions || {}).length} 动作 →`);
 console.log(`  前端 ${path.relative(root, feOut)}`);
 console.log(`  前端 ${path.relative(root, relOut)}`);
 console.log(`  后端 ${path.relative(root, beOut)}`);
+console.log(`  可视化 ${path.relative(root, vizOut)}`);
