@@ -18,6 +18,7 @@ DOC_VIZ.navGroups = [
       { id: "know-cause", title: "对照本项目", subtitle: "触发：要看方法做通的实样 · 只参照不复制", enabled: true },
       { id: "know-brief", title: "下发文档范本", subtitle: "触发：新项目下发文档 · 范式+不变量+一个闭环", enabled: true },
       { id: "know-loop", title: "接到需求先归类", subtitle: "触发：接到功能需求 · 先打包归类共性差异再动手", enabled: true },
+      { id: "refactor-signals", title: "架构重构信号", subtitle: "触发：历史做法限制当下 · 三次绕行即立案 · 该变就变", enabled: true },
       { id: "cell-gate-path", title: "格子点击 → 确认层", subtitle: "触发：设计格子交互 · 路径由值来源层级定 · 确认层检索一套收/展", enabled: true },
       { id: "know-table", title: "表功能方法论", subtitle: "触发：识别到表功能 · 画图→集合体→分层→插槽", enabled: true },
       { id: "know-meta", title: "表功能元模型", subtitle: "触发：要新增一个表功能 · 九组视角填登记表→五面自动产出", enabled: true },
@@ -199,20 +200,6 @@ DOC_VIZ.navGroups = [
         id: "canvas-ui-hierarchy",
         title: "画布 · 浮层 · 缩放",
         subtitle: "1200px 舞台 · FloatPanel 栈 · shellZoom",
-        enabled: true
-      }
-    ]
-  },
-  {
-    id: "entity-slot",
-    title: "实体关系槽位",
-    hint: "数据关系图扔进槽位 · 五面自动产出 · 图形化说明",
-    defaultOpen: false,
-    items: [
-      {
-        id: "entity-slot-model",
-        title: "实体关系槽位模型",
-        subtitle: "模型形状 · 示例表结构 · 关系怎么插 · 槽位机制",
         enabled: true
       }
     ]
