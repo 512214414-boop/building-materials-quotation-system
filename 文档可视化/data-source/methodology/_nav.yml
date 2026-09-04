@@ -1,0 +1,98 @@
+# 侧栏「非真相源条目」登记区
+#
+# 这里登记的条目，内容不在 methodology/items/ 下，而是散落在 js/data/*.js 里，
+# 因此它们的标题与副标题无法从真相源推导，只能在这里声明一次。
+#
+# 判据：能在 items/ 下找到 <id>.yml 的条目，一律不许出现在这里——
+#      那是「第二套手写声明」，违反不变量「任何内容只声明一次」，生成器会报错。
+#
+# 字段：id（必填 · 与渲染层按 id 找内容）· title / subtitle（侧栏显示）
+#      group（归属哪个组 · 必须是 _index.yml groups 里已定义的组 id）
+#      style（compact 单行 / expanded 多行 · 跟随所属组的排版）
+
+standalone:
+  - id: order-framework
+    title: '订单中心 · 全局规则'
+    subtitle: '点值表 · 确认才写 · 槽可插'
+    group: order-center
+    style: expanded
+  - id: order-purchase-quote
+    title: '采购报价'
+    subtitle: '销售开单 · 行快照'
+    group: order-center
+    style: expanded
+  - id: order-payment
+    title: '收款对账'
+    subtitle: '收付款往来 · 收款行'
+    group: order-center
+    style: expanded
+  - id: order-allocation
+    title: '统一配货'
+    subtitle: '配货履约 · 来源两枝'
+    group: order-center
+    style: expanded
+  - id: order-delivery
+    title: '订单交付'
+    subtitle: '配货履约 · 发出去'
+    group: order-center
+    style: expanded
+  - id: order-cost
+    title: '成本标注'
+    subtitle: '配货履约 · 三种成本'
+    group: order-center
+    style: expanded
+  - id: order-refund
+    title: '售后退款'
+    subtitle: '售后 · 对着卖掉的行'
+    group: order-center
+    style: expanded
+  - id: order-summary
+    title: '销售汇总'
+    subtitle: '看数 · 只读'
+    group: order-center
+    style: expanded
+  - id: order-archive
+    title: '定档归档'
+    subtitle: '看数 · 结清只读'
+    group: order-center
+    style: expanded
+  - id: canvas-ui-hierarchy
+    title: '画布 · 浮层 · 缩放'
+    subtitle: '1200px 舞台 · FloatPanel 栈 · shellZoom'
+    group: ui-base
+    style: expanded
+  - id: ui-layer-quote
+    title: '采购报价'
+    subtitle: '唯一空行录入 · 分支覆盖最全'
+    group: ui-layer
+    style: compact
+  - id: ui-layer-refund
+    title: '售后'
+    subtitle: '唯一有辅助行 · 明细只读'
+    group: ui-layer
+    style: compact
+  - id: ui-layer-product
+    title: '产品管理'
+    subtitle: '可编辑明细 · 字典检索改全局'
+    group: ui-layer
+    style: compact
+  - id: ui-layer-purchase
+    title: '采购清单'
+    subtitle: '只读明细 · 链接跳转列'
+    group: ui-layer
+    style: compact
+  - id: ui-layer-inventory
+    title: '库存台账'
+    subtitle: 'number / date 形态 · 服务端分页'
+    group: ui-layer
+    style: compact
+  - id: ui-layer-audit
+    title: '审计日志'
+    subtitle: 'enum-tag · 全表只读'
+    group: ui-layer
+    style: compact
+  - id: archive-framework
+    title: '档案管理 · 全局规则'
+    subtitle: '五段怎么走 · 各页只写差异 · 边用边建 · 槽位定律 · 交互范式'
+    group: archive-rules
+    style: expanded

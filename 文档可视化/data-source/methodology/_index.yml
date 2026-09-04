@@ -1,11 +1,16 @@
-# 唯一顺序清单 —— 决定三件事：生成物 NN 序号、侧栏阅读顺序、AGENTS.md 技能索引顺序。
-# 顺序只在这里声明一处；items/ 下的文件名不带序号，避免多出一个隐式顺序源。
+# 真相源顺序与分组的唯一声明处 —— 侧栏、加载清单、技能索引、执行卡全部从这里产出。
 #
-# 新增一篇三步法：
+# order 与 groups 是两套顺序，各管一段，不要合并：
+#   order  —— 生成物 NN 序号与加载顺序（稳定优先）。新篇可以不写，生成器自动追加到末尾。
+#   groups —— 侧栏分几组、每组显示哪些、组内什么顺序（阅读优先）。写法见下方分节。
+#
+# 新增一篇两步法（没有第三步——侧栏不再需要手写登记）：
 #   1. items/ 下新建 <navId>.yml，内容顶格写（id / layer / navId / nav / page …）
-#   2. 把 navId 加进下面 order 列表的目标位置
-#   3. 在 文档可视化/js/data/05-nav-groups.js 对应分组加一行入口（否则生成器报错）
-# 改完跑 node tools/gen-docs.mjs，站点 / 执行卡 / 技能索引 / 加载清单四处自动同步。
+#   2. 在下面 groups 里目标组的 items 加一行 <navId>
+# 改完跑 node tools/gen-docs.mjs，四处自动同步。
+#
+# 标题副标题只写一次：写在 items/<navId>.yml 的 nav 段。
+# 只有组内需要换个叫法时才在 groups 里覆盖（如 ui-layer-model），那是呈现参数不是内容。
 #
 # 注意：order 是全量清单，不是增量。删除一篇要同时删文件与这里的条目。
 order:
@@ -51,3 +56,135 @@ order:
   - app-navigation
   - fe-be-duties
   - customer-app
+
+# ---------------------------------------------------------------------------
+# groups —— 侧栏分组与阅读顺序的唯一声明处（生成器据此产出 05-nav-groups.js）
+#
+# 与上方 order 的分工（两者是两套不同顺序，不可合并）：
+#   order  —— 决定生成物 NN 序号（js/data/gen/NN-<navId>.js）与加载顺序，稳定优先
+#   groups —— 决定侧栏分几组、每组显示哪些、组内什么顺序，阅读优先
+#
+# 加一篇的做法：items/ 下建 <navId>.yml，然后在下面对应组的 items 加一行。
+#   order 可以不写——生成器会把「在 groups 里但不在 order 里」的篇自动追加到 order 末尾。
+#
+# 字段：style 决定生成排版（compact 单行 / expanded 多行），是呈现参数，留在声明层，
+#      不写进内容文件——内容文件只管「这篇是什么」，不管「它长什么样、摆在哪里」。
+# ---------------------------------------------------------------------------
+groups:
+  - id: know-how
+    title: '方法论库'
+    hint: '对话从这里进 · 标题即触发信号 · 登记进真相源才能被命中'
+    defaultOpen: true
+    style: compact
+    items:
+      - know-route
+      - know-precipitate
+      - know-method
+      - know-cause
+      - know-brief
+      - know-loop
+      - cell-gate-path
+      - know-table
+      - know-meta
+      - know-metaschema
+      - know-layout
+      - know-recover
+      - refactor-signals
+      - meta-runtime
+      - visual-canvas
+      - eng-discipline
+      - app-navigation
+      - fe-be-duties
+  - id: why-biz
+    title: '系统业务设计指导思想'
+    hint: '指导开发 · 解释实现 · 不写表和组件'
+    defaultOpen: true
+    style: compact
+    items:
+      - why-scope
+      - why-sales
+      - why-fulfill
+      - why-inbound
+      - why-money
+      - why-after
+      - why-objects
+      - why-flow
+      - why-habit
+      - why-shared
+      - why-canon
+  - id: order-center
+    title: '订单中心'
+    hint: '八个过程不是八类活 · 每页五段：出发点指回指导思想 · 行关系做成可插槽'
+    defaultOpen: true
+    style: expanded
+    items:
+      - order-framework
+      - order-purchase-quote
+      - order-payment
+      - order-allocation
+      - order-delivery
+      - order-cost
+      - order-refund
+      - order-summary
+      - order-archive
+      - order-inbound-purchase
+      - order-inbound-pending
+      - order-inbound-inventory
+      - order-backorder
+      - order-payable
+  - id: sys-admin
+    title: '系统管理'
+    hint: '平台层不是业务表功能 · 先认表归属再谈规则 · 删除行为逐条关系判定'
+    defaultOpen: true
+    style: expanded
+    items:
+      - sys-role
+      - sys-audit
+      - sys-auth-code
+      - sys-access-request
+      - sys-user
+  - id: ops-analysis
+    title: '经营分析'
+    hint: '看数不是干活 · 口径写死才能复现 · 范围一律收窄'
+    defaultOpen: true
+    style: expanded
+    items:
+      - ops-report
+  - id: ui-base
+    title: '界面基座'
+    hint: '画布 · 浮层 · 缩放'
+    defaultOpen: false
+    style: expanded
+    items:
+      - canvas-ui-hierarchy
+  - id: ui-layer
+    title: '表格 UI 分层'
+    hint: '从使用角度组织 · 横向切表、纵向切层级 · 每格是这个表在这一层的真实配置参数'
+    defaultOpen: true
+    style: compact
+    items:
+      # 覆盖显示名：组名已叫「表格 UI 分层」，条目再显示篇名会与组名重复，改称「总纲 · 五层模型」
+      - id: ui-layer-model
+        title: '总纲 · 五层模型'
+      - ui-layer-quote
+      - ui-layer-refund
+      - ui-layer-product
+      - ui-layer-purchase
+      - ui-layer-inventory
+      - ui-layer-audit
+  - id: customer-app
+    title: '客户端'
+    hint: '客户自助三页 · 看不见价 · 清单就是店里那张单'
+    defaultOpen: false
+    style: expanded
+    items:
+      # 覆盖显示名：侧栏要带出「三页」这个信息，篇名本身只有「客户自助端」
+      - id: customer-app
+        title: '客户自助端 · 三页'
+  - id: archive-rules
+    title: '档案管理'
+    hint: '五段怎么走 · 槽位定律 · 交互范式（自旧「表格功能框架模型」组迁出，内容不变）'
+    defaultOpen: false
+    style: expanded
+    items:
+      - archive-framework

@@ -279,27 +279,209 @@ if (agentsForIdx.includes(IBEGIN) && agentsForIdx.includes(IEND)) {
   console.warn('! AGENTS.md 缺 GEN:INDEX 标记，跳过技能索引生成');
 }
 
-// ---------- ⑤ 侧栏完整性校验（真相源 → navGroups） ----------
+// ---------- ⑤ 侧栏：从组声明生成（不再是手写登记） ----------
 /**
- * 侧栏是手写登记的（js/data/05-nav-groups.js），生成器不写它 —— 这是个漂移口子：
- * 真相源加了条目，内容文件、执行卡、技能索引、加载清单都生成了，侧栏却没有入口，
- * 用户在站点上「没看见」。这里只校验不改写：真相源每个 navId 必须在侧栏出现，缺了就报错。
- * 不自动写入，是为了保住侧栏的人工排布顺序（那是阅读顺序，不等于真相源顺序）。
+ * 侧栏以前是手写登记的，那是个漂移口子：真相源加了篇，其余四处都自动跟了，
+ * 只有侧栏没有入口，用户在站点上「没看见」；而且标题副标题要在侧栏再抄一遍
+ * （42 篇 × 2 字段 = 84 处重复声明，改一处忘一处必然漂移）。
+ *
+ * 现在从 _index.yml 的 groups 声明生成，标题副标题全局只声明一次：
+ *   真相源篇   → 取 items/<navId>.yml 的 nav.title / nav.subtitle
+ *   非真相源篇 → 取 _nav.yml 的 standalone 区（内容确实不在真相源，只能登记）
+ * 排布顺序由声明决定，不再靠人记得改两处。
+ *
+ * 排版由组的 style 字段驱动（compact 单行 / expanded 多行）——排版是呈现参数，
+ * 留在声明层、不写进内容文件：内容文件只管「这篇是什么」，不管它摆哪、长什么样。
  */
 const navFile = path.join(docViz, 'js', 'data', '05-nav-groups.js');
-if (fs.existsSync(navFile)) {
-  const navSrc = fs.readFileSync(navFile, 'utf8');
-  const navIds = new Set([...navSrc.matchAll(/\{\s*id:\s*"([^"]+)"/g)].map((m) => m[1]));
-  const missing = items.map((i) => i.navId).filter((id) => id && !navIds.has(id));
-  if (missing.length) {
-    console.error(`✗ 侧栏缺入口：${missing.join('、')}`);
-    console.error('  补法：在 文档可视化/js/data/05-nav-groups.js 对应分组加一行 { id: "…", title, subtitle, enabled: true }');
-    process.exitCode = 1;
-  } else {
-    console.log(`✓ 侧栏完整性：${items.length} 条在 05-nav-groups.js 均有入口`);
-  }
-} else {
-  console.warn('! 找不到 05-nav-groups.js，跳过侧栏校验');
+const navDeclPath = path.join(srcDir, '_nav.yml');
+const navDecl = fs.existsSync(navDeclPath) ? (readYaml(navDeclPath) || {}) : {};
+const standalone = navDecl.standalone || [];
+const groups = indexDoc.groups || [];
+
+/**
+ * 组内条目两种写法：
+ *   - "know-route"                     简写：显示名取真相源 nav.title / nav.subtitle（默认，零重复）
+ *   - { id: ui-layer-model, title: … } 展开：覆盖显示名（组内需要不同于篇名的说法时）
+ * 覆盖只发生在声明层，不污染内容文件——内容文件只管「这篇是什么」，
+ * 「在侧栏里怎么称呼它」是呈现问题，和 style 一样留在声明层。
+ */
+const entryId = (raw) => (typeof raw === 'string' ? raw : raw && raw.id);
+function normalizeEntry(raw, groupId) {
+  if (typeof raw === 'string') return { id: raw };
+  if (raw && typeof raw === 'object' && raw.id) return raw;
+  fatal(`组 ${groupId} 的 items 里有一项既不是字符串也没有 id`, '补法：写成 - <navId> 或 - { id: <navId>, title: …, subtitle: … }');
 }
 
-console.log(`✓ 生成完成：${items.length} 条 → js/data/gen/ + AGENTS.md（GEN 节 + 技能索引）+ index.html 加载清单`);
+// 生命周期：被吸收 / 已废弃的篇退出导航，内容保留（演进不改历史）
+const HIDDEN = new Set(
+  items.filter((i) => i.state === 'absorbed' || i.state === 'deprecated').map((i) => i.navId)
+);
+
+// --- 守卫：声明与内容必须严丝合缝，全部拦在写入之前 ---
+// 1. standalone 不许出现真相源已有的篇 —— 那是第二套声明
+{
+  const genSet = new Set(items.map((i) => i.navId));
+  const dup = standalone.filter((s) => genSet.has(s.id));
+  if (dup.length) {
+    fatal(
+      `_nav.yml 的 standalone 里出现了真相源已有的篇：${dup.map((d) => d.id).join('、')}`,
+      '补法：能从 items/<navId>.yml 取到标题副标题的，一律不许在 standalone 再写一遍（任何内容只声明一次）'
+    );
+  }
+}
+// 2. standalone 的 group 必须是已定义的组
+{
+  const groupIds = new Set(groups.map((g) => g.id));
+  const bad = standalone.filter((s) => !groupIds.has(s.group));
+  if (bad.length) {
+    fatal(
+      `_nav.yml 有 ${bad.length} 条的 group 在 _index.yml 里不存在：${bad.map((b) => `${b.id}→${b.group}`).join('、')}`,
+      `补法：group 必须是 groups 里已定义的组 id（现有：${[...groupIds].join('、')}）`
+    );
+  }
+}
+// 3. 组里登记的 id 必须有出处（真相源篇 或 standalone）
+{
+  const known = new Set([...items.map((i) => i.navId), ...standalone.map((s) => s.id)]);
+  const ghost = [];
+  for (const g of groups) for (const raw of g.items || []) {
+    const id = entryId(raw);
+    if (!id || !known.has(id)) ghost.push(`${g.id}/${id || JSON.stringify(raw)}`);
+  }
+  if (ghost.length) {
+    fatal(
+      `组声明登记了 ${ghost.length} 个查无出处的条目：${ghost.join('、')}`,
+      '补法：在 items/ 建 <navId>.yml，或在 _nav.yml 的 standalone 登记（内容不在真相源时）'
+    );
+  }
+}
+// 4. 真相源每篇必须归属某个组 —— 否则站点侧栏静默不显示，等于白写
+{
+  const inGroups = new Set(groups.flatMap((g) => (g.items || []).map(entryId).filter(Boolean)));
+  const orphan = items.map((i) => i.navId).filter((id) => !inGroups.has(id));
+  if (orphan.length) {
+    fatal(
+      `有 ${orphan.length} 篇没登记进任何组：${orphan.join('、')}`,
+      '补法：在 _index.yml 的 groups 对应组 items 下加一行（不登记＝侧栏看不见＝这篇等于没写）'
+    );
+  }
+}
+// 5. absorbed 必须指向存在的继任篇（保证历史可追溯，不是死链）
+{
+  const knownIds = new Set(items.map((i) => i.navId));
+  const bad = items.filter((i) => i.state === 'absorbed' && (!i.successor || !knownIds.has(i.successor)));
+  if (bad.length) {
+    fatal(
+      `有 ${bad.length} 篇标记了 absorbed 但 successor 缺失或指向不存在的篇：${bad.map((b) => b.navId).join('、')}`,
+      '补法：absorbed 必须写 successor: <navId>，指向吸收了它内容的那篇（历史只归档不删除）'
+    );
+  }
+}
+// 6. 重复检测：跨篇相同的规则文本 → 提示合并（只告警不阻断，治「只增不减」）
+{
+  const seen = new Map();
+  for (const it of items) {
+    for (const r of it.page?.rules || []) {
+      const txt = Array.isArray(r) ? String(r[0]) : String(r);
+      if (txt.length < 12) continue; // 太短的通句式不判重，避免噪音
+      if (seen.has(txt)) {
+        console.warn(
+          `⚠ 规则文本重复：「${txt.slice(0, 28)}…」同时出现在 items/${seen.get(txt)}.yml 与 items/${it.navId}.yml —— 考虑合并，别各写一遍`
+        );
+      } else {
+        seen.set(txt, it.navId);
+      }
+    }
+  }
+}
+
+// --- 生成 ---
+const navMeta = new Map();
+for (const it of items) {
+  navMeta.set(it.navId, { title: it.nav?.title || it.id, subtitle: it.nav?.subtitle || '' });
+}
+for (const s of standalone) {
+  navMeta.set(s.id, { title: s.title, subtitle: s.subtitle });
+}
+
+/** 侧栏文本统一双引号：含引号/换行会让下游两个校验器的正则失效，直接拦下 */
+const q = (s) => {
+  const t = String(s ?? '');
+  if (/["\\\n]/.test(t)) {
+    fatal(
+      `侧栏文本含双引号/反斜杠/换行，无法安全生成：${t.slice(0, 40)}`,
+      '补法：改写该标题或副标题 —— gen-docs 与 check-docs 都靠 /\\{\\s*id:\\s*"([^"]+)"/g 从文本抽 id'
+    );
+  }
+  return `"${t}"`;
+};
+
+const NAV_BEGIN = '// GEN:NAV:BEGIN';
+const NAV_END = '// GEN:NAV:END';
+
+function renderNavGroups() {
+  const out = ['DOC_VIZ.navGroups = ['];
+  groups.forEach((g, gi) => {
+    const gLast = gi === groups.length - 1;
+    out.push('  {');
+    out.push(`    id: ${q(g.id)},`);
+    out.push(`    title: ${q(g.title)},`);
+    if (g.hint !== undefined) out.push(`    hint: ${q(g.hint)},`);
+    out.push(`    defaultOpen: ${g.defaultOpen === false ? 'false' : 'true'},`);
+    out.push('    items: [');
+    const entries = (g.items || [])
+      .map((raw) => normalizeEntry(raw, g.id))
+      .filter((e) => !HIDDEN.has(e.id));
+    entries.forEach((e, ei) => {
+      const meta = navMeta.get(e.id) || { title: e.id, subtitle: '' };
+      // 声明层写了 title/subtitle 就覆盖，没写就取真相源（默认零重复）
+      const title = e.title !== undefined ? e.title : meta.title;
+      const subtitle = e.subtitle !== undefined ? e.subtitle : meta.subtitle;
+      const eLast = ei === entries.length - 1;
+      if (g.style === 'expanded') {
+        out.push('      {');
+        out.push(`        id: ${q(e.id)},`);
+        out.push(`        title: ${q(title)},`);
+        out.push(`        subtitle: ${q(subtitle)},`);
+        out.push('        enabled: true');
+        out.push(`      }${eLast ? '' : ','}`);
+      } else {
+        out.push(`      { id: ${q(e.id)}, title: ${q(title)}, subtitle: ${q(subtitle)}, enabled: true }${eLast ? '' : ','}`);
+      }
+    });
+    out.push('    ]');
+    out.push(`  }${gLast ? '' : ','}`);
+  });
+  out.push('];');
+  return out.join('\n');
+}
+
+if (!groups.length) {
+  fatal('_index.yml 缺 groups 段（侧栏分组的唯一声明处）', '补法：groups: 下按组声明 id/title/hint/defaultOpen/style/items');
+}
+
+if (fs.existsSync(navFile)) {
+  let txt = fs.readFileSync(navFile, 'utf8');
+  const block = `${NAV_BEGIN}\n${renderNavGroups()}\n${NAV_END}`;
+  const bIdx = txt.indexOf(NAV_BEGIN);
+  const eIdx = txt.indexOf(NAV_END);
+  if (bIdx >= 0 && eIdx > bIdx) {
+    txt = txt.slice(0, bIdx) + block + txt.slice(eIdx + NAV_END.length);
+  } else {
+    // 首次接管：把手写数组段就地换成带标记的块，手写注释头原样保留（演进不改历史）
+    const arrRe = /DOC_VIZ\.navGroups = \[[\s\S]*?\n\];/;
+    if (!arrRe.test(txt)) {
+      fatal('05-nav-groups.js 里找不到 DOC_VIZ.navGroups 数组段，无法接管', '补法：确认该文件结构未被改动');
+    }
+    txt = txt.replace(arrRe, block);
+  }
+  fs.writeFileSync(navFile, txt, 'utf8');
+  console.log(
+    `✓ 侧栏生成：${groups.length} 组 · ${items.length - HIDDEN.size} 真相源篇 + ${standalone.length} standalone → 标题副标题只声明一次`
+  );
+} else {
+  console.warn('! 找不到 05-nav-groups.js，跳过侧栏生成');
+}
+
+console.log(`✓ 生成完成：${items.length} 条 → js/data/gen/ + AGENTS.md（GEN 节 + 技能索引）+ index.html 加载清单 + 侧栏`);

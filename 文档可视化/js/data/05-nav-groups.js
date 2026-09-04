@@ -9,6 +9,7 @@
  * 「表格 UI 分层」五层体系与真相源 know-table/know-metaschema 承接）；
  * 「档案管理 · 全局规则」迁出为独立组（内容不变，渲染入口 070 按 item id 分发，与组无关）。
  */
+// GEN:NAV:BEGIN
 DOC_VIZ.navGroups = [
   {
     id: "know-how",
@@ -24,7 +25,7 @@ DOC_VIZ.navGroups = [
       { id: "know-loop", title: "接到需求先归类", subtitle: "触发：接到功能需求 · 先打包归类共性差异再动手", enabled: true },
       { id: "cell-gate-path", title: "格子点击 → 确认层", subtitle: "触发：设计格子交互 · 路径由值来源层级定 · 确认层检索一套收/展", enabled: true },
       { id: "know-table", title: "表功能方法论", subtitle: "触发：识别到表功能 · 画图→集合体→分层→插槽", enabled: true },
-      { id: "know-meta", title: "表功能元模型", subtitle: "触发：要新增一个表功能 · 九组视角填登记表→五面自动产出", enabled: true },
+      { id: "know-meta", title: "表功能元模型", subtitle: "触发：要新增一个表功能 · 九组视角填一份登记表→五个面自动产出", enabled: true },
       { id: "know-metaschema", title: "登记表填写口径", subtitle: "触发：要填登记表 · 一份口径三处共用 · 三段填完前后端自动产出", enabled: true },
       { id: "know-layout", title: "文档项目怎么分层", subtitle: "触发：建/改文档站点 · 一章一文件", enabled: true },
       { id: "know-recover", title: "版本记录与恢复", subtitle: "触发：文档改动前后 · 有账可查可回滚", enabled: true },
@@ -118,31 +119,31 @@ DOC_VIZ.navGroups = [
       {
         id: "order-inbound-purchase",
         title: "采购入库",
-        subtitle: "囤货补货 · 不绑订单 · 一次确认动三笔账",
+        subtitle: "触发：囤货补货 · 不绑订单 · 一次确认即入账",
         enabled: true
       },
       {
         id: "order-inbound-pending",
         title: "待入库管理",
-        subtitle: "配货超额生成 · 不阻塞主线 · 一键确认入账",
+        subtitle: "触发：配货超额调货 · 系统生成 · 空闲时一键确认",
         enabled: true
       },
       {
         id: "order-inbound-inventory",
         title: "库存台账",
-        subtitle: "仓库×SKU 成本底账 · 期初建档 · 盘点调整",
+        subtitle: "触发：看库存与成本 · 期初建档 · 盘点调整 · 流水追溯",
         enabled: true
       },
       {
         id: "order-backorder",
         title: "欠库台账",
-        subtitle: "出库缺口兜底 · 挂账等补 · 到货自动冲抵",
+        subtitle: "触发：出库缺口兜底 · 挂账等补 · 到货自动冲抵",
         enabled: true
       },
       {
         id: "order-payable",
         title: "供应商应付",
-        subtitle: "三类来源 · 一次结算留名 · 账龄四桶",
+        subtitle: "触发：该付供应商多少钱 · 按来源分三类 · 结算留痕",
         enabled: true
       }
     ]
@@ -156,31 +157,31 @@ DOC_VIZ.navGroups = [
       {
         id: "sys-role",
         title: "角色权限",
-        subtitle: "系统配置 · 三档矩阵 · user_roles 是 cascade",
+        subtitle: "触发：配谁能看谁能改 · 三档矩阵 · 系统角色不可删",
         enabled: true
       },
       {
         id: "sys-audit",
         title: "审计日志",
-        subtitle: "业务记录 · decouple 留快照 · 留痕优于审批",
+        subtitle: "触发：查谁干了什么 · 留痕优于审批 · 档案删了仍读得出",
         enabled: true
       },
       {
         id: "sys-auth-code",
         title: "授权码",
-        subtitle: "客户进门凭证 · 激活即绑定 · 过期/吊销",
+        subtitle: "触发：客户要进门 · 发码 → 激活 → 过期/吊销",
         enabled: true
       },
       {
         id: "sys-access-request",
         title: "访问申请",
-        subtitle: "人审一道 · 通过才发码 · 驳回必填原因",
+        subtitle: "触发：客户申请进门 · pending → 通过/驳回 · 通过即发码",
         enabled: true
       },
       {
         id: "sys-user",
         title: "用户管理",
-        subtitle: "员工档案本体 · 被别人快照的那方",
+        subtitle: "触发：管员工账号 · 档案本体 · 被别人快照的那方",
         enabled: true
       }
     ]
@@ -194,7 +195,7 @@ DOC_VIZ.navGroups = [
       {
         id: "ops-report",
         title: "经营报表",
-        subtitle: "七类看数 · 口径写死 · 范围收窄",
+        subtitle: "触发：看经营数据 · 七类报表 · 口径写死不临时算",
         enabled: true
       }
     ]
@@ -219,7 +220,7 @@ DOC_VIZ.navGroups = [
     hint: "从使用角度组织 · 横向切表、纵向切层级 · 每格是这个表在这一层的真实配置参数",
     defaultOpen: true,
     items: [
-      { id: "ui-layer-model", title: "总纲 · 五层模型", subtitle: "触发：设计表格页面 · 上层只装配、下层只参数", enabled: true },
+      { id: "ui-layer-model", title: "总纲 · 五层模型", subtitle: "触发：设计表格页面 · 五层各管一段 · 上层只装配下层只参数", enabled: true },
       { id: "ui-layer-quote", title: "采购报价", subtitle: "唯一空行录入 · 分支覆盖最全", enabled: true },
       { id: "ui-layer-refund", title: "售后", subtitle: "唯一有辅助行 · 明细只读", enabled: true },
       { id: "ui-layer-product", title: "产品管理", subtitle: "可编辑明细 · 字典检索改全局", enabled: true },
@@ -237,7 +238,7 @@ DOC_VIZ.navGroups = [
       {
         id: "customer-app",
         title: "客户自助端 · 三页",
-        subtitle: "授权码准入 · 产品中心/采购清单/地址管理 · 后端不对称原则",
+        subtitle: "触发：客户自己进来 · 看不见价 · 清单就是店里那张单",
         enabled: true
       }
     ]
@@ -257,3 +258,4 @@ DOC_VIZ.navGroups = [
     ]
   }
 ];
+// GEN:NAV:END

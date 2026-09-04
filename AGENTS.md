@@ -122,7 +122,7 @@
 
 - 信号：同一教训第二次 / 同一问题跨功能第二次 / 同一偏好讲第二遍 / 规则多处被违反 / AI 踩坑后找到稳做法 / **高代价教训一次也立即沉淀**
 - 流程：留证据 → 提炼（触发条件+步骤+否决项）→ 去项目化 → 可证伪 → **登记进真相源** → 回写旧篇
-- 登记：`文档可视化/data-source/methodology/` 加条目（三步：items/ 下建 `<navId>.yml` → `_index.yml` 的 order 加一行 → `05-nav-groups.js` 加入口）→ 跑 `node tools/gen-docs.mjs`，站点/侧栏/执行卡自动同步。**没进真相源=不存在。**
+- 登记：`文档可视化/data-source/methodology/` 加条目（**两步**：items/ 下建 `<navId>.yml` → `_index.yml` 的 groups 里目标组加一行）→ 跑 `node tools/gen-docs.mjs`，侧栏 / 加载清单 / 技能索引 / 执行卡四处自动同步。**没有第三步，禁止再去手写 `05-nav-groups.js`。没进真相源=不存在。**
 
 ## 六、台账
 
