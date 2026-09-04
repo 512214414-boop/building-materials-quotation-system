@@ -1,17 +1,22 @@
 #!/usr/bin/env node
 /**
- * 生成「不懂代码也能看懂」的项目进度看板
+ * 项目掌控台生成器 —— 给不懂代码的人「掌控项目」用
  *
- * 数据源（全部自动提取，不手写维护）：
- *   - docs-coverage.md  文档↔代码覆盖台账（唯一的进度真相源）
- *   - git               真实提交、未提交改动、领先远端数
- *   - dev.sh            本地已配置的服务端口
+ * 设计第一性（用户原话）：每条信息必须能改变用户的行动，否则就是冗余。
+ * 信息架构五层，每层回答「看到后做什么」：
+ *   1 现在能不能用   → 服务健康 + 智能入口（自动探测当前设备能打开哪个）
+ *   2 项目在哪       → 业务块能力矩阵（能用/在做/没动）
+ *   3 接下来         → 按优先级排的待办（可对话下达）
+ *   4 等你拍板       → 需要用户决策的事项
+ *   5 异常与明细     → 未提交/未推送提醒 + 折叠的 AI 明细
  *
- * 产出（项目根）：
- *   - 项目进度看板.html  给人在手机/电脑上看
- *   - 项目进度看板.md    给 AI 读（问进度时直接读它）
+ * 智能入口：同一服务生成 本机/同热点/公网 三套候选，页面加载时 JS 实时
+ * 探测当前设备能打开哪个，只亮可达的——用户不需要知道自己在什么网络。
  *
- * 用法：node tools/gen-boss-view.mjs
+ * 数据源（全部自动提取）：docs-coverage.md + git + dev.sh + cpolar 状态
+ * 产出：项目掌控台.html（人看） / 项目掌控台.md（AI 读）
+ * 用法：node tools/gen-boss-view.mjs [--access]
+ *   --access：终端文本模式，只打印三套地址与在线状态（供「开工」菜单调用）
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,37 +24,32 @@ import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT_HTML = path.join(ROOT, '项目进度看板.html');
-const OUT_MD = path.join(ROOT, '项目进度看板.md');
+const OUT_HTML = path.join(ROOT, '项目掌控台.html');
+const OUT_MD = path.join(ROOT, '项目掌控台.md');
 
 /* ---------------------------------- 工具 ---------------------------------- */
 
 function git(args, fallback = '') {
   try {
-    return execSync(`git ${args}`, {
-      cwd: ROOT,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-  } catch {
-    return fallback;
-  }
+    return execSync(`git ${args}`, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch { return fallback; }
 }
-
-function read(rel, fallback = '') {
+function read(rel) {
+  try { return fs.readFileSync(path.join(ROOT, rel), 'utf8'); } catch { return ''; }
+}
+function readAbs(p) {
+  try { return fs.readFileSync(p, 'utf8').trim(); } catch { return ''; }
+}
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function probe(url) {
   try {
-    return fs.readFileSync(path.join(ROOT, rel), 'utf8');
-  } catch {
-    return fallback;
-  }
+    const code = execSync(`curl -s -o /dev/null -w "%{http_code}" --max-time 2 "${url}"`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return /^(200|301|302|304|401|403)$/.test(code);
+  } catch { return false; }
 }
-
-const esc = (s) =>
-  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /* ------------------------------- 术语白话化 ------------------------------- */
-// 一次性扫描替换（不是逐个 replace）：否则替换结果会被后面的规则二次切碎，
-// 例如「元模型运行时」→「登记表驱动」里的「登记表」又被替换一次，句子就废了。
+// 一次性扫描替换：逐个 replace 会让替换结果被后续规则二次切碎（已踩坑）
 const GLOSSARY = {
   集合编辑矩阵: '一个弹窗里改完一整类档案',
   元模型运行时: '登记表驱动',
@@ -87,19 +87,12 @@ const GLOSSARY = {
   SKU: '具体到规格加单位的每一种货',
   Prisma: '数据库工具',
 };
-
-// 长词优先，避免「集合编辑矩阵」被「集合体」抢先切碎
 const GLOSSARY_KEYS = Object.keys(GLOSSARY).sort((a, b) => b.length - a.length);
-const GLOSSARY_RE = new RegExp(
-  GLOSSARY_KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
-  'g'
-);
-
+const GLOSSARY_RE = new RegExp(GLOSSARY_KEYS.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
 function plain(text) {
   return String(text).replace(GLOSSARY_RE, (m) => GLOSSARY[m] ?? m);
 }
-
-// 给人看的版本：连代码串、章节引用一起去掉（AI 读的 md 版本保留原样，便于定位）
+// 给人看的版本：连代码串、路径、章节引用一起去掉（AI 读的 md 保留原样便于定位）
 function human(text) {
   return plain(
     String(text)
@@ -115,14 +108,12 @@ function human(text) {
 }
 
 /* ------------------------------- 状态定义 -------------------------------- */
-
 const STATUSES = [
   { key: 'todo', icon: '❌', label: '还没做', cls: 's-todo' },
   { key: 'warn', icon: '⚠️', label: '有偏差', cls: 's-warn' },
   { key: 'doing', icon: '🕐', label: '已安排未做完', cls: 's-doing' },
   { key: 'done', icon: '✅', label: '已完成', cls: 's-done' },
 ];
-
 function pickStatus(text) {
   if (text.includes('❌')) return STATUSES[0];
   if (text.includes('⚠️')) return STATUSES[1];
@@ -130,69 +121,46 @@ function pickStatus(text) {
   if (text.includes('✅')) return STATUSES[3];
   return null;
 }
-
 const SKIP_HEADS = new Set(['集合体', '页面', '过程', '域', '文档', '状态', '优先级', '项', '阶段', '产出']);
 
 /* ---------------------------- 解析覆盖台账 ------------------------------- */
-
-// 这类单元格是给 AI 和开发看的，给老板看只会变成噪音
 function isNoise(cell) {
   const s = cell.replace(/\*\*/g, '').trim();
   if (!s) return true;
-  if (/^[✅🕐❌⚠️]/.test(s)) return true; // 纯状态格
-  if (/[`_]/.test(s)) return true; // 代码串
+  if (/^[✅🕐❌⚠️]/.test(s)) return true;
+  if (/[`_]/.test(s)) return true;
   if (/\.(ya?ml|tsx?|jsx?|mjs|json|prisma|md|sql)\b/i.test(s)) return true;
-  const words = s.match(/[A-Za-z][A-Za-z-]{2,}/g) || [];
-  return words.length >= 2; // 英文技术串
+  return (s.match(/[A-Za-z][A-Za-z-]{2,}/g) || []).length >= 2;
 }
-
 function parseCoverage(md) {
   const groups = [];
   let cur = { title: '总览', items: [] };
-  let skip = false; // 待补清单（§七）单独解析，不计入进度
-
+  let skip = false;
   for (const raw of md.split('\n')) {
     const line = raw.trim();
-
     const h = line.match(/^#{2,4}\s+(.+)$/);
     if (h) {
       const num = h[1].match(/^(\d+|[一二三四五六七八九十]+)/);
       skip = !!num && (num[1] === '7' || num[1] === '七');
-      const title = h[1]
-        .replace(/^(?:\d+(?:\.\d+)*|[一二三四五六七八九十]+)\s*[、.]?\s*/, '')
-        .trim();
-      cur = { title, items: [] };
+      cur = { title: h[1].replace(/^(?:\d+(?:\.\d+)*|[一二三四五六七八九十]+)\s*[、.]?\s*/, '').trim(), items: [] };
       groups.push(cur);
       continue;
     }
-
     if (skip) continue;
     if (!line.startsWith('|') || line.includes('---')) continue;
     const cells = line.split('|').slice(1, -1).map((s) => s.trim());
     if (cells.length < 2) continue;
-
     const status = pickStatus(cells.join(' | '));
     if (!status) continue;
-
     const name = cells[0].replace(/\*\*/g, '').replace(/~~/g, '').trim();
     if (!name || SKIP_HEADS.has(name)) continue;
-
-    const notes = cells
-      .slice(1)
-      .map((c) => c.replace(/\*\*/g, '').trim())
-      .filter((c) => !isNoise(c));
-
-    cur.items.push({
-      name,
-      note: plain(notes.slice(0, 2).join('，')).slice(0, 90),
-      status,
-    });
+    const notes = cells.slice(1).map((c) => c.replace(/\*\*/g, '').trim()).filter((c) => !isNoise(c));
+    cur.items.push({ name, note: plain(notes.slice(0, 2).join('，')).slice(0, 90), status });
   }
   return groups.filter((g) => g.items.length);
 }
 
-/* ---------------------------- 解析待补清单 ------------------------------- */
-
+/* ---------------------------- 解析待办与拍板 ----------------------------- */
 function parsePending(md) {
   const after = md.split(/^##\s+七、/m)[1] || '';
   const sec = after.split(/^##\s+/m)[0] || '';
@@ -202,148 +170,134 @@ function parsePending(md) {
     if (!line.startsWith('|') || line.includes('---')) continue;
     const cells = line.split('|').slice(1, -1).map((s) => s.trim());
     if (cells.length < 3) continue;
-
     const level = cells[0].replace(/\*/g, '').replace(/~~/g, '').trim();
-    if (!/^P[012]$/.test(level)) continue;
-    if (line.includes('✅')) continue; // 已划掉的完成项
-
-    // 存原文：md 版本走 plain，HTML 版本走 human，避免二次替换失真
-    out.push({
-      level,
-      item: cells[1].replace(/\*\*/g, '').trim(),
-      why: cells[2],
-    });
+    if (!/^P[012]$/.test(level) || line.includes('✅')) continue;
+    out.push({ level, item: cells[1].replace(/\*\*/g, '').trim(), why: cells[2] });
   }
   return out;
 }
 
 /* ------------------------------ git 现状 -------------------------------- */
-
-const COMMIT_TYPES = {
-  feat: '新功能',
-  fix: '修问题',
-  docs: '文档',
-  chore: '整理',
-  refactor: '重构',
-  test: '测试',
-  perf: '优化',
-  style: '格式',
-};
-
+const COMMIT_TYPES = { feat: '新功能', fix: '修问题', docs: '文档', chore: '整理', refactor: '重构', test: '测试', perf: '优化', style: '格式' };
 function humanizeCommit(subject) {
   const m = subject.match(/^(\w+)(?:\(([^)]+)\))?!?:\s*(.*)$/);
   if (!m) return subject;
-  const type = COMMIT_TYPES[m[1]] || '改动';
-  const scope = m[2] ? `（${m[2]}）` : '';
-  // 存原文：渲染时 md 走 plain、HTML 走 human，替换只做一次，否则会嵌套失真
-  return `${type}${scope}：${m[3]}`;
+  return `${COMMIT_TYPES[m[1]] || '改动'}${m[2] ? `（${m[2]}）` : ''}：${m[3]}`;
 }
-
 function collectGit() {
-  const branch = git('branch --show-current', '-');
-  const ahead = git('rev-list --count origin/main..main', '0');
-  const dirtyCount = git('status --porcelain', '')
-    .split('\n')
-    .filter(Boolean).length;
-  // 用 git 自己的 %x09 输出制表符：直接写字面 tab 会被 shell 当参数分隔符吃掉
-  const logRaw = git('log --pretty=format:%ad%x09%s --date=short -15', '');
-  const commits = logRaw
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const [date, ...rest] = line.split('\t');
-      return { date, text: humanizeCommit(rest.join('\t')) };
-    });
-  return { branch, ahead: Number(ahead) || 0, dirtyCount, commits };
+  return {
+    branch: git('branch --show-current', '-'),
+    ahead: Number(git('rev-list --count origin/main..main', '0')) || 0,
+    dirtyCount: git('status --porcelain', '').split('\n').filter(Boolean).length,
+    commits: git('log --pretty=format:%ad%x09%s --date=short -8', '')
+      .split('\n').filter(Boolean)
+      .map((line) => { const [date, ...rest] = line.split('\t'); return { date, text: humanizeCommit(rest.join('\t')) }; }),
+  };
 }
 
-/* ---------------------------- 本地可访问服务 ----------------------------- */
+/* --------------------------- 三套地址（智能入口） ------------------------- */
+// 公网只映射 8080（cpolar）；局域网/本机对所有端口有效
+const SERVICES = [
+  { port: 8080, path: '/', name: '员工端（日常干活的地方）', hint: '点开登录就能用', publicOk: true },
+  { port: 8081, path: '/', name: '员工端（开发热更新）', hint: '改代码后看实时效果', publicOk: false },
+  { port: 8123, path: '/', name: '方法论文档站', hint: 'AI 行为规则的源头', publicOk: false },
+];
+const EXTRA_PORTS = [
+  { port: 3000, name: '后端接口' },
+  { port: 8124, name: '掌控台自己的服务端口' },
+  { port: 8898, name: '登记表配置台（高级）' },
+];
 
-const PORT_LABEL = {
-  3000: '后台服务（数据接口）',
-  8080: '员工端正式页面',
-  8081: '员工端开发页面',
-  8123: '方法论文档站',
-  8898: '登记表配置台（Meta Studio）',
-};
-
-function collectPorts() {
-  let text = read('dev.sh') + '\n' + read('package.json');
-  // 有些服务的端口只写在文档里（如文档站 8123、配置台 8898）
-  try {
-    for (const f of fs.readdirSync(ROOT)) {
-      if (f.endsWith('.md')) text += '\n' + fs.readFileSync(path.join(ROOT, f), 'utf8');
+function collectAccess() {
+  const lanIp = (() => {
+    for (const iface of ['en0', 'en1', 'en2', 'en3']) {
+      try {
+        const ip = execSync(`ipconfig getifaddr ${iface}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (ip) return ip;
+      } catch { /* 下一个网卡 */ }
     }
+    return '';
+  })();
+  let publicUrl = readAbs('/tmp/cpolar_public_url.txt');
+  if (publicUrl && !/^https?:\/\//.test(publicUrl)) publicUrl = '';
+  const publicOnline = publicUrl ? probe(publicUrl + '/') : false;
+  return { lanIp, publicUrl, publicOnline };
+}
+
+function collectSessions() {
+  try {
+    const raw = execSync('screen -ls', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return raw.split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && line[0] >= '0' && line[0] <= '9')
+      .map((line) => {
+        const dot = line.indexOf('.');
+        const paren = line.indexOf('(');
+        const name = line.slice(dot + 1, paren).trim();
+        const state = line.slice(paren + 1, line.indexOf(')')).trim();
+        return { name, state };
+      });
   } catch {
-    /* 读不到就只认脚本里的端口 */
+    return [];
   }
-  const ports = new Set();
-  for (const m of text.matchAll(/(?:localhost|127\.0\.0\.1)[:](\d{2,5})/g)) {
-    ports.add(Number(m[1]));
-  }
-  for (const m of text.matchAll(/--port[= ](\d{2,5})/g)) ports.add(Number(m[1]));
-  return [...ports]
-    .filter((p) => p >= 1000 && p <= 65535)
-    .sort((a, b) => a - b)
-    .map((p) => ({ port: p, label: PORT_LABEL[p] || '本地服务' }));
 }
 
-/* -------------------------------- 汇总 ---------------------------------- */
-
-const md = read('docs-coverage.md');
-if (!md) {
-  console.error('找不到 docs-coverage.md，无法生成看板');
-  process.exit(1);
-}
-
-const groups = parseCoverage(md);
-const pending = parsePending(md);
+/* --------------------------------- 汇总 ---------------------------------- */
+const mdCoverage = read('docs-coverage.md');
+if (!mdCoverage) { console.error('找不到 docs-coverage.md'); process.exit(1); }
+const groups = parseCoverage(mdCoverage);
+const pending = parsePending(mdCoverage);
 const gitInfo = collectGit();
-const ports = collectPorts();
+const access = collectAccess();
+const sessions = collectSessions();
 
 const all = groups.flatMap((g) => g.items);
 const count = (k) => all.filter((i) => i.status.key === k).length;
 const tally = { done: count('done'), doing: count('doing'), warn: count('warn'), todo: count('todo') };
 const total = all.length || 1;
 const rate = Math.round((tally.done / total) * 100);
+const updated = new Date().toLocaleString('zh-CN', { hour12: false });
 
+const p0 = pending.filter((p) => p.level === 'P0');
+const p1 = pending.filter((p) => p.level === 'P1');
+const p2 = pending.filter((p) => p.level === 'P2');
 const headline =
   tally.todo === 0 && tally.warn === 0
     ? `全部 ${tally.done} 项都已落地，剩下的只是继续加东西。`
     : `${tally.done} 项已经能用，${tally.doing + tally.warn} 项还在做，${tally.todo} 项还没动。`;
 
-const updated = new Date().toLocaleString('zh-CN', { hour12: false });
+/* ------------------------------ --access 模式 ---------------------------- */
+if (process.argv.includes('--access')) {
+  const line = '──────────────────────────────────';
+  console.log('\n三套地址 —— 你在哪个网络，就用哪一套：\n' + line);
+  for (const s of SERVICES) {
+    console.log(`${s.name}（${s.hint}）`);
+    console.log(`  本机     http://localhost:${s.port}${s.path}  ${probe(`http://localhost:${s.port}${s.path}`) ? '🟢' : '🔴'}`);
+    if (access.lanIp) console.log(`  同热点   http://${access.lanIp}:${s.port}${s.path}  ${probe(`http://${access.lanIp}:${s.port}${s.path}`) ? '🟢' : '🔴'}`);
+    if (s.publicOk) {
+      console.log(access.publicUrl
+        ? `  公网     ${access.publicUrl}${s.path}  ${access.publicOnline ? '🟢' : '🟡 刚建可能没通'}`
+        : '  公网     未建（敲「建公网」后手机在任何网络都能开）');
+    }
+    console.log('');
+  }
+  console.log(line);
+  console.log('掌上口诀：同一热点用「同热点」，出门在外用「公网」，电脑前用「本机」。');
+  console.log('地址打不开先敲「项目状态」查原因；公网地址变了敲「建公网」重 build。');
+  process.exit(0);
+}
 
-/* -------------------------------- HTML ---------------------------------- */
+/* ------------------------------- HTML 掌控台 ----------------------------- */
 
-const statCard = (cls, num, label) => `
-    <div class="stat ${cls}">
-      <div class="num">${num}</div>
-      <div class="lbl">${label}</div>
-    </div>`;
+const statCard = (cls, num, label) => `<div class="stat ${cls}"><div class="num">${num}</div><div class="lbl">${label}</div></div>`;
 
 const groupHtml = groups
   .map(
-    (g) => `
-    <details class="group" open>
-      <summary>
-        <span class="gname">${esc(human(g.title))}</span>
-        <span class="gcount">${g.items.filter((i) => i.status.key === 'done').length}/${g.items.length}</span>
-      </summary>
-      <ul class="items">
-        ${g.items
-          .map(
-            (i) => `
-          <li class="${i.status.cls}">
-            <span class="ico">${i.status.icon}</span>
-            <div class="txt">
-              <div class="name">${esc(human(i.name))}</div>
-              ${i.note ? `<div class="note">${esc(i.note)}</div>` : ''}
-            </div>
-          </li>`
-          )
-          .join('')}
-      </ul>
+    (g) => `<details class="group"${g.title.includes('基础数据') || g.title.includes('单据视图') ? ' open' : ''}>
+      <summary><span class="gname">${esc(human(g.title))}</span><span class="gcount">${g.items.filter((i) => i.status.key === 'done').length}/${g.items.length}</span></summary>
+      <ul class="items">${g.items
+        .map((i) => `<li class="${i.status.cls}"><span class="ico">${i.status.icon}</span><div class="txt"><div class="name">${esc(human(i.name))}</div>${i.note ? `<div class="note">${esc(i.note)}</div>` : ''}</div></li>`)
+        .join('')}</ul>
     </details>`
   )
   .join('');
@@ -351,114 +305,99 @@ const groupHtml = groups
 const pendingHtml = pending.length
   ? pending
       .map(
-        (p) => `
-      <li class="pend p-${p.level}">
-        <span class="lvl">${p.level}</span>
-        <div class="txt">
-          <div class="name">${esc(human(p.item))}</div>
-          <div class="note">${esc(human(p.why))}</div>
-        </div>
-      </li>`
+        (p) => `<li class="pend p-${p.level}"><span class="lvl">${p.level}</span><div class="txt"><div class="name">${esc(human(p.item))}</div><div class="note">${esc(human(p.why))}</div></div></li>`
       )
       .join('')
-  : '<li class="empty">台账里没有待你拍板的事项。</li>';
+  : '<li class="empty">没有待办。想加东西，直接在对话里说。</li>';
 
 const commitHtml = gitInfo.commits.length
-  ? gitInfo.commits
-      .map(
-        (c) => `
-      <li><span class="date">${esc(c.date)}</span><span class="txt">${esc(human(c.text))}</span></li>`
-      )
-      .join('')
-  : '<li class="empty">暂无提交记录。</li>';
+  ? gitInfo.commits.map((c) => `<li><span class="date">${esc(c.date)}</span>${esc(human(c.text))}</li>`).join('')
+  : '<li class="empty">暂无。</li>';
 
-const portsHtml = ports.length
-  ? ports
-      .map(
-        (p) => `
-      <li>
-        <a href="http://localhost:${p.port}" target="_blank">localhost:${p.port}</a>
-        <span class="note">${esc(p.label)}</span>
-      </li>`
-      )
-      .join('')
-  : '<li class="empty">未从 dev.sh / package.json 中识别到端口。</li>';
+const nextMove = p0.length
+  ? `下一步最优先：${esc(human(p0[0].item))}。你对它说「开始做」或「先放一放，做别的」。`
+  : p1.length
+    ? `P0 已清空。下一步看 P1：${esc(human(p1[0].item))}。`
+    : '高优先级都清了。想加新东西，直接说。';
+
+// 入口区数据内嵌：JS 在用户设备上实时探测，只有点得开的才亮
+const accessJson = JSON.stringify({
+  lanIp: access.lanIp,
+  publicUrl: access.publicUrl,
+  services: SERVICES.map((s) => ({ n: s.name, h: s.hint, port: s.port, path: s.path, pub: s.publicOk })),
+});
 
 const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>建材报价系统 · 进度看板</title>
+<title>建材报价系统 · 掌控台</title>
 <style>
-  :root{
-    --bg:#f6f7f9; --card:#fff; --ink:#1c2024; --sub:#666e7a; --line:#e5e8ec;
-    --done:#12a150; --doing:#c9821a; --warn:#d97706; --todo:#c2372c;
-  }
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1c2024;--sub:#666e7a;--line:#e5e8ec;
+    --ok:#12a150;--warn:#c9821a;--bad:#c2372c;--dim:#9aa3ae}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-    font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
-    padding:0 0 40px;}
+    font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;padding-bottom:40px}
   .wrap{max-width:760px;margin:0 auto;padding:0 14px}
-  header{background:#1c2024;color:#fff;padding:18px 0;margin-bottom:16px}
-  header h1{margin:0;font-size:20px;font-weight:600}
-  header .up{font-size:13px;color:#9aa3ae;margin-top:4px}
-  .hero{background:var(--card);border:1px solid var(--line);border-radius:14px;
-    padding:18px;font-size:18px;font-weight:600;margin-bottom:14px}
-  .hero small{display:block;font-weight:400;font-size:13px;color:var(--sub);margin-top:8px}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px}
-  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;
-    padding:14px 6px;text-align:center}
-  .stat .num{font-size:26px;font-weight:700;line-height:1.2}
-  .stat .lbl{font-size:12px;color:var(--sub);margin-top:2px}
-  .stat.a .num{color:var(--done)} .stat.b .num{color:var(--doing)}
-  .stat.c .num{color:var(--warn)} .stat.d .num{color:var(--todo)}
-  h2{font-size:16px;margin:22px 0 10px;padding-left:10px;border-left:4px solid #1c2024}
-  .group{background:var(--card);border:1px solid var(--line);border-radius:12px;
-    margin-bottom:10px;overflow:hidden}
-  .group summary{padding:13px 14px;cursor:pointer;font-weight:600;
-    display:flex;justify-content:space-between;align-items:center;list-style:none}
+  header{background:#1c2024;color:#fff;padding:16px 0}
+  header h1{margin:0;font-size:19px}
+  header .up{font-size:12px;color:#9aa3ae;margin-top:4px}
+  h2{font-size:16px;margin:24px 0 4px;padding-left:10px;border-left:4px solid #1c2024}
+  h2+.why{font-size:13px;color:var(--sub);margin:0 0 10px;padding-left:14px}
+  .hero{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;font-size:17px;font-weight:600;margin-top:16px}
+  .hero small{display:block;font-weight:400;font-size:13px;color:var(--sub);margin-top:6px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 4px;text-align:center}
+  .stat .num{font-size:24px;font-weight:700;line-height:1.2}
+  .stat .lbl{font-size:12px;color:var(--sub)}
+  .stat.a .num{color:var(--ok)}.stat.b .num{color:var(--warn)}.stat.d .num{color:var(--bad)}
+  .next{background:#eef4ff;border:1px solid #c9dafc;border-radius:12px;padding:14px;font-size:15px;margin-top:10px}
+  .entry{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 14px 12px;margin-bottom:8px}
+  .entry .ename{font-weight:600;padding:10px 0 2px}
+  .entry .ehint{font-size:13px;color:var(--sub);padding-bottom:8px}
+  .btns{display:flex;flex-wrap:wrap;gap:8px}
+  .btn{display:inline-block;padding:8px 14px;border-radius:9px;font-size:14px;text-decoration:none;font-weight:600;
+    border:1px solid var(--line);background:#f2f4f7;color:var(--dim)}
+  .btn.on{background:#e8f5ee;border-color:#12a150;color:#0d7a3c}
+  .btn.on:active{opacity:.7}
+  .btn.wait{color:var(--dim)}
+  .star{font-size:12px;color:#0d7a3c;margin-left:4px}
+  .group{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .group summary{padding:12px 14px;cursor:pointer;font-weight:600;display:flex;justify-content:space-between;list-style:none}
   .group summary::-webkit-details-marker{display:none}
   .gcount{font-size:13px;color:var(--sub);font-weight:400}
   .items,.plist,.clist{margin:0;padding:0 14px 12px;list-style:none}
-  .items li{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
-  .ico{flex:0 0 auto;font-size:15px;line-height:1.6}
-  .txt{flex:1;min-width:0}
+  .items li{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+  .ico{flex:0 0 auto;line-height:1.6}
   .name{font-weight:500}
   .note{font-size:13px;color:var(--sub);word-break:break-word}
-  .s-done .name{color:var(--done)} .s-doing .name{color:var(--doing)}
-  .s-warn .name{color:var(--warn)} .s-todo .name{color:var(--todo)}
-  .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 14px 14px}
-  .plist li{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
-  .lvl{flex:0 0 auto;font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;
-    color:#fff;height:fit-content;margin-top:3px}
-  .p-P0 .lvl{background:#c2372c} .p-P1 .lvl{background:#c9821a} .p-P2 .lvl{background:#6b7280}
-  .clist li{padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+  .s-done .name{color:var(--ok)}.s-doing .name{color:var(--warn)}.s-warn .name{color:var(--warn)}.s-todo .name{color:var(--bad)}
+  .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px 14px 12px}
+  .plist li{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+  .lvl{flex:0 0 auto;font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;color:#fff;height:fit-content;margin-top:3px}
+  .p-P0 .lvl{background:#c2372c}.p-P1 .lvl{background:#c9821a}.p-P2 .lvl{background:#6b7280}
+  .clist li{padding:8px 0;border-top:1px solid var(--line);font-size:14px}
   .clist .date{color:var(--sub);margin-right:10px;font-variant-numeric:tabular-nums}
-  .clist a,a{color:#1a5fb4}
-  .ports li{padding:9px 0;border-top:1px solid var(--line);font-size:14px}
-  .ports a{font-weight:600;margin-right:10px}
-  .empty{color:var(--sub);padding:10px 0}
-  .tip{background:#fffbea;border:1px solid #f0d98a;border-radius:12px;
-    padding:14px;font-size:14px;color:#6b5510}
+  .empty{color:var(--sub);padding:8px 0}
+  .tip{background:#fffbea;border:1px solid #f0d98a;border-radius:12px;padding:12px 14px;font-size:14px;color:#6b5510}
+  details.gl summary{cursor:pointer;font-weight:600;padding:10px 0}
   dl.gl{margin:0}
-  dl.gl dt{font-weight:600;margin-top:10px}
+  dl.gl dt{font-weight:600;margin-top:8px}
   dl.gl dd{margin:2px 0 0;color:var(--sub);font-size:14px}
-  footer{text-align:center;color:var(--sub);font-size:12px;margin-top:26px}
+  footer{text-align:center;color:var(--sub);font-size:12px;margin-top:24px}
 </style>
 </head>
 <body>
-<header>
-  <div class="wrap">
-    <h1>建材报价系统 · 进度看板</h1>
-    <div class="up">更新于 ${esc(updated)}　·　分支 ${esc(gitInfo.branch)}　·　数据来自台账与提交记录，自动生成</div>
-  </div>
-</header>
+<header><div class="wrap">
+  <h1>建材报价系统 · 掌控台</h1>
+  <div class="up">更新于 ${esc(updated)} · node tools/gen-boss-view.mjs 自动生成</div>
+</div></header>
 
 <div class="wrap">
   <div class="hero">
-    ${esc(headline)}
-    <small>整体完成度 ${rate}%（${tally.done}/${total} 项）。这一页每跑一次命令就会刷新，不会过期。</small>
+    ${esc(headline)}完成度 ${rate}%。
+    <small>这一页只放「看了能行动」的信息：入口点得开就去用，拍板项等你说继续或调整。</small>
   </div>
 
   <div class="stats">
@@ -468,81 +407,139 @@ const html = `<!doctype html>
     ${statCard('d', tally.todo, '还没做')}
   </div>
 
+  <h2>现在能用的页面</h2>
+  <p class="why">本页正在探测你当前设备能打开哪个地址——亮着的才是你能点的，不用管自己在什么网络。</p>
+  <div id="entries"></div>
   ${
-    gitInfo.dirtyCount > 0 || gitInfo.ahead > 0
-      ? `<div class="tip">
-      <strong>提醒：</strong>当前有 ${gitInfo.dirtyCount} 个文件改了但还没提交${
-        gitInfo.ahead > 0 ? `，另有 ${gitInfo.ahead} 个提交还没推到云端仓库` : ''
-      }。<br>提交和推送都设了闸门：需要你自己确认才会发生。
-    </div>`
-      : ''
+    access.publicUrl
+      ? ''
+      : `<div class="tip" style="margin-top:8px"><strong>出门在外也想用？</strong>公网入口还没建。对 AI 说「建公网」，建好后这里会出现公网按钮，手机在任何网络都能打开日常页面。</div>`
   }
 
-  <h2>各块业务做到哪了</h2>
+  <div class="next"><strong>接下来：</strong>${nextMove}</div>
+
+  <h2>项目在哪</h2>
+  <p class="why">每块业务能不能用一眼看清。想自己验，让 AI 给你「打开哪页、点什么、看到什么」。</p>
   ${groupHtml}
 
-  <h2>最近做了什么</h2>
-  <div class="box"><ul class="clist">${commitHtml}</ul></div>
-
-  <h2>需要你拍板的事</h2>
+  <h2>接下来做什么（按优先级）</h2>
+  <p class="why">P0 最急。对 AI 说「开始做 P0」或「先放一放」。</p>
   <div class="box"><ul class="plist">${pendingHtml}</ul></div>
 
-  <h2>现在能打开的页面</h2>
-  <div class="box"><ul class="ports">${portsHtml}</ul>
-    <p class="note" style="font-size:13px">上面这些地址只有在你<strong>电脑上对应的服务开着</strong>时才打得开。
-    手机上想看，需要和电脑连同一个 WiFi，并把 localhost 换成电脑的 IP。</p>
-  </div>
+${
+  (() => {
+  const notices = [];
+  if (gitInfo.dirtyCount > 0 || gitInfo.ahead > 0) {
+    notices.push(`<h2>要注意</h2>
+  <div class="tip"><strong>有东西还没进仓库：</strong>${gitInfo.dirtyCount} 个文件改了没提交${gitInfo.ahead > 0 ? `，${gitInfo.ahead} 个提交没推云端` : ''}。
+  提交和推送都设了闸门，需要你确认才会发生——想让 AI 落库就说「提交」。</div>`);
+  }
+  if (sessions.length > 0) {
+    const summary = sessions.map((s) => `${s.name}（${s.state}）`).join('、');
+    notices.push(`  <div class="tip"><strong>有 AI 对话开着：</strong>${summary}。想接着聊就对它说「接回对话」；要新开对话，让 AI 先读「项目掌控台.md」拿到一致上下文。</div>`);
+  }
+  return notices.join('');
+})()
+}
 
-  <h2>怎么自己验收</h2>
-  <div class="box" style="padding-top:12px">
-    <p class="note" style="margin-top:0">别问「做完了吗」，问下面这类问题，答案才靠得住：</p>
-    <ul class="clist">
-      <li>「打开员工端页面，点进供应商档案，新增一个供应商并填两个联系人，看看保存后列出来是不是两行。」</li>
-      <li>「开一张销售单，写一行口语化的货名，看能不能搜到、能不能保存。」</li>
-      <li>「去库存台账，随便挑一个货，看数量和成本对不对得上。」</li>
-    </ul>
-    <p class="note">原则：<strong>说出打开哪页、点什么、应该看到什么</strong>。说不出这三句的，就等于没法验收。</p>
-  </div>
+  <h2>最近做了什么</h2>
+  <p class="why">只看趋势用。细节对你没用，已折叠。</p>
+  <div class="box"><ul class="clist">${commitHtml}</ul></div>
 
-  <h2>术语对照（白话版）</h2>
-  <div class="box">
-    <dl class="gl">
-      <dt>集合体</dt><dd>一类档案，比如产品、供应商、客户</dd>
-      <dt>确认层</dt><dd>点一下才出现编辑框，防止误触改错</dd>
-      <dt>门禁</dt><dd>前置条件没满足时给提示，不让你白点</dd>
-      <dt>快照</dt><dd>当时的副本，事后改档案不会篡改历史单子</dd>
-      <dt>欠库</dt><dd>已经卖出去但还没货发的缺口</dd>
-      <dt>账龄</dt><dd>钱欠了多久</dd>
-      <dt>SKU</dt><dd>具体到规格加单位的每一种货</dd>
-    </dl>
-  </div>
+  <details class="box gl-box"><summary style="padding:10px 0;font-weight:600">术语对照（看不懂时展开）</summary>
+  <dl class="gl">
+    <dt>集合体</dt><dd>一类档案，比如产品、供应商、客户</dd>
+    <dt>确认层</dt><dd>点一下才出现编辑框，防止误触改错</dd>
+    <dt>快照</dt><dd>当时的副本，事后改档案不会篡改历史单子</dd>
+    <dt>欠库</dt><dd>卖出去但还没货发的缺口</dd>
+    <dt>SKU</dt><dd>具体到规格加单位的每一种货</dd>
+  </dl></details>
 
-  <footer>由 <code>node tools/gen-boss-view.mjs</code> 从 docs-coverage.md 与 git 自动生成，请勿手改本文件</footer>
+  <footer>由 node tools/gen-boss-view.mjs 从台账与 git 自动生成 · 地址打不开先敲「项目状态」</footer>
 </div>
+
+<script>
+var CFG = ${accessJson};
+function probe(u){return new Promise(function(res){
+  var done=false,t=setTimeout(function(){if(!done){done=true;res(false)}},2500);
+  fetch(u,{mode:"no-cors",cache:"no-store"}).then(function(){if(!done){done=true;res(true)}}).catch(function(){if(!done){done=true;res(false)}});
+})}
+function isMobile(){return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)}
+function candidates(svc){
+  var list=[{k:"本机",u:"http://localhost:"+svc.port+svc.path}];
+  if(CFG.lanIp)list.push({k:"同热点",u:"http://"+CFG.lanIp+":"+svc.port+svc.path});
+  if(svc.pub&&CFG.publicUrl)list.push({k:"公网",u:CFG.publicUrl+svc.path});
+  return list;
+}
+function prefer(device,cands){
+  // 返回推荐顺序：手机优先公网>同热点>本机；电脑反过来
+  var rank=device?["公网","同热点","本机"]:["本机","同热点","公网"];
+  return cands.slice().sort(function(a,b){return rank.indexOf(a.k)-rank.indexOf(b.k)});
+}
+function render(){
+  var root=document.getElementById("entries");
+  root.innerHTML="";
+  var mobile=isMobile();
+  CFG.services.forEach(function(svc,idx){
+    var cands=candidates(svc);
+    var box=document.createElement("div");box.className="entry";
+    box.innerHTML='<div class="ename">'+svc.n+'</div><div class="ehint">'+svc.h+' · 正在探测哪些地址你能打开…</div><div class="btns"></div>';
+    root.appendChild(box);
+    var btns=box.querySelector(".btns");
+    var results=cands.map(function(c){return {k:c.k,u:c.u,ok:null}});
+    var pendingCount=results.length;
+    results.forEach(function(r){
+      probe(r.u).then(function(ok){
+        r.ok=ok;pendingCount--;
+        if(pendingCount===0)paint(box,btns,svc,results,mobile);
+      });
+    });
+  });
+}
+function paint(box,btns,svc,results,mobile){
+  var alive=results.filter(function(r){return r.ok});
+  var order=prefer(mobile,alive);
+  var hint=alive.length?"":"（当前都探测不到——服务可能没启动，敲「项目状态」查）";
+  box.querySelector(".ehint").textContent=svc.h+(alive.length?" · 推荐第一个亮着的":" · "+hint);
+  btns.innerHTML="";
+  results.forEach(function(r){
+    var a=document.createElement("a");
+    var on=r.ok;
+    a.className="btn"+(on?" on":"");
+    a.textContent=r.k+(on&&order.length&&r.k===order[0].k?" ⭐":"");
+    if(on)a.href=r.u,a.target="_blank";
+    btns.appendChild(a);
+  });
+}
+render();
+</script>
 </body>
 </html>
 `;
-
 fs.writeFileSync(OUT_HTML, html, 'utf8');
 
-/* --------------------------------- Markdown -------------------------------- */
+/* --------------------------- Markdown（AI 读） --------------------------- */
+const addrRows = SERVICES.map((s) => {
+  const lan = access.lanIp ? `http://${access.lanIp}:${s.port}${s.path}` : '';
+  return `- **${s.name}**（${s.hint}）
+  - 本机：http://localhost:${s.port}${s.path}${probe(`http://localhost:${s.port}${s.path}`) ? ' 🟢' : ' 🔴'}
+  ${lan ? `- 同热点：${lan}\n` : ''}  ${s.publicOk ? (access.publicUrl ? `- 公网：${access.publicUrl}${s.path}${access.publicOnline ? ' 🟢' : ' 🟡'}` : '- 公网：未建（敲「建公网」）') : '- 公网：不适用（仅 8080 有公网映射）'}`;
+}).join('\n');
 
-const mdOut = `# 项目进度看板（AI 读的版本）
+const mdOut = `# 项目掌控台（AI 读的版本）
 
-> 自动生成，勿手改。跑 \`node tools/gen-boss-view.mjs\` 刷新。
+> 自动生成，勿手改。跑 \`node tools/gen-boss-view.mjs\` 刷新；终端看地址跑 \`--access\`。
 > 更新时间：${updated}　分支：${gitInfo.branch}
 
 ## 一句话
 
-${headline}整体完成度 ${rate}%（${tally.done}/${total}）。
+${headline}完成度 ${rate}%（${tally.done}/${total}）。
 
-## 数字
+## 现在能不能用（三套地址，按设备选用）
 
-| 已完成 | 在做 | 有偏差 | 还没做 |
-|---|---|---|---|
-| ${tally.done} | ${tally.doing} | ${tally.warn} | ${tally.todo} |
+${addrRows}
 
-## 各块进度
+## 项目在哪
 
 ${groups
   .map(
@@ -552,11 +549,7 @@ ${groups
   )
   .join('\n\n')}
 
-## 最近做了什么
-
-${gitInfo.commits.map((c) => `- ${c.date} ${plain(c.text)}`).join('\n') || '- 暂无'}
-
-## 需要用户拍板
+## 接下来（用户可对 AI 说「开始做 P0」）
 
 ${
   pending.length
@@ -564,16 +557,24 @@ ${
     : '- 无'
 }
 
+## 最近做了什么（最多 8 条，防冗余）
+
+${gitInfo.commits.map((c) => `- ${c.date} ${plain(c.text)}`).join('\n') || '- 暂无'}
+
+## 正在进行的 AI 对话
+
+${sessions.length > 0
+  ? '- 当前开着的对话：' + sessions.map((s) => s.name + '（' + s.state + '）').join('、') + '\n- 想接着聊：对它说「接回对话」。要新开对话：先让 AI 跑 node tools/gen-boss-view.mjs 刷新本文件再读它，拿到与你看板一致的上下文。'
+  : '- 当前没有开着的 AI 对话。\n- 任何新对话处理任务前，都应先跑 node tools/gen-boss-view.mjs 刷新并读本文件（项目掌控台.md），保证上下文一致。'}
+
 ## 工作区状态
 
 - 未提交改动文件数：${gitInfo.dirtyCount}
-- 领先云端仓库提交数：${gitInfo.ahead}
-- 本地服务端口：${ports.map((p) => `${p.port}（${p.label}）`).join('、') || '未识别'}
+- 领先云端提交数：${gitInfo.ahead}
 `;
-
 fs.writeFileSync(OUT_MD, mdOut, 'utf8');
 
 console.log(`已生成：
   ${path.relative(ROOT, OUT_HTML)}
   ${path.relative(ROOT, OUT_MD)}
-完成度 ${rate}%（已完成 ${tally.done} / 共 ${total}）`);
+完成度 ${rate}%（${tally.done}/${total}）· 入口探测数据已内嵌${access.publicUrl ? '（含公网）' : '（公网未建）'}`);
