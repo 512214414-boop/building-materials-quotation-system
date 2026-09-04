@@ -10,3 +10,7 @@ e2e_browser/screenshots/
 .DS_Store
 backup_*/
 .trae_*
+
+# 白话进度看板：由 tools/gen-boss-view.mjs 生成，现状从代码提取，不入库
+项目进度看板.html
+项目进度看板.md
