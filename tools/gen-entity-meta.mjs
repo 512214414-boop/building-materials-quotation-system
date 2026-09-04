@@ -367,6 +367,68 @@ for (const [key, ent] of relEntities) {
   rel += '  },\n';
 }
 rel += '};\n';
+// ---------- ③-b 单元格三维规格登记表（L4） ----------
+// 每列 display×editEntry×valueState + gate，由 yml 的 cellSpec 子段驱动。
+// 加法产出：不改动既有 entityRelations 输出，其余 19 页未声明 cellSpec 则跳过，零回归。
+// 这是「列行为参数 = 配置」的唯一真相源；页面只消费、不手写列 render。
+rel += '\n// 单元格三维规格登记表（L4）：配置驱动的列行为参数（显示 × 编辑入口 × 值状态 + 门禁）。\n';
+rel += '// 页面据此消费，零手写列 render；其余 19 页未声明 cellSpec 则不进此表。\n';
+rel += 'export interface GeneratedCellSpec {\n';
+rel += '  key: string;\n';
+rel += '  title: string;\n';
+rel += '  /** 值形态：text/number/date/image/enum-tag/link/multi-record */\n';
+rel += '  display: string;\n';
+rel += "  /** 编辑入口：none/inline/confirm/link/expand */\n";
+rel += '  editEntry: string;\n';
+rel += "  /** 值状态：standard/non-standard */\n";
+rel += "  valueState?: string;\n";
+rel += '  gate?: {\n';
+rel += "    input?: string;\n";
+rel += "    searchKind?: string;\n";
+rel += "    dictField?: string;\n";
+rel += "    suggestField?: string;\n";
+rel += "    disabledReason?: string;\n";
+rel += '    allowEmpty?: boolean;\n';
+rel += '  };\n';
+rel += '  /** 合并单元格场景下子行是否隐藏本格 */\n';
+rel += '  hidden?: boolean;\n';
+rel += '}\n\n';
+rel += 'export const entityCellSpecs: Record<string, GeneratedCellSpec[]> = {\n';
+for (const [key, ent] of relEntities) {
+  const specs = (ent.columns || [])
+    .filter((c) => c.cellSpec)
+    .map((c) => {
+      const cs = c.cellSpec;
+      const rawSearch = cs.gate?.search;
+      const search = typeof rawSearch === 'string' ? { kind: rawSearch } : (rawSearch || {});
+      const g = cs.gate;
+      const gateExpr = g
+        ? `{ input: ${JSON.stringify(g.input ?? 'text')}, searchKind: ${JSON.stringify(search.kind ?? 'none')}, dictField: ${search.dictField ? JSON.stringify(search.dictField) : 'undefined'}, suggestField: ${g.suggestField ? JSON.stringify(g.suggestField) : 'undefined'}, disabledReason: ${g.disabledReason ? JSON.stringify(g.disabledReason) : 'undefined'}, allowEmpty: ${g.allowEmpty ? 'true' : 'undefined'} }`
+        : 'undefined';
+      return `{ key: ${JSON.stringify(c.key)}, title: ${JSON.stringify(c.title ?? '')}, display: ${JSON.stringify(cs.display)}, editEntry: ${JSON.stringify(cs.editEntry)}, valueState: ${cs.valueState ? JSON.stringify(cs.valueState) : 'undefined'}, gate: ${gateExpr}, hidden: ${cs.hidden ? 'true' : 'undefined'} }`;
+    });
+  if (specs.length) {
+    rel += `  ${key}: [\n    ${specs.join(',\n    ')},\n  ],\n`;
+  }
+}
+rel += '};\n\n';
+
+// ③-c 配置纪律自检（开发期）：yml 声明了 renderMode:custom 的列，必须同时登记 cellSpec，
+// 否则等于「框架开后门手写」，与「列只由配置+注册组件产出」原则冲突。仅告警，不阻断其余页面生成。
+const customWithoutSpec = [];
+for (const [key, ent] of relEntities) {
+  for (const c of ent.columns || []) {
+    if (c.renderMode === 'custom' && !c.cellSpec) {
+      customWithoutSpec.push(`${key}.${c.key}`);
+    }
+  }
+}
+if (customWithoutSpec.length) {
+  console.warn(
+    `⚠ 配置纪律：以下列仍是 renderMode:custom 且未登记 cellSpec（应迁移到配置驱动）：\n   - ${customWithoutSpec.join('\n   - ')}`,
+  );
+}
+
 fs.mkdirSync(path.dirname(relOut), { recursive: true });
 fs.writeFileSync(relOut, rel, 'utf8');
 

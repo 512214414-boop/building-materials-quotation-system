@@ -81,3 +81,41 @@ export const entityRelations: Record<string, EntityRelation> = {
     relations: [{ field: "productId", to: "product", type: "manyToOne" }, { field: "warehouseId", to: "warehouse", type: "manyToOne" }],
   },
 };
+
+// 单元格三维规格登记表（L4）：配置驱动的列行为参数（显示 × 编辑入口 × 值状态 + 门禁）。
+// 页面据此消费，零手写列 render；其余 19 页未声明 cellSpec 则不进此表。
+export interface GeneratedCellSpec {
+  key: string;
+  title: string;
+  /** 值形态：text/number/date/image/enum-tag/link/multi-record */
+  display: string;
+  /** 编辑入口：none/inline/confirm/link/expand */
+  editEntry: string;
+  /** 值状态：standard/non-standard */
+  valueState?: string;
+  gate?: {
+    input?: string;
+    searchKind?: string;
+    dictField?: string;
+    suggestField?: string;
+    disabledReason?: string;
+    allowEmpty?: boolean;
+  };
+  /** 合并单元格场景下子行是否隐藏本格 */
+  hidden?: boolean;
+}
+
+export const entityCellSpecs: Record<string, GeneratedCellSpec[]> = {
+  product: [
+    { key: "categoryName", title: "分类", display: "text", editEntry: "confirm", valueState: undefined, gate: { input: "text", searchKind: "dict", dictField: "category", suggestField: undefined, disabledReason: undefined, allowEmpty: undefined }, hidden: undefined },
+    { key: "mainImageUrl", title: "图", display: "image", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "productName", title: "产品名", display: "link", editEntry: "link", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "brandName", title: "品牌", display: "text", editEntry: "confirm", valueState: undefined, gate: { input: "text", searchKind: "dict", dictField: "brand", suggestField: undefined, disabledReason: undefined, allowEmpty: undefined }, hidden: undefined },
+    { key: "specModel", title: "系列/规格", display: "text", editEntry: "confirm", valueState: undefined, gate: { input: "text", searchKind: "dict", dictField: "spec", suggestField: undefined, disabledReason: undefined, allowEmpty: undefined }, hidden: undefined },
+    { key: "__skuPriceSlot__", title: "", display: "multi-record", editEntry: "expand", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "remark", title: "备注", display: "text", editEntry: "confirm", valueState: undefined, gate: { input: "text", searchKind: "none", dictField: undefined, suggestField: undefined, disabledReason: "请先选规格", allowEmpty: undefined }, hidden: undefined },
+    { key: "status", title: "状态", display: "enum-tag", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "updateTime", title: "更新时间", display: "date", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+};
+

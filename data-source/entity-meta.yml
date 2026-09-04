@@ -87,15 +87,15 @@ entities:
       - { key: unitPrice, title: 单价, dataIndex: unitPrice, renderMode: custom, minWidth: AMOUNT, align: center, order: 60, scenes: [workbench], fieldClass: A, dictKind: priceType, suggestField: priceType, confirmStrategy: direct }
       - { key: amount, title: 金额, renderMode: static, minWidth: AMOUNT, align: center, order: 70, scenes: [workbench] }
       - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 80, scenes: [workbench], fieldClass: A, suggestField: remark, confirmStrategy: direct }
-      - { key: categoryName, title: 分类, dataIndex: categoryName, renderMode: custom, minWidth: TAG_L, align: center, order: 10, scenes: [archive], fieldClass: A, dictKind: category, suggestField: category, confirmStrategy: dialog }
-      - { key: mainImageUrl, title: 图, dataIndex: sku, renderMode: custom, minWidth: ICON, align: center, order: 20, scenes: [archive] }
-      - { key: productName, title: 产品名, dataIndex: productName, renderMode: custom, minWidth: NAME_QUOTE, align: left, className: ds-cascade-col, order: 30, scenes: [archive], fieldClass: B, confirmStrategy: dialog }
-      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 40, scenes: [archive], fieldClass: A, dictKind: brand, suggestField: brand, confirmStrategy: dialog }
-      - { key: specModel, title: 系列/规格, dataIndex: specModel, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 50, scenes: [archive], fieldClass: B, confirmStrategy: dialog }
-      - { key: __skuPriceSlot__, title: '', renderMode: custom, order: 60, scenes: [archive], slot: skuPrice }
-      - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 70, scenes: [archive], fieldClass: A, suggestField: remark, confirmStrategy: direct }
-      - { key: status, title: 状态, dataIndex: sku, renderMode: custom, minWidth: TAG_S, align: center, order: 80, scenes: [archive] }
-      - { key: updateTime, title: 更新时间, dataIndex: sku, renderMode: custom, minWidth: DATETIME, align: center, order: 90, scenes: [archive] }
+      - { key: categoryName, title: 分类, dataIndex: categoryName, renderMode: custom, minWidth: TAG_L, align: center, order: 10, scenes: [archive], fieldClass: A, dictKind: category, suggestField: category, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: category } } } }
+      - { key: mainImageUrl, title: 图, dataIndex: sku, renderMode: custom, minWidth: ICON, align: center, order: 20, scenes: [archive], cellSpec: { display: image, editEntry: none } }
+      - { key: productName, title: 产品名, dataIndex: productName, renderMode: custom, minWidth: NAME_QUOTE, align: left, className: ds-cascade-col, order: 30, scenes: [archive], fieldClass: B, confirmStrategy: dialog, cellSpec: { display: link, editEntry: link } }
+      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 40, scenes: [archive], fieldClass: A, dictKind: brand, suggestField: brand, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: brand } } } }
+      - { key: specModel, title: 系列/规格, dataIndex: specModel, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 50, scenes: [archive], fieldClass: B, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: spec } } } }
+      - { key: __skuPriceSlot__, title: '', renderMode: custom, order: 60, scenes: [archive], slot: skuPrice, cellSpec: { display: multi-record, editEntry: expand } }
+      - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 70, scenes: [archive], fieldClass: A, suggestField: remark, confirmStrategy: direct, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: none }, disabledReason: 请先选规格 } } }
+      - { key: status, title: 状态, dataIndex: sku, renderMode: custom, minWidth: TAG_S, align: center, order: 80, scenes: [archive], cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: updateTime, title: 更新时间, dataIndex: sku, renderMode: custom, minWidth: DATETIME, align: center, order: 90, scenes: [archive], cellSpec: { display: date, editEntry: none } }
     relations:
       - { field: brandId, to: brand, type: manyToOne }
       - { field: specId, to: spec, type: manyToOne }

@@ -58,10 +58,13 @@ export function overlayModalContainer(): HTMLElement {
   return getOverlayLayer('modal');
 }
 
-/** 与 smartPopupContainer 同一规则：Modal/Drawer 内 → modal 层，否则 float 层 */
+/** 与 smartPopupContainer 同一规则：Modal/Drawer 内 → modal 层，否则 float 层。
+ *  多记录展开容器（ant-popover）内的确认层同样视为 modal 层：
+ *  antd Popover 默认 z≈1030，若确认层落到 float 层（z≈1）会被压在 Popover 之下，
+ *  因此把承载在 Popover 内的确认层提高到 modal 浮层（z≈1050+depth）。 */
 export function resolveOverlayLayer(triggerNode?: HTMLElement | null): OverlayLayer {
   if (!triggerNode) return 'float';
-  if (triggerNode.closest('.ant-modal-wrap, .ant-modal, .ant-drawer, [data-overlay-layer="modal"]')) {
+  if (triggerNode.closest('.ant-modal-wrap, .ant-modal, .ant-drawer, .ant-popover, [data-overlay-layer="modal"]')) {
     return 'modal';
   }
   return 'float';

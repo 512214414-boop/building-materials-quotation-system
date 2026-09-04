@@ -56,6 +56,12 @@ export interface FloatPanelProps {
   parentId?: string | null;
   /** 稳定槽位 id。子面板用 parentId 指过来，z-index 按树深自动算，不要写死数字 */
   panelId?: string;
+  /**
+   * 受控重算信号：锚点身份变化（邻格快切 / confirmAndGo→reopen 复用同面板 /
+   * 同面板下换格）时由调用方自增，强制本面板在 commit 前重算定位。
+   * 锚点是 ref，单纯改 .current 不会触发重定位，必须靠这个信号。
+   */
+  repositionKey?: number;
 }
 
 interface Position {
@@ -148,6 +154,7 @@ export function FloatPanel({
   allowFocusInside: _allowFocusInside = true,
   parentId = null,
   panelId: panelIdProp,
+  repositionKey,
   'data-shared-badge': badgeOverride,
 }: FloatPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -290,7 +297,7 @@ export function FloatPanel({
 
   useEffect(() => {
     if (isVisible) scheduleUpdate();
-  }, [isVisible, scheduleUpdate]);
+  }, [isVisible, repositionKey, scheduleUpdate]);
 
   // 外部关闭走统一基建 outsideTapGuard：点一下空白才关；滑动/拖动画布不关；失焦不关
   useEffect(() => {

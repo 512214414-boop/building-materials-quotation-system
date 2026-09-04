@@ -47,7 +47,7 @@ import {
   QUICK_CREATE_LAYERS,
   resolveFieldValue,
 } from '../../../../shared/config/quickCreateConfig.js';
-import { brandDict, categoryDict } from '../../../../shared/config/recordDicts.js';
+import { brandDict } from '../../../../shared/config/recordDicts.js';
 import {
   getProduct,
   getSiblingSpecs,
@@ -55,6 +55,7 @@ import {
   listPriceTypes,
   listCategories,
   createCategory,
+  applyDictChange,
   deleteSpec,
   getSpecDocRefs,
   type SaveProductInput,
@@ -1256,7 +1257,16 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
               value={categoryInput}
               placeholder="分类"
               title="修改分类"
-              dictConfig={categoryDict}
+              kind="category"
+              dictField="category"
+              fromId={categoryId ? String(categoryId) : undefined}
+              applyGlobal={(name) =>
+                applyDictChange({ kind: 'category', fromId: String(categoryId), toName: name }).then(() => {
+                  setCategoryInput(name);
+                  categoryResolvedRef.current = null;
+                  categorySelectedNameRef.current = '';
+                })
+              }
               disabled={loading || saving}
               onApply={(name) => {
                 setCategoryInput(name);

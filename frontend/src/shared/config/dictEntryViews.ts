@@ -36,8 +36,8 @@ export type DictDeleteFn = (id: string) => Promise<unknown>;
 /** 字典类字段：SuggestInput 默认带两档切换、行内改/删 */
 export const DICT_ENTRY_FIELDS: SuggestField[] = ['category', 'brand', 'unit', 'priceType', 'supplier'];
 
-export function isDictEntryField(field: SuggestField): boolean {
-  return DICT_ENTRY_FIELDS.includes(field);
+export function isDictEntryField(field: SuggestField | DictChangeKind): boolean {
+  return DICT_ENTRY_FIELDS.includes(field as SuggestField);
 }
 
 /** 字典类字段 → dictMerge kind（同名映射，显式写出防漂移） */
