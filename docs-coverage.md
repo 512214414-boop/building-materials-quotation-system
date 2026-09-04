@@ -132,7 +132,7 @@
 | 白话进度看板（给不懂代码的人远程看进度） | ✅ | `tools/gen-boss-view.mjs` 从本台账 + git 自动提取，产出 `项目进度看板.html`（人看）与 `项目进度看板.md`（AI 读）。**现状从代码提取，禁止手写进度描述**（「下发文档范本」篇硬纪律）；非技术用户口径见 `.codebuddy/rules/boss-view.md` |
 | 架构重构信号（L0 · 识别该升级/该重构的时刻） | ✅ | 2026-09-04：真相源新增 `refactor-signals` 条目（gen-docs 36 条同步）。核心：三次绕行即立案、沉没成本不参与架构决策、先画目标态再看迁移路、开发期从宽发布期从严、重构必须连文档一起动、禁止拿重构逃避交付；五类信号 = 绕行/解释/重复/冻结/漂移 |
 | 访问地址总表 + 中文命令中心（单一真相源） | ✅ | `tools/gen-access.mjs` 从 dev.sh 等自动提取 + 实时探测 → `访问地址.md`；中文命令 `~/.bmq/开工.sh`（开工=菜单；启动项目/刷新项目/重启项目/停止项目/项目状态/建公网/文档站/看进度/对话/接回对话/全部地址）**只封装 dev.sh 不重写**；接入执行卡「七、访问地址与命令中心」，CLI 与 IDE 同源 |
-| 表格 UI 分层（L1 · 五层模型 + 表 × 层级矩阵页） | ✅ | 2026-09-04：真相源 `ui-layer-model` 条目（五层合一）+ 矩阵页 6 表 × 5 层实测数据。**同日缺陷修复**：① editEntry 删 inline 常驻输入（与「禁止常驻输入框」硬纪律冲突，收为 none/confirm/link/expand 四态）；② 装配序列按代码核实修正——主表行（DocumentContextBar）挂容器层 OrderWorkbench 九视图共享，报价/售后有、产品管理/采购清单无（subagent 实测 OrderWorkbench.tsx:543）；③ rules 补三条裁决：L4 声明落点＝登记表 pages 段（禁第二套）、现状数字以 auditCellSpecs/grep 实测为准、矩阵与网格＝并列引擎；④ ViewFrame/StageActionBar/StageBizStrip 注释层号对齐 L2。**阶段 1 样板已落地**（2026-09-04：采购报价 8 列全部参数化、7 处 custom 消灭，e2e 13/13 全过；门禁从静默改为按四种冻结来源提示）——剩余 19 页 128 处 custom 待推广；下轮代码还需删 cellSpec.ts 残留 inline 分支 |
+| 表格 UI 分层（L1 · 五层模型 + 表 × 层级矩阵页） | ✅ | 2026-09-04：真相源 `ui-layer-model` 条目（五层合一）+ 矩阵页 6 表 × 5 层实测数据。**同日缺陷修复**：① editEntry 删 inline 常驻输入（与「禁止常驻输入框」硬纪律冲突，收为 none/confirm/link/expand 四态）；② 装配序列按代码核实修正——主表行（DocumentContextBar）挂容器层 OrderWorkbench 九视图共享，报价/售后有、产品管理/采购清单无（subagent 实测 OrderWorkbench.tsx:543）；③ rules 补三条裁决：L4 声明落点＝登记表 pages 段（禁第二套）、现状数字以 auditCellSpecs/grep 实测为准、矩阵与网格＝并列引擎；④ ViewFrame/StageActionBar/StageBizStrip 注释层号对齐 L2。**阶段 1 样板已落地**（2026-09-04：采购报价 8 列全部参数化、7 处 custom 消灭，e2e 13/13 全过；门禁从静默改为按四种冻结来源提示）——剩余 19 页 128 处 custom 待推广；下轮代码还需删 cellSpec.ts 残留 inline 分支。**同日二轮收敛**：删「表格功能框架模型」「实体关系槽位」两组（数据视角，已被本体系承接），独有裁决融入真相源 know-table/know-metaschema；矩阵页开第六观察位「弹窗剖面」（产品管理已填，其余五表明写待补） |
 
 ---
 
@@ -183,6 +183,8 @@
 | P1 | 经营报表 5 类（range/margin/turnover/ar-aging/...）的「选品」与「需要」维度 | 后端 `opsReportService` 范式化完成，需补业务规则 |
 | P2 | 范式 vs 派生表的决策记录（为什么最终走范式、为什么在 v30 节点删） | 防止后人重复「为宽表是否要做」的讨论 |
 | P2 | Meta Studio 的「新增实体向导」（关系图 → 集合体类型 → 分层 → 逐维度填空） | 当前 UI 只支持**编辑已登记实体**；新增实体需手写 yml |
+| P2 | users/roles 形态符合档案框架却各自手写（UserManage 605 行 / RolePermissions 512 行）待收框架 | 两判据（有无树/主操作是编辑还是执行）判定可归槽；收框架时同步消 actionMeta 死数据（actions.generated.js，095 删除后无消费方） |
+| P2 | 旧档案模型组退役（30-34 *-model、39-get-module-tables、10-product-model、14-tables） | 07-archive-framework 已是其吸收宿主；旧 *-model 数据文件的 intent/need 与指导思想重复，下轮裁 |
 
 ---
 
@@ -252,6 +254,8 @@
 
 1. **宽表**：数据规范「宽表检索」整节、洞察结果文档「宽表待办」段、产品数据层宽表登记表——都撞 v30 物理删宽表、检索转范式多路召回的现行裁决。
 2. **SKU 口径**：术语表 SKU=规格×品牌×单位、「四件套」说法——现行 SKU=spec×unit、品牌挂 product（brand+product_brand）。
+
+| **表格体系二轮收敛·删旧组融入新五层（2026-09-04）** | **文档任务**。① 真相源融入 14 条独有裁决：know-table（对照槽位补 6 条边界：槽位缺口登记/custom=体温计/该独立三例/特征集合→槽位映射/两判据定边界/部分同构≠可合并反例/例外登记；第二步补「形似神不似」「开单不必先有人档」；特征分支补基数实例/showDefault/isMain toggle/键数三段/list:false）；know-metaschema（增「列的合并机制」表：声明+推导+slot 占位+混合槽；自检补「有意识冗余必须登记」；rules 补列三路合成）；ui-layer-model 开「弹窗剖面」第六观察位。② 矩阵页：51 架子加 profile 观察位；52 产品管理填「编辑弹窗剖面」（块→组件→特征→登记表出处，重组自旧 44 章）；096 迁入剖面渲染（原 095 删除）。③ 删「表格功能框架模型」组（9 页）+「实体关系槽位」组 + 50 架子 + 095 渲染器 + 02 交付树（目标章全死链）共 12 文件；070 删分发分支、38 删注册、7 处 guestModule/hostModule 死链清理；05-nav-groups 删两组、archive-framework 迁出为独立「档案管理」组、补 refactor-signals 侧栏入口；CSS 50-aggregate-rack.css→ui-layer-rack.css（类名不动）。④ 07-archive-framework 对齐 v31：列顺序由 entity-meta.yml pages.slots 驱动，清除 4 处「产品宽表」过时表述（v30 已物理删宽表）。**体检 68 内容+16 渲染无阻断**。遗留提醒：actions.generated.js 的 actionMeta 成死数据（095 删除后无消费方，生成器侧下轮处理） |
 
 ## 九、自检清单（任何改动后跑）
 
