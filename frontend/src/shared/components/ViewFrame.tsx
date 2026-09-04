@@ -39,9 +39,9 @@ const CONTENT_STYLE: CSSProperties = {
 };
 
 export interface ViewFrameProps {
-  /** L3 操作条配置（始终渲染，保持骨架高度一致） */
+  /** L2 行槽位层 · 工具行配置（始终渲染，保持骨架高度一致） */
   actionBar?: StageActionBarProps;
-  /** L2 业务条配置（始终渲染，保持骨架高度一致） */
+  /** L2 行槽位层 · 统计行配置（始终渲染，保持骨架高度一致） */
   bizStrip?: StageBizStripProps;
   /** 主内容区（统一 padding） */
   children: ReactNode;

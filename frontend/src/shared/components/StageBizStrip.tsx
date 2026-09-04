@@ -1,4 +1,4 @@
-// v10.32 工作台视图统一环节业务条（L2）
+// v10.32 工作台视图统一环节业务条（L2 行槽位层 · 统计行）
 // 使用 .ds-shell-row 通用行类，行高24px、字号11px统一
 import type { CSSProperties, ReactNode } from 'react';
 import { WORKBENCH_TEXT } from '../styles/shell-constants.js';
