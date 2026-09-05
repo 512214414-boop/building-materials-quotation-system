@@ -4,6 +4,9 @@
 
 - 用户是**非技术业务架构师**，完全依赖 AI 开发；不写代码、不手动验证浏览器（G4 少数项除外）。手机远程下发需求，常用口语化的架构判断（如"这是架构级问题""向上抽象不够"），其判断需认真对待并取证核实，不要当成外行话略过。
 - **长期架构方向 > 短期低成本**：反对"最小可行"优先。任何低成本提议要先说明长期代价。
+- **推荐项必须是长期最优解，禁止把"成本最低/零风险"包装成"推荐"推给用户**（用户 2026-09-05 明确批评：我写"前端聚合零风险（推荐）"实则是把最低短期成本当推荐；SKU 量级要按生产级几百万~上千万设计，前端根本拉不回上千万行聚合）。
+- **框架要通用、按层级/配置驱动，禁止为单个实体开特例"后门"**（用户 2026-09-05：把 product 当"唯一例外"写专用 composite 槽=后门；正确做法是通用 displayLevel + childLevel，任何实体声明即生效、框架零改动）。
+- **数据量级按生产级设计**：SKU 几百万~上千万；列表/检索聚合必须走后端索引（GROUP BY + 复用现有 FULLTEXT 召回），禁止前端全量聚合。
 - **掌控台 = 开发驱动台**（三区：下一步开发管道 / 待你拍板 / 已拍板待开发），不是状态播报板。
 - **"做完了吗"只认客观信号**（typecheck/build/测试退出码/Playwright），绝不问 AI——谄媚偏差永远 yes。
 - 已装 `playwright`，`e2e_browser/` 可跑 G3 截图冒烟。
@@ -36,8 +39,9 @@
 - **类型债已结案**：全量 `strict: true` 零错误（原 allowlist+棘轮方案作废）。
 - **逃逸口**＝显式登记（`@escape: 原因+到期条件`），禁止隐式绕过平台。
 - **过度抽象红线（用户 2026-09-05 反思）**：标准 3NF 已满足业务目标时，不额外造宽表/字典（如产品名不需要独立字典）；"能跑"≠"该抽象"，设计期先问"这类数据的标准形状是什么、是否已有范式/标准模式可复用"。
-- **v23 两条 DB 结构升级（已作废）**：原方向＝产品名升全局字典 `product_name` + 分类改关系表 `product_category`。**2026-09-05 用户反思作废**："标准 3NF 已满足业务目标，产品名不需要独立字典"——遂将 P1/P2a/P2b 代码外科手术式回退（schema 的 product_name/product_category 模型 + productNameId 关系、entity-meta 三处、registry.ts PRODUCT_NAME_REGISTRY、saveProduct 经 git revert 还原；保留复合体框架 ArchiveSlotHost/archiveSlotTypes/ProductSkuSubTable），`gen-entity-meta`+`prisma generate` 重生成后全量 typecheck 复绿；P4 未落库故无需执行。论证与实证留存于 docs-coverage.md v23 段（仅作历史）。**教训（沉淀进根因分析）**：局部优化（宽表/名典）晋升为结构真理 + 真相源不唯一 + 层边界穿越；预防＝架构蓝图现有机制补"设计期闸门+机器守卫"（见 `根因分析与预防措施.md` 定稿版）。**最终收口（2026-09-05 晚间）**：裁决 A 全面落地——schema `@@unique([name])` 全局唯一 + saveProduct/catalog 查重按 name + 迁移 `20260905120000_product_name_global_unique` 已 deploy（`product_name_key` 实测生效），完整 verify 10/10（含 S6 冒烟）。
+- **v23 两条 DB 结构升级（已作废）**：原方向＝产品名升全局字典 `product_name` + 分类改关系表 `product_category`。**2026-09-05 用户反思作废**："标准 3NF 已满足业务目标，产品名不需要独立字典"——遂将 P1/P2a/P2b 代码外科手术式回退（schema 的 product_name/product_category 模型 + productNameId 关系、entity-meta 三处、registry.ts PRODUCT_NAME_REGISTRY、saveProduct 经 git revert 还原；保留复合体框架 ArchiveSlotHost/archiveSlotTypes/ProductSkuSubTable），`gen-entity-meta`+`prisma generate` 重生成后全量 typecheck 复绿；P4 未落库故无需执行。论证与实证留存于 docs-coverage.md v23 段（仅作历史）。**教训（沉淀进根因分析）**：局部优化（宽表/名典）晋升为结构真理 + 真相源不唯一 + 层边界穿越；预防＝架构蓝图现有机制补"设计期闸门+机器守卫"（见 `根因分析与预防措施.md` 定稿版）。**最终收口（2026-09-05 晚间）**：裁决 A 全面落地——schema `@@unique([name])` 全局唯一 + saveProduct/catalog 查重按 name + 迁移 `20260905120000_product_name_global_unique` 已 deploy（`product_name_key` 实测生效），完整 verify 10/10（含 S6 冒烟）。**机器守卫（2026-09-05）**：B=同实体双定义拦截（`gen-entity-meta.mjs` 校验段，entities 段内同键 exit 1）+ C=arch-lint 禁依赖派生宽表（`check-arch.mjs` A3，剥离注释后扫描禁用名 `product_sku_search`）已落地；1:1 字典过度归一化（v23 product_name 案）因元模型未枚举全部跨实体引用、机器不可靠判定，归 §4-A 设计期推导链人类闸门。
 - **架构蓝图 v3＝双向架构（2026-09-05）**：上半部「自上而下推导链」（业务目标→归类→范式判据：字典=共享/多引用、纯唯一=唯一索引、1:1 不拆表、读缓存宽表须 @escape→层落点），下半部保留 L1–L5 层栈/红线/DoD 门禁；《架构蓝图.md》升版 + 《根因分析与预防措施.md》定稿，product 名全局唯一收口＝推导链首个执行案例。
+- **三类失败模式沉淀（2026-09-05，入 know-loop 篇）**：用户审档案统一化设计发现 v1 两错——①「product 专用 composite 槽」＝抽象维度错（把实体身份当形状，应用 displayLevel/childLevel 形状参数承载，product 只是其中一份配置）；②「前端聚合零风险（推荐）」＝代理准则推荐（违反长期方向>短期成本 + 千万级 SKU 量级预算）。沉淀成 know-loop 三条新纪律并已进 AGENTS 摘要：**形状≠身份**（写「实体专用/例外/开洞」前跑参数化测试）/ **规模预算进抽象**（取数聚合先问前端行数上限几百，超预算方案被量级否决）/ **推荐先资格过滤**（选项先用用户长期原则+量级预算过滤，被否决不入候选不标「推荐」，能裁决的不推给用户）。教训：缺输出前自检闸门，靠用户事后审暴露。
 - **框架归属两判据**（见 `know-table`）：①「有没有树」指实体自身有可逐层增删改的层级数据（编译期固定坐标轴不算）；②「主操作」指改档案字段还是执行动作。**roles 判定不归档案框架**。注意 users 走列配置驱动（cellSpecs），与档案槽位驱动（ArchiveSlotHost）是两套框架，不可互相举证。
 
 ## 记账与死内容纪律
