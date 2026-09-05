@@ -312,6 +312,20 @@ export interface ArchiveEntityDef<T extends { id: string }> {
       isCreate: boolean;
     },
   ) => Promise<void>;
+  /**
+   * 覆盖宿主默认编辑弹窗（product 专用逃逸口）。
+   * 产品编辑弹窗 ProductEditDialog 自带 DsDialog 且形态远超通用档案（品牌/规格/单位级联 + 价格矩阵 + 图片），
+   * 直接复用它可避免「宿主弹窗套弹窗」双套。提供后宿主不再渲染自身 DsDialog，改由本函数返回完整弹窗。
+   */
+  renderDialog?: (ctx: ArchiveDialogCtx<T> & {
+    open: boolean;
+    close: () => void;
+    refresh: () => void;
+  }) => ReactNode;
+  /** 实体专用额外弹窗（如产品「删除确认」「批量改价」等宿主无原生形态），渲染在宿主弹窗之外 */
+  extraDialogs?: ReactNode;
+  /** 工具栏额外操作（如「批量改价」），渲染在「新建」按钮之前 */
+  actionBarExtra?: ReactNode;
 }
 
 export type { ArchiveListFilterChip };

@@ -68,6 +68,21 @@ entities:
       sortOrder: { label: 排序, dataType: int, defaults: 0 }
       status: { label: 状态, dataType: int, defaults: 1 }
 
+  # v23：产品名升全局字典（name 全局唯一；产品引用 productNameId，改名全局生效）
+  product_name:
+    label: 产品名
+    table: product_name
+    layer: globalDict
+    primaryKey: id
+    behavior:
+      quickCreate: true
+      deleteGuard: 被引用不能删，只能停用
+    fields:
+      id: { label: 产品名ID, dataType: int }
+      name: { label: 产品名称, dataType: string, required: true, unique: global, defaults: { sortOrder: 0, status: 1 }, confirmStrategy: dialog, searchLayer: name }
+      sortOrder: { label: 排序, dataType: int, defaults: 0 }
+      status: { label: 状态, dataType: int, defaults: 1 }
+
   product:
     label: 产品
     table: product
@@ -382,6 +397,8 @@ fieldDefs:
   unit:      { identity: byId, dict: unit,       scene: { archive: { entry: dict },  workbench: { entry: dict } } }
   priceType: { identity: byId, dict: price_type, scene: { archive: { entry: dict },  workbench: { entry: dict } } }
   supplier:  { identity: byId, dict: supplier,   scene: { archive: { entry: dict },  workbench: { entry: mixed } } }
+  # v23：产品名升全局字典（dictKind: product_name 供 product 实体引用）
+  product_name: { identity: byId, dict: product_name, scene: { archive: { entry: dict }, workbench: { entry: dict } } }
   remark:    { identity: byText }
 # ─────────────────────────────────────────────
 resources:
@@ -471,6 +488,23 @@ resources:
       dictUnique: global
     refTargets:
       - { label: 规格价格类型, table: spec_price_unit, field: priceTypeId }
+  # v23：产品名升全局字典（name 全局唯一；产品引用 productNameId，改名全局生效）
+  product_name:
+    label: 产品名档案
+    table: product_name
+    model: product_name
+    primaryKey: id
+    primaryKeyType: int
+    # 复用 product_manage 权限（产品名管理归属产品管理；独立 product_name_manage 权限矩阵登记留待收口阶段）
+    permission: product_manage
+    softDelete: { field: status, off: 0 }
+    writable: [name, sortOrder, status]
+    search:
+      fields: [name]
+      mode: normalized
+      dictUnique: global
+    refTargets:
+      - { label: 产品, table: product, field: productNameId }
   # ── 档案类主体（subject）：全走零代码 CRUD（与 globalDict 同机制）──
   product:
     label: 产品档案
@@ -655,6 +689,20 @@ pages:
     slots:
       - { key: name, title: 类型名称, slot: scalar, editor: ArchiveFieldCell }
       - { key: sortOrder, title: 排序, slot: scalar, editor: ArchiveFieldCell }
+  # ── 档案类主体（subject）：customer 与 supplier 同壳 ArchiveSlotHost，
+  #    列顺序经 assembleSlots('customer') 读本段，与 supplier 同构 ──
+  customer:
+    label: 客户管理
+    list: ArchiveListPage
+    rowKey: id
+    fixedSlots: [op, status]
+    slots:
+      - { key: name, title: 姓名, slot: name, editor: NameCell }
+      - { key: customerType, title: 类型, slot: scalar, editor: ArchiveFieldCell }
+      - { key: contacts, title: 联系信息, slot: matrix, editor: ArchiveContactMatrixEditor }
+      - { key: invoices, title: 开票信息, slot: matrix, editor: ArchiveCustomerInvoiceMatrixEditor }
+      - { key: addresses, title: 收货地址, slot: matrix, editor: ArchiveCustomerAddressMatrixEditor }
+      - { key: note, title: 备注, slot: scalar, editor: ArchiveFieldCell }
 
 actions:
   purchase_inbound_confirm:

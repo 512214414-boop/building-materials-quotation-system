@@ -399,7 +399,7 @@ model product {
   /// v22.0：产品×品牌关联
   productBrands product_brand[]
   /// v23：产品名升全局字典（product_name.name 全局唯一）；P4 移除 name 字段、productNameId 改非空唯一
-  productNameId BigInt?
+  productNameId Int?
   productName   product_name? @relation(fields: [productNameId], references: [id])
   /// v23：产品 × 分类 多对多关系表（替代单 categoryId）
   productCategories product_category[]
@@ -414,7 +414,7 @@ model product {
 /// v23：产品名全局字典（参照 brand/unit 范式：name 全局唯一、改名全局生效）
 /// 产品名从 product.name 抽出，product.productNameId 引用；改名只改本表 name，全站跟随
 model product_name {
-  id        BigInt   @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   /// 产品名称（全局唯一，如「PPR热水管」）
   name      String   @db.VarChar(200)
   /// 排序

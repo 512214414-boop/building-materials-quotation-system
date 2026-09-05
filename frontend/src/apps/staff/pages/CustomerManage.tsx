@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import ArchiveSlotHost from '../../../shared/components/archive/ArchiveSlotHost.js';
+import { assembleSlots } from '../../../shared/config/pageAssembler.js';
 import type {
   ArchiveEntityDef,
   ArchiveMatrixEditorProps,
@@ -362,6 +363,13 @@ function buildCustomerDef(): ArchiveEntityDef<CustomerView> {
 }
 
 export default function CustomerManage() {
-  const def = useMemo(() => buildCustomerDef(), []);
+  // 槽位顺序由登记表 pages.customer.slots 决定；页面只提供每个槽位的编辑器实现。
+  //   （元模型运行时 · 阶段 F：列顺序是配置值，不是页面手写的数组顺序）
+  const def = useMemo(() => {
+    const base = buildCustomerDef();
+    const byKey: Record<string, NonNullable<typeof base.slots>[number]> = {};
+    for (const s of base.slots ?? []) byKey[s.key] = s;
+    return { ...base, slots: assembleSlots('customer', byKey) };
+  }, []);
   return <ArchiveSlotHost def={def} />;
 }

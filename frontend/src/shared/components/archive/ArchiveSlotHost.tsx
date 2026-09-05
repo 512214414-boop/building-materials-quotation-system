@@ -914,15 +914,18 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           countUnit: def.countUnit,
           defaultStatusHint: def.statusHint,
           actions: (
-            <DsButton
-              variant="primary"
-              size="sm"
-              icon={<PlusOutlined />}
-              disabled={!canWrite}
-              onClick={openCreate}
-            >
-              {def.createLabel}
-            </DsButton>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
+              {def.actionBarExtra}
+              <DsButton
+                variant="primary"
+                size="sm"
+                icon={<PlusOutlined />}
+                disabled={!canWrite}
+                onClick={openCreate}
+              >
+                {def.createLabel}
+              </DsButton>
+            </div>
           ),
         }}
         filters={{
@@ -978,18 +981,30 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           },
         }}
         dialogs={
-          <DsDialog
-            open={modalOpen}
-            title={editingId ? `编辑${def.entityLabel}` : def.createLabel}
-            width={def.dialogWidth ?? 600}
-            onCancel={() => setModalOpen(false)}
-            onOk={() => void handleSave()}
-            confirmLoading={saving}
-            okText={editingId ? def.saveOkText ?? '保存' : def.createOkText ?? '创建'}
-            cancelText="取消"
-          >
-            {dialogBody}
-          </DsDialog>
+          <>
+            {def.renderDialog ? (
+              def.renderDialog({
+                ...dialogCtx,
+                open: modalOpen,
+                close: () => setModalOpen(false),
+                refresh: () => void fetchList(),
+              })
+            ) : (
+              <DsDialog
+                open={modalOpen}
+                title={editingId ? `编辑${def.entityLabel}` : def.createLabel}
+                width={def.dialogWidth ?? 600}
+                onCancel={() => setModalOpen(false)}
+                onOk={() => void handleSave()}
+                confirmLoading={saving}
+                okText={editingId ? def.saveOkText ?? '保存' : def.createOkText ?? '创建'}
+                cancelText="取消"
+              >
+                {dialogBody}
+              </DsDialog>
+            )}
+            {def.extraDialogs}
+          </>
         }
       />
     </PickerEditGateProvider>

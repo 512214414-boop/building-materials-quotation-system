@@ -19,5 +19,6 @@ export const entityFieldDefs: Record<string, GeneratedFieldDef> = {
   unit: { field: "unit", identity: "byId", dict: "unit", layer: "globalDict", scene: { archive: { entry: "dict" }, workbench: { entry: "dict" } } },
   priceType: { field: "priceType", identity: "byId", dict: "price_type", layer: "globalDict", scene: { archive: { entry: "dict" }, workbench: { entry: "dict" } } },
   supplier: { field: "supplier", identity: "byId", dict: "supplier", layer: "subject", scene: { archive: { entry: "dict" }, workbench: { entry: "mixed" } } },
+  product_name: { field: "product_name", identity: "byId", dict: "product_name", layer: "globalDict", scene: { archive: { entry: "dict" }, workbench: { entry: "dict" } } },
   remark: { field: "remark", identity: "byText", scene: undefined },
 };
