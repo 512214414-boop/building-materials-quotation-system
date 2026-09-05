@@ -1,0 +1,39 @@
+%% 后端分层依赖（flowchart）
+flowchart TD
+    subgraph Interface["接口层 Interface"]
+        CTRL["controllers / routes / ws"]
+        MID["middleware: auth, tenant, tracing"]
+    end
+    subgraph Application["应用层 Application"]
+        APP["services: 用例编排 / 事务边界"]
+        CMD["Command / Query / DTO"]
+    end
+    subgraph Domain["领域层 Domain（零框架依赖）"]
+        AGG["聚合根 / 实体 / 值对象"]
+        DS["领域服务: 加权均价 / 快照"]
+        DE["领域事件"]
+        REPO_I["仓储接口 Repository"]
+    end
+    subgraph Infrastructure["基础设施层 Infrastructure"]
+        REPO_IMPL["Prisma 仓储实现"]
+        SEARCH["SearchAdapter: DB→ES"]
+        MQ["EventBus: in-proc→MQ"]
+        READ["ReadReplica 数据源 / shard-router"]
+    end
+    subgraph Cross["横切 Cross-cutting"]
+        CFG["config"]
+        AUDIT["审计 / 日志 / 异常拦截"]
+    end
+    MID --> CTRL
+    CTRL --> APP
+    APP --> AGG
+    APP --> DS
+    APP --> REPO_I
+    APP --> DE
+    REPO_I <.. REPO_IMPL
+    REPO_IMPL --> READ
+    DS --> DE
+    DE --> MQ
+    DE --> SEARCH
+    Cross -.-> Interface
+    Cross -.-> Application

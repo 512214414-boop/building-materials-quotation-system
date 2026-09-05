@@ -83,13 +83,17 @@ const STAGES = [
     cwd: root, cmd: 'node', args: ['tools/check-arch.mjs'],
     why: '架构合规（平台依赖方向 / 路由生成物与真相源一致）—— 让《架构蓝图》有约束力',
   },
-  { id: 'S1', name: 'fe-typecheck', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'typecheck'], why: '前端全量类型检查（无增量）' },
+  { id: 'S1', name: 'fe-typecheck', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'typecheck:clean'], why: '前端全量类型检查（强制非增量，规避 tsbuildinfo 并行损坏导致的假红）' },
   { id: 'S2', name: 'fe-lint', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'lint'], why: '前端 lint' },
   { id: 'S3', name: 'fe-dupe', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'check:dupe'], why: '前端 js 重复检查' },
   { id: 'S3b', name: 'fe-test', area: 'frontend', cwd: fe, cmd: 'npm', args: ['test'], why: '前端单测（平台层纯逻辑，Vitest）' },
   { id: 'S3c', name: 'cell-layer', area: 'frontend', cwd: root, cmd: 'node', args: ['tools/check-cell-layer.mjs'], why: '单元格层唯一出口守卫（禁止层内多元复活）' },
   { id: 'S4', name: 'be-test', area: 'backend', cwd: be, cmd: 'npm', args: ['test'], why: '后端单测（含生成物业务契约）' },
   { id: 'S5', name: 'be-lint', area: 'backend', cwd: be, cmd: 'npm', args: ['run', 'lint'], why: '后端类型检查' },
+  // ── P0 安全网新增门禁（2026-09-05 重构蓝图）─────────────────────────────
+  { id: 'S7', name: 'sqlite-residual', area: 'meta', cwd: root, cmd: 'node', args: ['tools/check-sqlite-residual.mjs'], why: 'SQLite 残留门禁（dev.db / *.sqlite / provider=sqlite 不得存在，生产库为 MySQL）' },
+  { id: 'S9', name: 'signal-gate', area: 'meta', cwd: root, cmd: 'node', args: ['tools/check-signal-gate.mjs'], why: '信号门禁（custom 逃逸 >0 或 HIGH 信号即阻断合入）' },
+  { id: 'S11', name: 'contract-gate', area: 'e2e', cwd: root, cmd: 'node', args: ['tools/check-contract.mjs'], why: '前后端接口契约门禁（后端启用 Swagger 后生效，当前放行不静默）' },
 ];
 
 if (!skipSmoke) {

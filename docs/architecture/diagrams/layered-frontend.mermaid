@@ -1,0 +1,27 @@
+%% 前端分层依赖（flowchart）
+flowchart TD
+    subgraph Apps["apps/ — 可部署应用壳"]
+        Auth["apps/auth"]
+        Staff["apps/staff"]
+        Customer["apps/customer"]
+    end
+    subgraph Platform["packages/@platform — 平台库"]
+        Meta["@platform/meta（生成物隔离在 generated/）"]
+        UI["@platform/ui（antd 封装 / ArchiveSlotHost）"]
+        Domain["@platform/domain（类型/DTO/API客户端）"]
+        Engines["@platform/engines（定价引擎）"]
+        Shared["@platform/shared（hooks/stores/utils）"]
+    end
+    subgraph Features["features/ — 业务模块（ArchiveSlotHost 退役落点）"]
+        FProduct["product"]
+        FOrder["order"]
+        FInventory["inventory"]
+        FLedger["ledger"]
+    end
+    Auth --> Platform
+    Staff --> Platform
+    Customer --> Platform
+    Staff --> Features
+    Features --> Meta
+    Meta --> Domain
+    Engines --> Domain

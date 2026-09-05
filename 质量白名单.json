@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-09-05",
+  "policy": "白名单是例外不是常态。每条须带 owner + recycleAt，超时由 check-signal-gate 自动判为失效转红。仅用于「门禁已就位、但既有技术债尚未清零」的过渡期豁免，不得用于掩盖新引入的问题。",
+  "entries": [
+    {
+      "id": "S9-page-custom-2026-09-05",
+      "gate": "S9",
+      "type": "tech-debt",
+      "description": "业务页手写 custom 列共 17 处，需逐页归类到 L4 三维参数（display × editEntry × valueState）。涉及仓库名反查、状态徽标、操作按钮等三类。清理需要浏览器验证，不在 P0 止血范畴。",
+      "scope": [
+        "frontend/src/apps/staff/pages/AccessRequests.tsx",
+        "frontend/src/apps/staff/pages/BackorderManage.tsx",
+        "frontend/src/apps/staff/pages/DocumentList.tsx",
+        "frontend/src/apps/staff/pages/InboundManage.tsx",
+        "frontend/src/apps/staff/pages/InventoryManage.tsx",
+        "frontend/src/apps/staff/pages/OpsReports.tsx",
+        "frontend/src/apps/staff/pages/SupplierPayableManage.tsx",
+        "frontend/src/apps/staff/pages/product-manage/ProductSkuSubTable.tsx",
+        "frontend/src/apps/staff/pages/workbench/views/PurchaseQuote.tsx"
+      ],
+      "owner": "待分配（建议：业务页负责人按页外科手术式清理，每页 1-2 处）",
+      "approvedBy": "P0 重构门禁就位决议 (2026-09-05)",
+      "recycleAt": "2026-10-05",
+      "status": "active"
+    }
+  ]
+}

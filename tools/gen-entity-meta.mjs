@@ -184,6 +184,35 @@ function validateVocabularyConsistency() {
 
 validateVocabularyConsistency();
 
+// ---------- 0-b L1 真相源唯一守卫（根因预防 B）----------
+// 防「同实体双定义 / 真相源不唯一」。
+// 可机器判定的范围 = 异键同表（不同实体键映射到同一张 DB 表）；同键双定义由 js-yaml 解析阶段直接抛错拦截（本函数跑不到）。
+// "为唯一造字典"的 1:1 过度归一化（v23 product_name 案）因元模型未枚举全部跨实体引用而无法可靠自动判定，
+// 归入设计期推导链（蓝图 §4-A）人类闸门。详见《根因分析与预防措施》§4-B / §5。
+function validateL1SingleSource() {
+  const errors = [];
+
+  // B1：异键同表双定义（不同实体键却映射到同一张 DB 表 = 真相源不唯一；js-yaml 不拦，这里拦）
+  {
+    const tableToKeys = {};
+    for (const [key, ent] of Object.entries(entities)) {
+      const t = ent.table ?? key;
+      (tableToKeys[t] ||= []).push(key);
+    }
+    for (const [t, keys] of Object.entries(tableToKeys)) {
+      if (keys.length > 1) errors.push(`实体 ${keys.join(' / ')} 映射到同一张表「${t}」（同表双定义，真相源不唯一）—— 一个表只应有一处实体声明`);
+    }
+  }
+
+  if (errors.length) {
+    console.error('✗ L1 真相源唯一守卫未通过：');
+    for (const e of errors) console.error('  - ' + e);
+    process.exit(1);
+  }
+  console.log('✓ L1 真相源唯一守卫通过（同表双定义已拦截；同键双定义由 js-yaml 解析拦截）');
+}
+validateL1SingleSource();
+
 // ---------- ① 前端登记表 ----------
 let fe = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
 fe += '// 元模型运行时 · 实体×字段维度（渲染/确认/检索/门禁/快照声明）。\n\n';

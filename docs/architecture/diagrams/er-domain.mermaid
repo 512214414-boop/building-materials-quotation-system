@@ -1,0 +1,22 @@
+%% 领域/ER 关系（逻辑引用，无物理外键；订单行存业务快照）
+erDiagram
+    BRAND ||--o{ SKU : "品牌ID"
+    PRODUCT ||--o{ SKU : "商品ID"
+    SUPPLIER ||--o{ PURCHASE_ORDER : "供应商ID"
+    CUSTOMER ||--o{ SALES_ORDER : "客户ID"
+    WAREHOUSE ||--o{ INVENTORY : "仓库ID"
+    SKU ||--o{ INVENTORY : "SKU_ID"
+    SKU ||--o{ SALES_ORDER_LINE : "SKU_ID(快照)"
+    SKU ||--o{ PURCHASE_ORDER_LINE : "SKU_ID(快照)"
+    PURCHASE_ORDER ||--o{ PURCHASE_ORDER_LINE : "采购订单ID"
+    SALES_ORDER ||--o{ SALES_ORDER_LINE : "销售订单ID"
+    SALES_ORDER ||--o{ DELIVERY : "销售订单ID"
+    PRICE_LIST ||--o{ PRICE_LINE : "价格表ID"
+    SKU ||--o{ PRICE_LINE : "SKU_ID"
+    CUSTOMER ||--o{ ACCOUNTS_RECEIVABLE : "客户ID"
+    SALES_ORDER ||--o{ ACCOUNTS_RECEIVABLE : "销售订单ID"
+    SUPPLIER ||--o{ ACCOUNTS_PAYABLE : "供应商ID"
+    PURCHASE_ORDER ||--o{ ACCOUNTS_PAYABLE : "采购订单ID"
+    SALES_ORDER ||--o{ AFTER_SALE : "销售订单ID"
+    INVENTORY ||--o{ INVENTORY_MOVEMENT : "库存ID"
+    note right of SKU : 所有关系为逻辑引用(无物理外键)\n订单行存业务快照，主档变更不影响历史单据

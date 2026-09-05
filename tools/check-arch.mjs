@@ -99,6 +99,98 @@ const BANNED_DERIVED_TABLES = ['product_sku_search'];
   }
 }
 
+// ---- A4：后端 DDD 分层 · 领域层零框架依赖（蓝图 §2.1 红线）----
+// 依赖方向必须单向：interface → application → domain ← infrastructure。
+// 领域层（domain/）不得依赖任何框架/基础设施库，也不得反向 import 兄弟层目录，
+// 否则领域层会被绑定死、无法独立单测、无法复用。本规则让「零框架依赖」成为机器可判的硬约束。
+const DOMAIN = path.join(root, 'backend', 'src', 'domain');
+// 领域层禁止直接依赖的框架/基础设施包（命中即违规；node: 内置与相对同层引用放行）
+const FORBIDDEN_PKGS = [
+  '@prisma/client', '@nestjs', 'express', 'cors', 'helmet', 'jsonwebtoken',
+  'ws', 'multer', 'morgan', 'sharp', 'swagger-jsdoc', 'swagger-ui-express',
+  'bcryptjs', 'dotenv', 'zod',
+];
+// 领域层相对引用不得越界进入的兄弟层目录名（命中路径段即违规，无需解析真实路径）
+const FORBIDDEN_LAYER_SEGMENTS = [
+  'interface/', 'application/', 'infrastructure/', 'crosscutting/',
+  'controllers/', 'services/', 'routes/', 'middleware/', 'ws/', 'config/',
+  'utils/', 'engines/', 'docs/', 'types/',
+];
+const STRIP = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+for (const f of walk(DOMAIN)) {
+  const code = STRIP(fs.readFileSync(f, 'utf8'));
+  const importRe = /(?:import|export)[^'"]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  let m;
+  while ((m = importRe.exec(code))) {
+    const spec = m[1] || m[2];
+    if (!spec) continue;
+    // 裸模块（非相对）：命中禁用包清单即违规
+    if (!spec.startsWith('.') && !spec.startsWith('/')) {
+      if (FORBIDDEN_PKGS.some((p) => spec === p || spec.startsWith(p + '/'))) {
+        violations.push({
+          rule: 'A4 领域层零框架依赖',
+          file: path.relative(root, f),
+          line: 0,
+          detail: `domain 层不得依赖框架/基础设施包「${spec}」（依赖倒置：领域只定义接口，实现放 infrastructure）`,
+        });
+      }
+      continue;
+    }
+    // 相对引用：不得越界进入兄弟层目录
+    if (FORBIDDEN_LAYER_SEGMENTS.some((seg) => spec.includes(seg))) {
+      violations.push({
+        rule: 'A4 领域层依赖方向单向',
+        file: path.relative(root, f),
+        line: 0,
+        detail: `domain 层相对引用越界进入兄弟层「${spec}」—— 依赖方向必须 interface→application→domain←infrastructure，domain 不得反向 import 兄弟层`,
+      });
+    }
+  }
+}
+
+// ---- A5：应用层不得直连 prisma 写路径（只减不增，P3 接缝硬约束）----
+// P3 把「写路径 100% 经 Repository 接口」定为硬验收点。应用层（services/controllers/routes）
+// 允许保留存量 prisma 调用（迁移是渐进的），但**总数只准减少、不准增加**——
+// 任何新增的 prisma 直连都意味着绕过仓储接缝与租户隔离，必须回到 repositories 桶。
+// 基线为迁移开始前测量的存量；如需合法新增 prisma 用法，先显式抬高基线并在 PR 写明理由。
+const APP_LAYERS = [
+  path.join(root, 'backend', 'src', 'services'),
+  path.join(root, 'backend', 'src', 'controllers'),
+  path.join(root, 'backend', 'src', 'routes'),
+];
+// 2026-09-05 P3 开始前测量：services 752 + controllers 20 + routes 0 = 772
+const BASELINE_APP_PRISMA_LINES = 772;
+{
+  let lines = 0;
+  for (const dir of APP_LAYERS) {
+    for (const f of walk(dir)) {
+      for (const ln of fs.readFileSync(f, 'utf8').split('\n')) if (ln.includes('prisma.')) lines++;
+    }
+  }
+  if (lines > BASELINE_APP_PRISMA_LINES) {
+    violations.push({
+      rule: 'A5 应用层 prisma 直连只减不增（P3 仓储接缝）',
+      file: 'backend/src/{services,controllers,routes}',
+      line: 0,
+      detail: `应用层 prisma. 直连行数 ${lines} 超过基线 ${BASELINE_APP_PRISMA_LINES} —— 新增直连绕过了仓储接缝与租户隔离。写路径请改走 backend/src/infrastructure/persistence/prisma/repositories.ts 的仓储桶。`,
+    });
+  }
+  // 应用层禁止自行 new PrismaClient（必须用 config/prisma 单例，否则租户扩展失效）
+  for (const dir of APP_LAYERS) {
+    for (const f of walk(dir)) {
+      const code = STRIP(fs.readFileSync(f, 'utf8'));
+      if (/\bnew\s+PrismaClient\b/.test(code)) {
+        violations.push({
+          rule: 'A5 应用层禁止自行实例化 PrismaClient',
+          file: path.relative(root, f),
+          line: 0,
+          detail: '应用层不得 new PrismaClient——必须使用 config/prisma 的租户感知单例，否则 TenantContext 扩展失效。',
+        });
+      }
+    }
+  }
+}
+
 // ---- 汇总 ----
 const rel = (v) => `${v.file}${v.line ? `:${v.line}` : ''}`;
 if (violations.length) {

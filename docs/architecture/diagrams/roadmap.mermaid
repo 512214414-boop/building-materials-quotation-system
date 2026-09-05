@@ -1,0 +1,19 @@
+%% 增量重构路线图（可并行、不中断线上）
+gantt
+    title 增量重构路线图（可并行、不中断线上）
+    dateFormat YYYY-MM-DD
+    axisFormat %m/%d
+    section 地基
+    P0 基建/CI/备份/DR          :p0, 2026-09-08, 14d
+    section 脚手架
+    P1 目录分层+主键生成器       :p1, 2026-09-22, 21d
+    section 物理模型
+    P2 迁移版本化+PK迁移         :p2, 2026-10-13, 28d
+    section 领域
+    P3 领域层+仓储seam+Outbox    :p3, 2026-11-10, 35d
+    section 接入缝
+    P4 多租户+搜索+队列          :p4, 2026-11-10, 35d
+    section 退役
+    P5 元框架退役+质量全绿        :p5, 2026-12-15, 28d
+    section 规模
+    P6 千万级压测+分区上线        :p6, 2026-12-15, 28d

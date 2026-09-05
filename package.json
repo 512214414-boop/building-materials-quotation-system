@@ -7,6 +7,8 @@
     "signal-scan": "node tools/scan-signals.mjs"
   },
   "dependencies": {
-    "playwright": "^1.48.0"
+    "playwright": "^1.48.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^4.6.3"
   }
 }

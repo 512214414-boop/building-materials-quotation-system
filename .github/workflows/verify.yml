@@ -1,0 +1,58 @@
+# 质量门禁 CI —— 把 verify 门禁接到 PR / push，杜绝「本地绿、合入红」
+#
+# 触发：向 main / master 的 PR 与 push
+# 策略：真实安装依赖 → 生成 Prisma 客户端 → 跑 verify:static --full（全量静态门禁）
+# 约定：任何门禁非 0 退出即失败、即阻断合入（与本地门禁同源，禁止静默跳过）
+
+name: verify
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: 安装根依赖
+        run: npm ci
+
+      - name: 安装前端依赖
+        run: npm ci
+        working-directory: frontend
+
+      - name: 安装后端依赖
+        run: npm ci
+        working-directory: backend
+
+      - name: 生成 Prisma 客户端（后端类型/lint 依赖）
+        run: npx prisma generate
+        working-directory: backend
+
+      - name: 运行质量门禁（静态全量）
+        run: npm run verify:static -- --full
+
+      - name: 上传门禁报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-report
+          path: |
+            verify-report.json
+            signal-report.json
+          retention-days: 14
