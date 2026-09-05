@@ -18,3 +18,5 @@ backup_*/
 # 门禁运行产物：每次 npm run verify 都重写一次，入库只会污染 diff
 # 判定依据是退出码，不是这个文件——掌控台消费它，但不进版本库
 verify-report.json
+# 架构校准器产物：每批交付后由 arch-review.mjs 生成，掌控台消费，但不进版本库
+arch-review.json

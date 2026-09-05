@@ -501,6 +501,36 @@ const archHtml = `<section class="zone arch">
   </ul></div>
 </section>`;
 
+// ── 架构校准区（每批交付后的"刹车"，2026-09-05）：自动跑 arch-review 聚合机器信号 ──
+function readJsonRel(rel) {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, rel), 'utf8')); } catch { return null; }
+}
+let review = null;
+try {
+  execSync('node tools/arch-review.mjs', { cwd: ROOT, stdio: 'ignore' });
+  review = readJsonRel('arch-review.json');
+} catch { /* 校准器失败不影响看板，按"无报告"兜底 */ }
+review = review || { generatedAt: '—', verifyOk: null, needsCalibration: false, findings: [] };
+const mdTxt = (s) => String(s).replace(/\|/g, '/').replace(/\n/g, '；');
+const reviewFindingHtml = (f) =>
+  `<li><span class="lvl p-${f.level}">${esc(f.level)}</span><div class="txt"><div class="name">${esc(f.title)}</div>${f.why ? `<div class="note">${esc(f.why).replace(/\n/g, '<br>')}</div>` : ''}${f.prompt ? `<div class="nc-cmd">👉 对 AI 说：「${esc(f.prompt)}」</div>` : ''}</div></li>`;
+const reviewHtml = `<section class="zone review">
+  <h2>架构校准（${review.needsCalibration ? '⚠ 该刹车了' : '✅ 校准态'}）</h2>
+  <p class="why">进度看得见、架构腐化看不见——每批交付后跑一次校准，把范式偏离 / 平台后门 / 文档代码割裂拦在代价还小时。${review.generatedAt !== '—' ? `本批自动校准于 ${esc(review.generatedAt)}。` : ''}深度上帝视角体检：对 AI 说「架构校准（上帝视角）」（六视角：架构演进 / 业务完整度 / 数据模型债 / 文档一致性 / 协作健康 / 交付推进）。</p>
+  <div class="box"><ul class="plist">${review.findings.length ? review.findings.map(reviewFindingHtml).join('') : '<li class="empty">无新发现：本批没有明显的机器级架构信号（不等于没有，深度体检口令见上）</li>'}</ul></div>
+</section>`;
+const reviewMd = review.findings.length
+  ? `## 架构校准（${review.needsCalibration ? '⚠ 该刹车了' : '✅ 校准态'} · ${mdTxt(review.generatedAt)}）
+
+> 进度看得见、架构腐化看不见。每批交付后校准一次。本批机器信号：
+
+${review.findings.map((f) => `- **${f.level} ${mdTxt(f.title)}**${f.why ? `：${mdTxt(f.why)}` : ''}${f.prompt ? ` 👉 对 AI 说「${mdTxt(f.prompt)}」` : ''}`).join('\n')}
+
+深度上帝视角体检：对 AI 说「架构校准（上帝视角）」。`
+  : `## 架构校准（✅ 校准态 · ${mdTxt(review.generatedAt)}）
+
+本批无机器级新发现。深度上帝视角体检口令：对 AI 说「架构校准（上帝视角）」。`;
+
 const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -600,6 +630,8 @@ const html = `<!doctype html>
   ${gateHtml}
 
   ${archHtml}
+
+  ${reviewHtml}
 
   <section class="zone next">
     <h2>下一步该干什么（按优先级排的开发管道）</h2>
@@ -754,6 +786,8 @@ ${gate.stages.map((s) => `- ${s.status === 'PASS' ? '✅' : '❌'} **${plain(s.i
 2. **L3 平台层只此一份**：通用件只在 \`shared/\` 实现一份；业务页不得复制平台代码改副本，也不得为单页写 if 绕过。**依赖只能 apps → shared，反向即违规**。
 3. **L4 业务胶水层**：只放平台配置表达不了的专属业务计算；**禁止在此重写表格 / 弹窗 / 单元格分发**。
 4. **三次原则**：第 1 次写业务层；第 2 次允许复制但**必须登记进 docs-coverage.md**；第 3 次必须抽到平台层并补单测。安全 / 权限 / 金额第 2 次即须统一。
+
+${reviewMd}
 
 ## 下一步该干什么（按优先级排的开发管道，对 AI 说任意一句直接开干）
 
