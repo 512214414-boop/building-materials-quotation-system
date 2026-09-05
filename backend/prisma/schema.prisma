@@ -80,6 +80,7 @@
 //   - reimbursement_bills → users（creator）：新增 creatorName 快照
 //   - audit_logs → users：新增 userName 快照
 //   - audit_logs → customers：新增 customerName 快照
+//   - access_requests → users（reviewedBy）/ authorization_codes → users（createdBy）：同解耦策略（业务/配置表 → 基础数据 users，未单列）
 //   - document_lines → brand/unit/product（v11.0 已解耦：productName/brandName/categoryName/specModel/unitName）
 //
 // 保留 @relation 的（合理级联）：
