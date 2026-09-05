@@ -1018,6 +1018,41 @@ export interface SearchProductResult {
   size: number;
 }
 
+/** 产品聚合图片项（读时计算） */
+export interface ProductImageItem {
+  url: string;
+  thumbUrl: string | null;
+}
+
+/** 产品聚合的「单规格图片组」：images[0] 即该规格默认图（isMain 优先） */
+export interface ProductSpecImages {
+  specId: string;
+  specModel: string;
+  images: ProductImageItem[];
+}
+
+/**
+ * v2 产品级（一行一产品）分组搜索结果行：继承 SkuSearchRow 全部字段（取该产品首个 SKU 的产品级字段），
+ * 额外带聚合计数。行 id = productId（框架以 row.id 做编辑/批量/删除主键）。
+ */
+export interface ProductGroupRow extends SkuSearchRow {
+  skuCount: number;
+  brandCount: number;
+  /**
+   * 产品下各规格的图片组（读时聚合，约定顺序）。两级各自对应天然关系：
+   * 行内轮播 = 在 specImages 间切换（切规格）；大图预览 = 当前规格的 images（翻规格内的图）。
+   */
+  specImages?: ProductSpecImages[];
+}
+
+/** v2 产品级分组搜索结果 */
+export interface SearchProductGroupResult {
+  list: ProductGroupRow[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 /**
  * v9.2 SKU 选项接口返回的单位行（getSkuOptions）。
  * 按 brandId 返回该品牌下所有单位及其全部售价/进价，用于列表下拉切换。
@@ -2013,6 +2048,29 @@ export function searchProducts(query: {
   entryView?: string;
 }): Promise<SearchProductResult> {
   return request.get<unknown, SearchProductResult>('/api/staff/products/search', {
+    params: query,
+  });
+}
+
+/**
+ * 产品级分组搜索（档案统一化 Phase 2「分组」模式）。
+ * 后端：GET /api/staff/products/search/grouped
+ */
+export function searchProductsGrouped(query: {
+  keyword?: string;
+  categoryId?: number;
+  brandId?: string;
+  brandName?: string;
+  productId?: string;
+  productName?: string;
+  specModel?: string;
+  specExact?: boolean | 0 | 1;
+  status?: number;
+  page?: number;
+  size?: number;
+  entryView?: string;
+}): Promise<SearchProductGroupResult> {
+  return request.get<unknown, SearchProductGroupResult>('/api/staff/products/search/grouped', {
     params: query,
   });
 }

@@ -57,6 +57,11 @@ export interface DataViewLayerProps<T extends Record<string, any>> {
   rowClassName?: (record: T, index: number) => string;
   /** 空数据展示内容 */
   emptyText?: ReactNode;
+  /** 行展开配置（如审计日志展开详情）；由 UnifiedTable 透传 */
+  expandable?: {
+    expandedRowRender?: (record: T, index: number, indent: number, expanded: boolean) => ReactNode;
+    rowExpandable?: (record: T) => boolean;
+  };
 }
 
 // ============================================================
@@ -74,6 +79,7 @@ function DataViewLayer<T extends Record<string, any>>({
   className,
   rowClassName,
   emptyText,
+  expandable,
 }: DataViewLayerProps<T>) {
   const shouldVirtual = virtual ?? rows.length > 50;
   const fitDraft = useSyncExternalStore(subscribeFitDraft, getFitDraft);
@@ -288,6 +294,7 @@ function DataViewLayer<T extends Record<string, any>>({
       style={{ width: '100%' }}
       showHeader={true}
       bordered={false}
+      expandable={expandable}
       locale={emptyText != null ? { emptyText } : undefined}
     />
   );

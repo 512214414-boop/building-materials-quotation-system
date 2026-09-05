@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:check": "npm run check:dupe && npm run typecheck && vite build",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "typecheck:clean": "tsc -p tsconfig.app.json --incremental false && tsc -p tsconfig.node.json --incremental false",
     "check:dupe": "node scripts/check-js-dupes.mjs",
     "lint": "oxlint",
     "test": "vitest run",

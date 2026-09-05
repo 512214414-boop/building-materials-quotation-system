@@ -97,7 +97,7 @@ export interface UnifiedTableProps<T extends Record<string, any>> {
       };
   /** 最小可视高度（px） */
   minHeight?: number;
-  /** 行展开配置 */
+  /** 行展开配置（如审计日志展开详情）。档案子级查看（childLevel）已改走弹窗浮层，不再行内展开 */
   expandable?: {
     expandedRowRender?: (record: T, index: number, indent: number, expanded: boolean) => ReactNode;
     rowExpandable?: (record: T) => boolean;
@@ -342,6 +342,8 @@ type MergedTableViewProps<T extends Record<string, any>> = {
   loading: boolean;
   tableClassName: string;
   emptyContent: ReactNode;
+  /** 行展开配置（分组父子视图），透传给显示层的 antd Table */
+  expandable?: UnifiedTableProps<T>['expandable'];
 };
 
 const MergedTableView = memo(function MergedTableView<T extends Record<string, any>>({
@@ -356,6 +358,7 @@ const MergedTableView = memo(function MergedTableView<T extends Record<string, a
   loading,
   tableClassName,
   emptyContent,
+  expandable,
 }: MergedTableViewProps<T>) {
   const mergedColumns = useMemo(
     () =>
@@ -378,6 +381,7 @@ const MergedTableView = memo(function MergedTableView<T extends Record<string, a
       loading={loading}
       className={tableClassName}
       emptyText={emptyContent}
+      expandable={expandable}
     />
   );
 }) as <T extends Record<string, any>>(props: MergedTableViewProps<T>) => ReactNode;
@@ -882,6 +886,7 @@ export function UnifiedTableInner<T extends Record<string, any>>(
                 loading={loading}
                 tableClassName={tableClassName}
                 emptyContent={emptyContent}
+                expandable={expandable}
               />
             );
           }}

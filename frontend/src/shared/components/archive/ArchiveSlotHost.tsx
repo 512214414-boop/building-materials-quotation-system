@@ -23,7 +23,7 @@ import { HeaderCascadeFilter } from './HeaderCascadeFilter.js';
 import { PickerEditGateProvider } from '../product-picker/PickerEditGate.js';
 import { FieldCell } from '../cells/FieldCell.js';
 import EnumPicker from '../EnumPicker.js';
-import type { UnifiedTableColumn } from '../UnifiedTable.js';
+import UnifiedTable, { type UnifiedTableColumn } from '../UnifiedTable.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
 import { NameLinkCell, StatusTagCell, createRecordFieldColumn } from '../cells/index.js';
 import { usePermission } from '../../hooks/usePermission.js';
@@ -35,7 +35,7 @@ import { permissionReadonlyTip } from '../../utils/permissionTips.js';
 import { runParallelLimit } from '../../utils/runParallelLimit.js';
 import type {
   ArchiveColumnCtx,
-  ArchiveCompositeSlot,
+  ArchiveChildLevel,
   ArchiveDialogCtx,
   ArchiveEntityDef,
   ArchiveMatrixSlot,
@@ -59,7 +59,7 @@ function mergeSeed(base: ArchiveSeed, extra?: Partial<ArchiveSeed>): ArchiveSeed
   };
 }
 
-export default function ArchiveSlotHost<T extends { id: string }>({
+function ArchiveSlotHostInner<T extends { id: string }>({
   def,
   extraQuery,
   extraChips,
@@ -101,6 +101,10 @@ export default function ArchiveSlotHost<T extends { id: string }>({
   const [openIds, setOpenIds] = useState<Record<string, string | null>>({});
   const [selectedRowKeys, setSelectedRowKeys] = useState<Record<string, Record<string, string>>>({});
   const [preview, setPreview] = useState<Record<string, Record<string, unknown[]>>>({});
+  // 展示区间面板：查看子集用弹窗浮层承载（点击区间摘要列打开）——
+  // 不在表格内部插行（破坏表格布局与 DOM 结构），子表宽度也不受列宽约束；
+  // 操作列语义是「行级数据操作」，查看子集是另一种特征，不混一列。
+  const [childPanel, setChildPanel] = useState<{ level: ArchiveChildLevel<T, any>; row: T } | null>(null);
   const dirtyRefs = useRef<
     Record<string, { id: string; rows: unknown[]; baseline?: unknown } | null>
   >({});
@@ -253,6 +257,18 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     const extrasNow = { ...extrasRef.current };
     const isCreate = !editingId;
     const d = defRef.current;
+    if (d.beforeSave) {
+      const ok = await d.beforeSave({
+        draft,
+        matrices,
+        extras: extrasNow,
+        isCreate,
+        row: editingId ? (list.find((x) => x.id === editingId) ?? null) : null,
+        message: (content: string) => message.info(content),
+        modal,
+      });
+      if (!ok) return;
+    }
     const payload = d.collectPayload(draft, matrices, extrasNow, isCreate);
     const invalid = d.validate?.(payload, isCreate, draft);
     if (invalid) {
@@ -291,7 +307,7 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     } finally {
       setSaving(false);
     }
-  }, [draft, editingId, fetchList, message]);
+  }, [draft, editingId, fetchList, message, modal]);
 
   const commitMatrix = useCallback(
     async (slot: ArchiveMatrixSlot<T>) => {
@@ -662,6 +678,8 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           title: slot.label,
           dataIndex: slot.key,
           minWidth: slot.minWidth ?? COL_WIDTHS.DATETIME,
+          // 图片等非常量内容列（值为 URL）必须关掉按内容撑宽，否则列被 URL 文本撑到几百像素
+          fitContent: slot.fitContent,
           align: slot.align ?? 'left',
           renderMode: 'custom',
           render: (_v: unknown, row: T) =>
@@ -736,29 +754,40 @@ export default function ArchiveSlotHost<T extends { id: string }>({
         );
         continue;
       }
-      // 复合/嵌套槽：列表列只渲染「N 个 SKU」计数，整行可展开看子表
-      if (slot.kind === 'composite' && slot.list !== false) {
-        cols.push({
-          key: slot.key,
-          title: slot.label,
-          dataIndex: slot.key,
-          minWidth: slot.minWidth ?? COL_WIDTHS.TAG_L,
-          align: slot.align ?? 'center',
-          renderMode: 'custom',
-          render: (_v: unknown, row: T) => {
-            const n = slot.getSubRows(row).length;
-            return (
-              <span style={{ color: n ? 'var(--text-default)' : 'var(--text-tertiary)' }}>
-                {n ? `${n} 个 SKU` : '—'}
-              </span>
-            );
-          },
-        });
-        continue;
-      }
       if (slot.kind === 'custom' && slot.list !== false && slot.column) {
         cols.push(slot.column(columnCtx));
       }
+    }
+
+    // 展示区间列：每条 childLevels 声明 = 数据关系图上的一段层级区间，独立成列——
+    // 收起态摘要 = 区间起点层的统计基数（如「N 个品牌」「N 个规格」），点击打开弹窗浮层
+    // 下钻区间内容。操作列只保留「行级数据操作」，查看子集是另一种特征，不混一列；
+    // 表格 DOM 不被面板插入破坏。
+    for (const cl of def.childLevels ?? []) {
+      cols.push({
+        key: cl.key,
+        title: cl.label,
+        dataIndex: cl.key,
+        minWidth: cl.minWidth ?? COL_WIDTHS.TAG_L,
+        align: cl.align ?? 'center',
+        renderMode: 'custom',
+        render: (_v: unknown, row: T) => {
+          if ((row as { __isEmpty?: boolean }).__isEmpty) return null;
+          const node = cl.summary?.(row);
+          return (
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                setChildPanel({ level: cl, row });
+              }}
+              title={`查看${cl.label}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: node ? 'var(--text-default)' : 'var(--text-tertiary)' }}
+            >
+              <span>{node ?? '—'}</span>
+            </span>
+          );
+        },
+      });
     }
 
     let statusCol: UnifiedTableColumn<T> | null = null;
@@ -835,6 +864,7 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     commitMatrix,
     def.slots,
     def.status,
+    def.childLevels,
     facetFetcher,
     filters,
     openEdit,
@@ -845,16 +875,13 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     setFilter,
   ]);
 
-  // 复合槽：整行展开看子表（product 专用；其余实体无此槽 → undefined，行为不变）
-  const compositeSlot = def.slots.find(
-    (s): s is ArchiveCompositeSlot<T> => s.kind === 'composite' && s.list !== false,
-  );
-  const expandable = compositeSlot
-    ? {
-        expandedRowRender: (row: T) => compositeSlot.renderSubTable(row, columnCtx),
-        rowExpandable: (row: T) => (compositeSlot.getSubRows(row)?.length ?? 0) > 0,
-      }
-    : undefined;
+  // 展示区间面板：displayLevel==='parent' 且声明 childLevels 时，点击摘要列以弹窗浮层下钻
+  // （任何实体可用，非 product 专用；不在表格内部插行，表格布局与 DOM 结构不受影响）。
+  const childPanelContent = childPanel
+    ? childPanel.level.childRender
+      ? <childPanel.level.childRender parent={childPanel.row} ctx={columnCtx} />
+      : <ChildTable childLevel={childPanel.level} parent={childPanel.row} ctx={columnCtx} />
+    : null;
 
   const dialogCtx: ArchiveDialogCtx<T> = {
     row: editingId ? (list.find((x) => x.id === editingId) ?? null) : null,
@@ -870,6 +897,8 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     extrasRef,
     matrices: dialogMatrices,
     matrixRefs,
+    message: (content: string) => message.info(content),
+    modalConfirm: (config) => modal.confirm(config),
   };
 
   const dialogBody = (
@@ -908,7 +937,6 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     <PickerEditGateProvider>
       <ArchiveListPage<T>
         selectable={selectable}
-        expandable={expandable}
         actionBar={{
           count: total,
           countUnit: def.countUnit,
@@ -1001,6 +1029,19 @@ export default function ArchiveSlotHost<T extends { id: string }>({
                 cancelText="取消"
               >
                 {dialogBody}
+              </DsDialog>
+            )}
+            {childPanel && (
+              <DsDialog
+                open
+                title={childPanel.level.panelTitle
+                  ? childPanel.level.panelTitle(childPanel.row)
+                  : `${def.entityLabel} · ${(childPanel.row as { name?: unknown }).name ?? ''}`}
+                footer={null}
+                width={def.childDialogWidth ?? 960}
+                onCancel={() => setChildPanel(null)}
+              >
+                {childPanelContent}
               </DsDialog>
             )}
             {def.extraDialogs}
@@ -1125,6 +1166,94 @@ function renderDialogSlot<T extends { id: string }>(
     return <div key={slot.key}>{slot.dialogRender(ctx)}</div>;
   }
   return null;
+}
+
+// 运行时视图切换包装：displayLevel==='parent' 且提供 flatView 时，列表出现 分组/平铺 开关。
+// 通用能力——任何声明 childLevel + flatView 的实体都能用，框架不认业务名（非 product 后门）。
+export default function ArchiveSlotHost<T extends { id: string }>({
+  def,
+  extraQuery,
+  extraChips,
+}: {
+  def: ArchiveEntityDef<T>;
+  extraQuery?: Record<string, unknown>;
+  extraChips?: ArchiveListFilterChip[];
+}) {
+  const isParent = def.displayLevel === 'parent';
+  const [mode, setMode] = useState<'grouped' | 'flat'>(isParent ? 'grouped' : 'flat');
+  const activeDef =
+    isParent && mode === 'flat' && def.flatView
+      ? (def.flatView as ArchiveEntityDef<any>)
+      : def;
+  return (
+    <div>
+      {isParent && def.flatView ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>视图：</span>
+          <DsButton
+            size="sm"
+            variant={mode === 'grouped' ? 'primary' : 'secondary'}
+            onClick={() => setMode('grouped')}
+          >
+            分组（一行一产品）
+          </DsButton>
+          <DsButton
+            size="sm"
+            variant={mode === 'flat' ? 'primary' : 'secondary'}
+            onClick={() => setMode('flat')}
+          >
+            平铺（一行一SKU）
+          </DsButton>
+        </div>
+      ) : null}
+      <ArchiveSlotHostInner def={activeDef} extraQuery={extraQuery} extraChips={extraChips} />
+    </div>
+  );
+}
+
+function ChildTable<T, C extends Record<string, any>>({
+  childLevel,
+  parent,
+  ctx,
+}: {
+  childLevel: ArchiveChildLevel<T, C>;
+  parent: T;
+  ctx: ArchiveColumnCtx<T>;
+}) {
+  const [rows, setRows] = useState<C[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!childLevel.childApi) return; // 声明了 childRender 的区间不会走到本组件
+    let alive = true;
+    setLoading(true);
+    childLevel
+      .childApi(parent, { page: 1, size: 200 })
+      .then((r) => {
+        if (alive) {
+          setRows(r.list);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [parent, childLevel]);
+  const cols = childLevel.childColumns?.(ctx) ?? [];
+  return (
+    <div style={{ padding: '4px 0 4px 24px' }}>
+      <UnifiedTable<C>
+        rows={rows}
+        columns={cols}
+        rowKey={childLevel.childRowKey ?? ((c: C) => String((c as { id?: unknown }).id ?? ''))}
+        pagination={false}
+        loading={loading}
+        scroll={{ x: 'max-content' }}
+      />
+    </div>
+  );
 }
 
 export type { ArchiveEntityDef, ArchiveSlot } from './archiveSlotTypes.js';

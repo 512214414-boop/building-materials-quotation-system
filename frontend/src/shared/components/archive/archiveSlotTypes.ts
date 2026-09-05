@@ -3,6 +3,7 @@
  * 规范见 文档可视化/「档案管理 · 全局规则」。
  */
 import type { ComponentType, CSSProperties, ReactNode } from 'react';
+import type { CanvasModalInstance } from '../../utils/canvasModal.js';
 import type { DictRecordConfig } from '../DictRefField.js';
 import type { CascadeOption } from '../CascadeSwitchRow.js';
 import type { SuggestField, SuggestOption } from '../../services/api/baseDataApi.js';
@@ -39,6 +40,34 @@ export interface ArchiveDialogCtx<T> {
   extrasRef: { current: Record<string, unknown> };
   matrices: Record<string, unknown[]>;
   matrixRefs: { current: Record<string, unknown[]> };
+  /** 槽处理器内提示（如保存成功/失败） */
+  message: (content: string) => void;
+  /** 槽处理器内二次确认（级联删除/切换等破坏性操作）；通用能力，非 product 后门 */
+  modalConfirm: (config: {
+    title: ReactNode;
+    content: ReactNode;
+    okText?: string;
+    cancelText?: string;
+    okButtonProps?: { danger?: boolean };
+    onOk?: () => void | Promise<void>;
+    onCancel?: () => void;
+  }) => void;
+}
+
+/**
+ * 保存前异步确认钩子上下文。
+ * 给「保存前需要弹确认（如自动补默认值的二次确认）」的实体一个通用出口——
+ * 框架的 validate 是同步（只能返回字符串警告），但某些实体的保存前确认是异步 modal，
+ * 这类逻辑放不进 validate，故加 beforeSave（返回 false 即中止保存）。通用能力，非 product 后门。
+ */
+export interface ArchiveBeforeSaveCtx<T> {
+  draft: Record<string, string>;
+  matrices: Record<string, unknown[]>;
+  extras: Record<string, unknown>;
+  isCreate: boolean;
+  row: T | null;
+  message: (content: string) => void;
+  modal: CanvasModalInstance;
 }
 
 export interface ArchiveColumnCtx<T> {
@@ -197,6 +226,8 @@ export interface ArchiveReadonlySlot<T> {
   label: string;
   minWidth?: number;
   align?: 'left' | 'center' | 'right';
+  /** 关闭「按当前页内容撑宽」（值为 URL/长标识的列必须关，如图片列）；缺省开启 */
+  fitContent?: boolean;
   list?: boolean;
   /** 纯文本取值，用于导出与缺省渲染 */
   get: (row: T) => string;
@@ -216,26 +247,48 @@ export interface ArchiveCustomSlot<T> {
 }
 
 /**
- * 复合/嵌套槽：列表行内可展开的子表（如产品的 品牌×规格×单位×售价/进价 SKU 矩阵）。
+ * 展示区间（display range）：把实体数据关系图（DAG）上的一段层级映射成一个列表列。
  *
- * 为什么是 product 专用例外、不建通用分组引擎：product 是第一个也是唯一一个需要在列表里
- * 展开看下挂多记录的业务；其余档案实体一行=一个实体，无此需求。该槽登记为 product 专用，
- * 出现第二类复合体时再升级为通用（三次原则 / 第二次出现必须登记）。
+ * 抽象（对齐「源配置怎么组织」的答案）：数据关系是图，展示是图上的一个区间——
+ * 「从哪一层开始、到哪一层结束」。区间内每层怎么聚合、什么形态展示，都由声明驱动：
+ *   - 摘要列（收起态）：统计区间起点层的基数（如「N 个品牌」「N 个规格」），语义=统计；
+ *   - 点击面板（展开态）：展示区间内展开后的完整行记录（品牌区间=按品牌分组下钻到规格；
+ *     规格区间=直接平铺规格完整行）。
+ * 字段值列同理：产品名列 = 从「产品」层取值；图片列 = 从「规格」层按约定取代表值、
+ * 只是 render 形态不同——聚合逻辑与文字字段是同一套「父级=子级集合按约定取代表值」。
  *
- * 列表列：宿主给该槽渲染一列「N 个 SKU」计数，整行可展开（UnifiedTable.expandedRowRender）。
- * 弹窗：composite 只进列表，不进编辑弹窗（品牌→规格→单位走 cascade 槽、价格走 matrix 槽）。
+ * 一个实体可声明多个区间列（childLevels），每列独立统计、独立展开。这是框架级通用能力，
+ * 由 ArchiveEntityDef.displayLevel='parent' + childLevels 声明驱动，任何实体声明即生效，
+ * 框架零改动——不是 product 专用后门。
+ *
+ * 交互：点击摘要列打开弹窗浮层面板——不在表格内部插行（行内展开破坏表格布局与 DOM 结构，
+ * 且子表宽度不受表格列宽约束；浮层 z-index 由弹窗体系自动管理）。
+ * 面板内容：childRender（自包含组件）优先；否则框架基于 childApi + childColumns 自建子表。
+ * 弹窗：childLevels 只进列表，不进编辑弹窗（品牌→规格→单位走 cascade 槽、价格走 matrix 槽）。
  */
-export interface ArchiveCompositeSlot<T> {
-  kind: 'composite';
+export interface ArchiveChildLevel<T, C extends Record<string, any> = Record<string, any>> {
   key: string;
+  /** 列名 = 区间起点层的业务名（按实际数据关系声明，如「品牌」「规格」，禁止业务硬编码） */
   label: string;
-  list?: boolean;
   minWidth?: number;
   align?: 'left' | 'center';
-  /** 给定实体行，返回子表明细行（如 SkuSearchRow[]）；空数组则该行不可展开 */
-  getSubRows: (row: T) => unknown[];
-  /** 子表渲染（持有自己的行级态，如 useSkuPriceState + createSkuPriceColumns） */
-  renderSubTable: (row: T, ctx: ArchiveColumnCtx<T>) => ReactNode;
+  /** 给定父行，索引查询子表明细（候选集天然有界；仅框架自建子表时需要） */
+  childApi?: (
+    parent: T,
+    query: { keyword?: string; page: number; size: number },
+  ) => Promise<{ list: C[]; total: number }>;
+  childRowKey?: (c: C) => string;
+  childColumns?: (ctx: ArchiveColumnCtx<T>) => UnifiedTableColumn<C>[];
+  /** 收起态摘要 = 区间起点层的统计基数（如「N 个品牌」） */
+  summary?: (parent: T) => ReactNode;
+  /** 弹窗面板标题（缺省 = `${entityLabel} · ${父行名称}`） */
+  panelTitle?: (parent: T) => string;
+  /**
+   * 自定义面板渲染（自包含组件，拥有自己的状态/数据加载）。提供后框架不再基于 childColumns 自建 UnifiedTable。
+   * 用于「多列价格编辑子表」这种复合内容——内部用共享 hook 维护行级价格态，无法用纯列数组表达。
+   * 与 renderDialog 同构的逃逸口：框架通用渲染覆盖不到的复合面板，由实体自给组件。
+   */
+  childRender?: ComponentType<{ parent: T; ctx: ArchiveColumnCtx<T> }>;
 }
 
 export type ArchiveSlot<T> =
@@ -246,8 +299,7 @@ export type ArchiveSlot<T> =
   | ArchiveToggleSlot<T>
   | ArchiveReadonlySlot<T>
   | ArchiveCascadeSlot<T>
-  | ArchiveCustomSlot<T>
-  | ArchiveCompositeSlot<T>;
+  | ArchiveCustomSlot<T>;
 
 export interface ArchiveEntityDef<T extends { id: string }> {
   permission: ViewCode;
@@ -258,6 +310,8 @@ export interface ArchiveEntityDef<T extends { id: string }> {
   statusHint: string;
   selectable?: boolean;
   dialogWidth?: number;
+  /** 子级查看弹窗（childLevel）宽度；子表列多，缺省 960 */
+  childDialogWidth?: number;
   dialogHint?: string;
   createOkText?: string;
   saveOkText?: string;
@@ -288,9 +342,25 @@ export interface ArchiveEntityDef<T extends { id: string }> {
   remove?: (id: string) => Promise<void>;
   deleteTitle?: (row: T) => string;
   deleteContent?: (row: T) => Promise<string> | string;
+  /**
+   * 保存前异步确认钩子：返回 false 即中止保存（如自动补默认值的二次确认）。
+   * 通用能力——框架 validate 是同步只能警告，异步确认放这里。非 product 后门。
+   */
+  beforeSave?: (ctx: ArchiveBeforeSaveCtx<T>) => Promise<boolean>;
   /** 覆盖宿主单次确认（如供应商双步确认） */
   deleteFlow?: (row: T, ctx: { refresh: () => void }) => void;
   confirmStatusToggle?: (row: T, enable: boolean) => { title: string; content: string } | null;
+
+  /** 列表行模型层级：'entity'=一行一实体（默认）；'parent'=列表行停父级、可展开子级（childLevel）。通用展示层级，任何实体可声明，框架不认业务名。 */
+  displayLevel?: 'entity' | 'parent';
+  /**
+   * 展示区间列（displayLevel==='parent' 时声明）：每条 = 数据关系图上的一段层级区间，
+   * 独立成列（摘要统计 + 点击弹窗下钻）。多层级关系可声明多条（如品牌区间 + 规格区间）。
+   * 框架通用能力，不绑任何业务实体。
+   */
+  childLevels?: ArchiveChildLevel<T, any>[];
+  /** 运行时视图切换的平铺模式 def（行=子级，扁平无展开）；提供后列表头出现 分组/平铺 开关。 */
+  flatView?: ArchiveEntityDef<any>;
 
   slots: ArchiveSlot<T>[];
   seed: (row: T | null) => ArchiveSeed;
@@ -313,9 +383,10 @@ export interface ArchiveEntityDef<T extends { id: string }> {
     },
   ) => Promise<void>;
   /**
-   * 覆盖宿主默认编辑弹窗（product 专用逃逸口）。
-   * 产品编辑弹窗 ProductEditDialog 自带 DsDialog 且形态远超通用档案（品牌/规格/单位级联 + 价格矩阵 + 图片），
-   * 直接复用它可避免「宿主弹窗套弹窗」双套。提供后宿主不再渲染自身 DsDialog，改由本函数返回完整弹窗。
+   * 覆盖宿主默认编辑弹窗（通用逃生口，非默认路径）。
+   * 产品编辑弹窗（品牌/规格/单位级联 + 价格矩阵 + 图片）已改为标准槽表达：cascade 槽（品牌/规格，options/onSelect/addCell/editRow 全走 ctx.extras）
+   * + custom 槽（复用 UnitSection/BrandImages）+ beforeSave/collectPayload，不再需要本逃逸口。保留为极端定制实体的逃生口。
+   * 提供后宿主不再渲染自身 DsDialog，改由本函数返回完整弹窗。
    */
   renderDialog?: (ctx: ArchiveDialogCtx<T> & {
     open: boolean;
