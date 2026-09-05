@@ -371,6 +371,19 @@ entities:
 #   permission 权限叶子 · writable 可写字段白名单（越界字段直接拒绝）
 #   include 关联预载 · softDelete 软删除字段 · audit 审计动作 · search 检索配置
 # ─────────────────────────────────────────────
+# ---------- 字段定义登记表（L5·字段级行为唯一真相源） ----------
+# 一个字段定义了是什么、从哪来，它全站的确认层行为（能力 + 路径）就定了。
+# 调用方只声明 field 名，框架从本表推导：identity（有无 ID）→ 能力；dict → 值来源；
+# scene → 填法（档案分列 dict / 开单混写 mixed）。差异降为参数，禁止调用方手写第二套路径。
+# layer 不在此重复声明——生成器从 dict 指向的 entities[].layer 继承（category/brand/unit/price_type=globalDict，supplier=subject）。
+fieldDefs:
+  category:  { identity: byId, dict: category,   scene: { archive: { entry: dict },  workbench: { entry: mixed } } }
+  brand:     { identity: byId, dict: brand,      scene: { archive: { entry: dict },  workbench: { entry: mixed } } }
+  unit:      { identity: byId, dict: unit,       scene: { archive: { entry: dict },  workbench: { entry: dict } } }
+  priceType: { identity: byId, dict: price_type, scene: { archive: { entry: dict },  workbench: { entry: dict } } }
+  supplier:  { identity: byId, dict: supplier,   scene: { archive: { entry: dict },  workbench: { entry: mixed } } }
+  remark:    { identity: byText }
+# ─────────────────────────────────────────────
 resources:
   supplier:
     label: 供应商档案
@@ -395,6 +408,203 @@ resources:
       - { label: 进价记录, table: purchase_price, field: supplierId }
       - { label: 应付行, table: supplier_payable_lines, field: supplier_id }
       - { label: 采购入库单, table: purchase_inbounds, field: supplier_id }
+  category:
+    label: 分类档案
+    table: category
+    model: category
+    primaryKey: id
+    primaryKeyType: int
+    permission: category_manage
+    softDelete: { field: status, off: 0 }
+    writable: [name, sortOrder, status]
+    audit: [category_create, category_update, category_delete, category_quick_add]
+    search:
+      fields: [name]
+      mode: normalized
+      dictUnique: global
+    refTargets:
+      - { label: 产品, table: product, field: categoryId }
+      - { label: 供应商经营范围, table: business_categories, field: categoryId }
+  brand:
+    label: 品牌档案
+    table: brand
+    model: brand
+    primaryKey: id
+    permission: brand_manage
+    softDelete: { field: status, off: 0 }
+    writable: [name, status]
+    audit: [brand_create, brand_update, brand_delete, brand_quick_add]
+    search:
+      fields: [name]
+      mode: normalized
+      dictUnique: global
+    refTargets:
+      - { label: 产品, table: product, field: brandId }
+      - { label: 供应商经营范围, table: business_brands, field: brandId }
+  unit:
+    label: 单位档案
+    table: unit
+    model: unit
+    primaryKey: id
+    permission: unit_manage
+    softDelete: { field: status, off: 0 }
+    writable: [unitName, status]
+    audit: [unit_create, unit_update, unit_delete, unit_quick_add]
+    search:
+      fields: [unitName]
+      mode: normalized
+      dictUnique: global
+    refTargets:
+      - { label: 规格单位, table: spec_unit, field: unitId }
+  price_type:
+    label: 价格类型档案
+    table: price_type
+    model: price_type
+    primaryKey: id
+    permission: price_type_manage
+    softDelete: { field: status, off: 0 }
+    writable: [name, sortOrder, status]
+    audit: [price_type_create, price_type_update, price_type_delete, price_type_quick_add]
+    search:
+      fields: [name]
+      mode: normalized
+      dictUnique: global
+    refTargets:
+      - { label: 规格价格类型, table: spec_price_unit, field: priceTypeId }
+  # ── 档案类主体（subject）：全走零代码 CRUD（与 globalDict 同机制）──
+  product:
+    label: 产品档案
+    table: product
+    model: product
+    primaryKey: id
+    permission: product_manage
+    softDelete: { field: status, off: 0 }
+    writable: [name, categoryId, remark, status]
+    audit: [product_create, product_update, product_delete]
+    search:
+      fields: [name]
+      mode: normalized
+      dictUnique: parent
+    refTargets:
+      - { label: 单据行, table: document_lines, field: productId }
+      - { label: 库存, table: inventory, field: productId }
+  customer:
+    label: 客户档案
+    table: customers
+    model: customer
+    primaryKey: id
+    permission: customer_manage
+    writable: [name, phone, wechat, company, note, customer_type, status]
+    audit: [customer_update, customer_delete, customer_status_change]
+    search:
+      fields: [name, phone]
+      mode: normalized
+    refTargets:
+      - { label: 单据, table: documents, field: customerId }
+      - { label: 客户地址, table: customer_addresses, field: customerId }
+  # ── 单据类（row/document/snapshot）：只登记读与列表，写操作走实体专属 service ──
+  inventory:
+    label: 库存
+    table: inventory
+    model: inventory
+    primaryKey: id
+    permission: inventory
+    readOnly: true
+  inventory_ledger:
+    label: 库存流水
+    table: inventory_ledger
+    model: inventory_ledger
+    primaryKey: id
+    permission: inventory
+    readOnly: true
+  inbound_task:
+    label: 待入库单
+    table: inbound_tasks
+    model: inbound_task
+    primaryKey: id
+    permission: inventory
+    readOnly: true
+    search:
+      fields: [inbound_no]
+      mode: normalized
+  inbound_line:
+    label: 待入库明细
+    table: inbound_lines
+    model: inbound_line
+    primaryKey: id
+    permission: inventory
+    readOnly: true
+  backorder:
+    label: 欠库
+    table: backorders
+    model: backorder
+    primaryKey: id
+    permission: inventory
+    readOnly: true
+  purchase_inbound:
+    label: 采购入库单
+    table: purchase_inbounds
+    model: purchase_inbound
+    primaryKey: id
+    permission: inventory
+    readOnly: true
+    search:
+      fields: [purchaseNo]
+      mode: normalized
+  staff_document:
+    label: 员工端单据
+    table: documents
+    model: document
+    primaryKey: id
+    permission: purchase_quote
+    readOnly: true
+    search:
+      fields: [documentNo]
+      mode: normalized
+  document_line:
+    label: 单据行（快照）
+    table: document_lines
+    model: document_line
+    primaryKey: id
+    permission: purchase_quote
+    readOnly: true
+  audit_log:
+    label: 审计日志
+    table: audit_logs
+    model: audit_log
+    primaryKey: id
+    permission: audit_log_manage
+    readOnly: true
+  auth_code:
+    label: 授权码
+    table: authorization_codes
+    model: authorization_code
+    primaryKey: id
+    permission: auth_code_manage
+    readOnly: true
+    search:
+      fields: [code]
+      mode: normalized
+  access_request:
+    label: 访问申请
+    table: access_requests
+    model: access_request
+    primaryKey: id
+    permission: access_request_manage
+    readOnly: true
+    search:
+      fields: [phone]
+      mode: normalized
+  admin_user:
+    label: 员工账号
+    table: users
+    model: user
+    primaryKey: id
+    permission: user_manage
+    readOnly: true
+    search:
+      fields: [username]
+      mode: normalized
 
 # ─────────────────────────────────────────────
 # 页面装配（pages）：实体 → 前端页面的声明
@@ -415,6 +625,36 @@ pages:
       - { key: addresses, title: 地址, slot: matrix, editor: ArchiveSupplierAddressMatrixEditor }
       - { key: businessScope, title: 经营范围, slot: custom, editor: SupplierBusinessScopePicker }
       - { key: remark, title: 备注, slot: scalar, editor: ArchiveFieldCell }
+  category:
+    label: 分类管理
+    list: ArchiveListPage
+    rowKey: id
+    fixedSlots: [seq, status]
+    slots:
+      - { key: name, title: 分类名称, slot: scalar, editor: ArchiveFieldCell }
+      - { key: sortOrder, title: 排序号, slot: scalar, editor: ArchiveFieldCell }
+  brand:
+    label: 品牌管理
+    list: ArchiveListPage
+    rowKey: id
+    fixedSlots: [seq, status]
+    slots:
+      - { key: name, title: 品牌名称, slot: scalar, editor: ArchiveFieldCell }
+  unit:
+    label: 单位管理
+    list: ArchiveListPage
+    rowKey: id
+    fixedSlots: [seq, status]
+    slots:
+      - { key: unitName, title: 单位名称, slot: scalar, editor: ArchiveFieldCell }
+  price_type:
+    label: 价格类型管理
+    list: ArchiveListPage
+    rowKey: id
+    fixedSlots: [seq, status]
+    slots:
+      - { key: name, title: 类型名称, slot: scalar, editor: ArchiveFieldCell }
+      - { key: sortOrder, title: 排序, slot: scalar, editor: ArchiveFieldCell }
 
 actions:
   purchase_inbound_confirm:
@@ -659,6 +899,18 @@ auditActions:
   - { action: category_update, resource: category, label: 改分类 }
   - { action: category_delete, resource: category, label: 删分类 }
   - { action: category_quick_add, resource: category, label: 分类快建 }
+  - { action: brand_create, resource: brand, label: 新建品牌 }
+  - { action: brand_update, resource: brand, label: 改品牌 }
+  - { action: brand_delete, resource: brand, label: 删品牌 }
+  - { action: brand_quick_add, resource: brand, label: 品牌快建 }
+  - { action: unit_create, resource: unit, label: 新建单位 }
+  - { action: unit_update, resource: unit, label: 改单位 }
+  - { action: unit_delete, resource: unit, label: 删单位 }
+  - { action: unit_quick_add, resource: unit, label: 单位快建 }
+  - { action: price_type_create, resource: price_type, label: 新建价格类型 }
+  - { action: price_type_update, resource: price_type, label: 改价格类型 }
+  - { action: price_type_delete, resource: price_type, label: 删价格类型 }
+  - { action: price_type_quick_add, resource: price_type, label: 价格类型快建 }
   - { action: product_create, resource: product, label: 产品建档 }
   - { action: product_update, resource: product, label: 产品改单 }
   - { action: product_delete, resource: product, label: 产品删除 }

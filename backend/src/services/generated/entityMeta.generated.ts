@@ -65,6 +65,18 @@ export const AUDIT_ACTIONS: Array<{ action: string; resource: string; label: str
   { action: "category_update", resource: "category", label: "改分类" },
   { action: "category_delete", resource: "category", label: "删分类" },
   { action: "category_quick_add", resource: "category", label: "分类快建" },
+  { action: "brand_create", resource: "brand", label: "新建品牌" },
+  { action: "brand_update", resource: "brand", label: "改品牌" },
+  { action: "brand_delete", resource: "brand", label: "删品牌" },
+  { action: "brand_quick_add", resource: "brand", label: "品牌快建" },
+  { action: "unit_create", resource: "unit", label: "新建单位" },
+  { action: "unit_update", resource: "unit", label: "改单位" },
+  { action: "unit_delete", resource: "unit", label: "删单位" },
+  { action: "unit_quick_add", resource: "unit", label: "单位快建" },
+  { action: "price_type_create", resource: "price_type", label: "新建价格类型" },
+  { action: "price_type_update", resource: "price_type", label: "改价格类型" },
+  { action: "price_type_delete", resource: "price_type", label: "删价格类型" },
+  { action: "price_type_quick_add", resource: "price_type", label: "价格类型快建" },
   { action: "product_create", resource: "product", label: "产品建档" },
   { action: "product_update", resource: "product", label: "产品改单" },
   { action: "product_delete", resource: "product", label: "产品删除" },
@@ -120,13 +132,34 @@ export const RESOURCES: Record<string, {
   /** Prisma 模型名（与 @@map 的表名可能不同） */
   model: string;
   primaryKey: string;
+  primaryKeyType: 'int' | 'bigint';
   permission?: string;
   softDelete?: { field: string; off: number | string };
   writable: string[];
   include: string[];
   audit: string[];
   refTargets: Array<{ label: string; table: string; field: string }>;
+  /** 只读登记：单据类只暴露读与列表，写操作走专属 service（资源引擎拒绝任何变更） */
+  readOnly?: boolean;
   search?: { fields?: string[]; mode?: string; dictUnique?: string };
 }> = {
-  supplier: { key: "supplier", label: "供应商档案", table: "supplier", model: "supplier", primaryKey: "id", permission: "supplier_manage", softDelete: {"field":"status","off":0}, writable: ["name","remark","status"], include: ["contacts","addresses","businessCategories","businessBrands"], audit: ["supplier_create","supplier_update","supplier_delete","supplier_quick_add","supplier_status"], refTargets: [{"label":"进价记录","table":"purchase_price","field":"supplierId"},{"label":"应付行","table":"supplier_payable_lines","field":"supplier_id"},{"label":"采购入库单","table":"purchase_inbounds","field":"supplier_id"}], search: {"fields":["name"],"mode":"normalized","dictUnique":"global"} },
+  supplier: { key: "supplier", label: "供应商档案", table: "supplier", model: "supplier", primaryKey: "id", primaryKeyType: "bigint", permission: "supplier_manage", softDelete: {"field":"status","off":0}, writable: ["name","remark","status"], include: ["contacts","addresses","businessCategories","businessBrands"], audit: ["supplier_create","supplier_update","supplier_delete","supplier_quick_add","supplier_status"], refTargets: [{"label":"进价记录","table":"purchase_price","field":"supplierId"},{"label":"应付行","table":"supplier_payable_lines","field":"supplier_id"},{"label":"采购入库单","table":"purchase_inbounds","field":"supplier_id"}], readOnly: undefined, search: {"fields":["name"],"mode":"normalized","dictUnique":"global"} },
+  category: { key: "category", label: "分类档案", table: "category", model: "category", primaryKey: "id", primaryKeyType: "int", permission: "category_manage", softDelete: {"field":"status","off":0}, writable: ["name","sortOrder","status"], include: [], audit: ["category_create","category_update","category_delete","category_quick_add"], refTargets: [{"label":"产品","table":"product","field":"categoryId"},{"label":"供应商经营范围","table":"business_categories","field":"categoryId"}], readOnly: undefined, search: {"fields":["name"],"mode":"normalized","dictUnique":"global"} },
+  brand: { key: "brand", label: "品牌档案", table: "brand", model: "brand", primaryKey: "id", primaryKeyType: "bigint", permission: "brand_manage", softDelete: {"field":"status","off":0}, writable: ["name","status"], include: [], audit: ["brand_create","brand_update","brand_delete","brand_quick_add"], refTargets: [{"label":"产品","table":"product","field":"brandId"},{"label":"供应商经营范围","table":"business_brands","field":"brandId"}], readOnly: undefined, search: {"fields":["name"],"mode":"normalized","dictUnique":"global"} },
+  unit: { key: "unit", label: "单位档案", table: "unit", model: "unit", primaryKey: "id", primaryKeyType: "bigint", permission: "unit_manage", softDelete: {"field":"status","off":0}, writable: ["unitName","status"], include: [], audit: ["unit_create","unit_update","unit_delete","unit_quick_add"], refTargets: [{"label":"规格单位","table":"spec_unit","field":"unitId"}], readOnly: undefined, search: {"fields":["unitName"],"mode":"normalized","dictUnique":"global"} },
+  price_type: { key: "price_type", label: "价格类型档案", table: "price_type", model: "price_type", primaryKey: "id", primaryKeyType: "bigint", permission: "price_type_manage", softDelete: {"field":"status","off":0}, writable: ["name","sortOrder","status"], include: [], audit: ["price_type_create","price_type_update","price_type_delete","price_type_quick_add"], refTargets: [{"label":"规格价格类型","table":"spec_price_unit","field":"priceTypeId"}], readOnly: undefined, search: {"fields":["name"],"mode":"normalized","dictUnique":"global"} },
+  product: { key: "product", label: "产品档案", table: "product", model: "product", primaryKey: "id", primaryKeyType: "bigint", permission: "product_manage", softDelete: {"field":"status","off":0}, writable: ["name","categoryId","remark","status"], include: [], audit: ["product_create","product_update","product_delete"], refTargets: [{"label":"单据行","table":"document_lines","field":"productId"},{"label":"库存","table":"inventory","field":"productId"}], readOnly: undefined, search: {"fields":["name"],"mode":"normalized","dictUnique":"parent"} },
+  customer: { key: "customer", label: "客户档案", table: "customers", model: "customer", primaryKey: "id", primaryKeyType: "bigint", permission: "customer_manage", softDelete: undefined, writable: ["name","phone","wechat","company","note","customer_type","status"], include: [], audit: ["customer_update","customer_delete","customer_status_change"], refTargets: [{"label":"单据","table":"documents","field":"customerId"},{"label":"客户地址","table":"customer_addresses","field":"customerId"}], readOnly: undefined, search: {"fields":["name","phone"],"mode":"normalized"} },
+  inventory: { key: "inventory", label: "库存", table: "inventory", model: "inventory", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: undefined },
+  inventory_ledger: { key: "inventory_ledger", label: "库存流水", table: "inventory_ledger", model: "inventory_ledger", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: undefined },
+  inbound_task: { key: "inbound_task", label: "待入库单", table: "inbound_tasks", model: "inbound_task", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: {"fields":["inbound_no"],"mode":"normalized"} },
+  inbound_line: { key: "inbound_line", label: "待入库明细", table: "inbound_lines", model: "inbound_line", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: undefined },
+  backorder: { key: "backorder", label: "欠库", table: "backorders", model: "backorder", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: undefined },
+  purchase_inbound: { key: "purchase_inbound", label: "采购入库单", table: "purchase_inbounds", model: "purchase_inbound", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: {"fields":["purchaseNo"],"mode":"normalized"} },
+  staff_document: { key: "staff_document", label: "员工端单据", table: "documents", model: "document", primaryKey: "id", primaryKeyType: "bigint", permission: "purchase_quote", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: {"fields":["documentNo"],"mode":"normalized"} },
+  document_line: { key: "document_line", label: "单据行（快照）", table: "document_lines", model: "document_line", primaryKey: "id", primaryKeyType: "bigint", permission: "purchase_quote", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: undefined },
+  audit_log: { key: "audit_log", label: "审计日志", table: "audit_logs", model: "audit_log", primaryKey: "id", primaryKeyType: "bigint", permission: "audit_log_manage", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: undefined },
+  auth_code: { key: "auth_code", label: "授权码", table: "authorization_codes", model: "authorization_code", primaryKey: "id", primaryKeyType: "bigint", permission: "auth_code_manage", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: {"fields":["code"],"mode":"normalized"} },
+  access_request: { key: "access_request", label: "访问申请", table: "access_requests", model: "access_request", primaryKey: "id", primaryKeyType: "bigint", permission: "access_request_manage", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: {"fields":["phone"],"mode":"normalized"} },
+  admin_user: { key: "admin_user", label: "员工账号", table: "users", model: "user", primaryKey: "id", primaryKeyType: "bigint", permission: "user_manage", softDelete: undefined, writable: [], include: [], audit: [], refTargets: [], readOnly: true, search: {"fields":["username"],"mode":"normalized"} },
 };

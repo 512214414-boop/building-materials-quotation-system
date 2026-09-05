@@ -16,7 +16,7 @@
  *       - AUDIT_ACTIONS（审计 action 目录）
  *       - INDICATORS（统计口径）
  *   ③ frontend/src/shared/config/entityRelations.generated.ts（界面列 + 单元格三维规格）
- *   ④ 文档可视化/js/data/actions.generated.js（守卫动作数据）
+ *   ④ 文档可视化/js/data/actions.generated.js（守卫动作数据）——已停产 2026-09-05：095 渲染器删除后全站无引用，不再生成（见 emit 段 ④ 注释）
  *
  * 规则：*.generated.ts 禁止手改；override 写旁边的 *.override.ts。改实体只改 yml 再重跑。
  *
@@ -262,6 +262,7 @@ fe += '  table: string;\n';
 fe += '  /** Prisma 模型名（与 @@map 的表名可能不同，如 customer→customers） */\n';
 fe += '  model?: string;\n';
 fe += '  primaryKey?: string;\n';
+fe += "  primaryKeyType?: 'int' | 'bigint';\n";
 fe += '  /** 权限叶子（对应 VIEW_PERMISSION_MATRIX） */\n';
 fe += '  permission?: string;\n';
 fe += '  softDelete?: { field: string; off: number | string };\n';
@@ -272,6 +273,8 @@ fe += '  audit?: string[];\n';
 fe += '  search?: { fields?: string[]; mode?: string; dictUnique?: string };\n';
 fe += '  /** 引用计数目标：删除前统计"会影响哪些数据" */\n';
 fe += '  refTargets?: Array<{ label: string; table: string; field: string }>;\n';
+fe += '  /** 只读登记：单据类只暴露读与列表，写操作走专属 service（资源引擎拒绝任何变更） */\n';
+fe += '  readOnly?: boolean;\n';
 fe += '}\n\n';
 fe += '/** 页面槽位声明（yml pages 段） */\n';
 fe += 'export interface PageSlotMeta { key: string; title?: string; slot: string; editor?: string; }\n';
@@ -286,7 +289,7 @@ fe += '  slots?: PageSlotMeta[];\n';
 fe += '}\n\n';
 fe += 'export const resources: Record<string, ResourceMeta> = {\n';
 for (const [key, r] of Object.entries(src.resources || {})) {
-  fe += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(r.label ?? '')}, table: ${JSON.stringify(r.table ?? key)}, model: ${JSON.stringify(r.model ?? r.table ?? key)}, primaryKey: ${JSON.stringify(r.primaryKey ?? 'id')}, permission: ${r.permission ? JSON.stringify(r.permission) : 'undefined'}, softDelete: ${r.softDelete ? JSON.stringify(r.softDelete) : 'undefined'}, writable: ${JSON.stringify(r.writable ?? [])}, include: ${JSON.stringify(r.include ?? [])}, audit: ${JSON.stringify(r.audit ?? [])}, search: ${r.search ? JSON.stringify(r.search) : 'undefined'}, refTargets: ${JSON.stringify(r.refTargets ?? [])} },\n`;
+  fe += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(r.label ?? '')}, table: ${JSON.stringify(r.table ?? key)}, model: ${JSON.stringify(r.model ?? r.table ?? key)}, primaryKey: ${JSON.stringify(r.primaryKey ?? 'id')}, primaryKeyType: ${JSON.stringify(r.primaryKeyType ?? 'bigint')}, permission: ${r.permission ? JSON.stringify(r.permission) : 'undefined'}, softDelete: ${r.softDelete ? JSON.stringify(r.softDelete) : 'undefined'}, writable: ${JSON.stringify(r.writable ?? [])}, include: ${JSON.stringify(r.include ?? [])}, audit: ${JSON.stringify(r.audit ?? [])}, search: ${r.search ? JSON.stringify(r.search) : 'undefined'}, refTargets: ${JSON.stringify(r.refTargets ?? [])}, readOnly: ${r.readOnly ? JSON.stringify(r.readOnly) : 'undefined'} },\n`;
 }
 fe += '};\n\n';
 fe += 'export const pages: Record<string, PageMeta> = {\n';
@@ -356,16 +359,19 @@ be += '  table: string;\n';
 be += '  /** Prisma 模型名（与 @@map 的表名可能不同） */\n';
 be += '  model: string;\n';
 be += '  primaryKey: string;\n';
+be += "  primaryKeyType: 'int' | 'bigint';\n";
 be += '  permission?: string;\n';
 be += '  softDelete?: { field: string; off: number | string };\n';
 be += '  writable: string[];\n';
 be += '  include: string[];\n';
 be += '  audit: string[];\n';
 be += '  refTargets: Array<{ label: string; table: string; field: string }>;\n';
+be += '  /** 只读登记：单据类只暴露读与列表，写操作走专属 service（资源引擎拒绝任何变更） */\n';
+be += '  readOnly?: boolean;\n';
 be += '  search?: { fields?: string[]; mode?: string; dictUnique?: string };\n';
 be += '}> = {\n';
 for (const [key, r] of Object.entries(src.resources || {})) {
-  be += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(r.label ?? '')}, table: ${JSON.stringify(r.table ?? key)}, model: ${JSON.stringify(r.model ?? r.table ?? key)}, primaryKey: ${JSON.stringify(r.primaryKey ?? 'id')}, permission: ${r.permission ? JSON.stringify(r.permission) : 'undefined'}, softDelete: ${r.softDelete ? JSON.stringify(r.softDelete) : 'undefined'}, writable: ${JSON.stringify(r.writable ?? [])}, include: ${JSON.stringify(r.include ?? [])}, audit: ${JSON.stringify(r.audit ?? [])}, refTargets: ${JSON.stringify(r.refTargets ?? [])}, search: ${r.search ? JSON.stringify(r.search) : 'undefined'} },\n`;
+  be += `  ${key}: { key: ${JSON.stringify(key)}, label: ${JSON.stringify(r.label ?? '')}, table: ${JSON.stringify(r.table ?? key)}, model: ${JSON.stringify(r.model ?? r.table ?? key)}, primaryKey: ${JSON.stringify(r.primaryKey ?? 'id')}, primaryKeyType: ${JSON.stringify(r.primaryKeyType ?? 'bigint')}, permission: ${r.permission ? JSON.stringify(r.permission) : 'undefined'}, softDelete: ${r.softDelete ? JSON.stringify(r.softDelete) : 'undefined'}, writable: ${JSON.stringify(r.writable ?? [])}, include: ${JSON.stringify(r.include ?? [])}, audit: ${JSON.stringify(r.audit ?? [])}, refTargets: ${JSON.stringify(r.refTargets ?? [])}, readOnly: ${r.readOnly ? JSON.stringify(r.readOnly) : 'undefined'}, search: ${r.search ? JSON.stringify(r.search) : 'undefined'} },\n`;
 }
 be += '};\n';
 
@@ -484,17 +490,42 @@ if (customWithoutSpec.length && !CHECK) {
 
 emit(relOut, rel);
 
-// ---------- ④ 文档可视化动作守卫数据（actions.guard 的 JS 派生） ----------
-// 集合体文档 guard 维度渲染用：集合体 js 只声明 action key（guardActions），
-// 判定结构与提示语从这里取，不复制——唯一真相源仍是 entity-meta.yml。
-const vizOut = path.join(root, '文档可视化', 'js', 'data', 'actions.generated.js');
-let viz = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
-viz += '// 操作守卫动作登记：集合体文档 guard 维度渲染用（集合体只声明 action key，不复制文案）。\n\n';
-viz += 'window.DOC_VIZ = window.DOC_VIZ || {};\n';
-viz += 'DOC_VIZ.actionMeta = ';
-viz += JSON.stringify(src.actions || {}, null, 2);
-viz += ';\n';
-emit(vizOut, viz);
+// ---------- ③-d 字段定义登记表（L5·字段级行为唯一真相源） ----------
+// 一个字段定义了是什么、从哪来，它全站的确认层行为（能力 + 路径）就定了。
+// 调用方只声明 field 名，框架从本表推导：identity（有无 ID）→ 能力；dict → 值来源；
+// scene → 填法（档案分列 dict / 开单混写 mixed）。差异降为参数，禁止调用方手写第二套路径。
+// layer 不在此重复声明——从 dict 指向的 entities[].layer 继承。
+const fdOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'fieldDefs.generated.ts');
+let fd = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
+fd += '// 元模型运行时 · 阶段 L5：字段定义登记表——字段级确认层行为的唯一真相源。\n\n';
+fd += "export type FieldIdentity = 'byId' | 'byText';\n";
+fd += "export type FieldLayer = 'globalDict' | 'subject' | 'localDict';\n";
+fd += "export type FieldEntry = 'dict' | 'mixed' | 'value';\n\n";
+fd += 'export interface GeneratedFieldDef {\n';
+fd += '  field: string;\n';
+fd += '  identity: FieldIdentity;\n';
+fd += '  dict?: string;\n';
+fd += '  layer?: FieldLayer;\n';
+fd += "  scene?: Partial<Record<'archive' | 'workbench', { entry: FieldEntry }>>;\n";
+fd += '}\n\n';
+fd += 'export const entityFieldDefs: Record<string, GeneratedFieldDef> = {\n';
+const fieldDefs = src.fieldDefs || {};
+for (const [field, def] of Object.entries(fieldDefs)) {
+  const layer = def.dict && src.entities?.[def.dict] ? src.entities[def.dict].layer : undefined;
+  const sceneExpr = def.scene
+    ? `{ ${Object.entries(def.scene)
+      .map(([k, v]) => `${k}: { entry: ${JSON.stringify(v.entry)} }`)
+      .join(', ')} }`
+    : 'undefined';
+  fd += `  ${field}: { field: ${JSON.stringify(field)}, identity: ${JSON.stringify(def.identity)},${def.dict ? ` dict: ${JSON.stringify(def.dict)},` : ''}${layer ? ` layer: ${JSON.stringify(layer)},` : ''} scene: ${sceneExpr} },\n`;
+}
+fd += '};\n';
+emit(fdOut, fd);
+
+// ---------- ④ 文档可视化动作守卫数据：已停产（2026-09-05） ----------
+// 095 渲染器删除后 DOC_VIZ.actionMeta 全站无引用（check-docs 确认死内容）。
+// 唯一真相源仍是 entity-meta.yml 的 actions 段；前端消费走 actions.generated.js 的
+// actionMeta（resolveGuard.ts 在消费），不动。故不再生成 文档可视化/js/data/actions.generated.js。
 
 // ---------- ③·check 对拍：生成物是否与 yml 一致（不一致 exit 1） ----------
 // 放在写盘之后、正常模式「生成完成」日志之前：对拍模式到此为止，不打印成功日志，也不走水位线提醒。
@@ -526,7 +557,6 @@ console.log(`✓ 生成完成：${Object.keys(entities).length} 实体 + ${(src.
 console.log(`  前端 ${path.relative(root, feOut)}`);
 console.log(`  前端 ${path.relative(root, relOut)}`);
 console.log(`  后端 ${path.relative(root, beOut)}`);
-console.log(`  可视化 ${path.relative(root, vizOut)}`);
 
 // ---------- ⑤ 增长水位线：到点提醒评估，不阻断生成 ----------
 /**

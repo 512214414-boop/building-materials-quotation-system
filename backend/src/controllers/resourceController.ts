@@ -27,6 +27,16 @@ import * as reg from '../services/registry.js';
 
 type ResourceCfg = (typeof RESOURCES)[string];
 
+/**
+ * 按主键类型解析路径参数 id：
+ *   Int 主键（如 category.id Int）→ number；BigInt 主键（如 supplier/unit.id BigInt）→ bigint。
+ * 引擎不再硬编码 BigInt，否则 Int 列会报 "Expected Int, provided BigInt"。
+ */
+function parseId(cfg: ResourceCfg, raw: string): number | bigint {
+  const v = String(raw).trim();
+  return cfg.primaryKeyType === 'int' ? Number(v) : BigInt(v);
+}
+
 /** 取资源声明；未登记 → 400（登记是零代码新增的唯一入口） */
 function cfgOf(req: Request): ResourceCfg {
   const name = String(req.params.resource ?? '');
@@ -103,7 +113,12 @@ export async function listResourceHandler(req: Request, res: Response) {
   if (statusRaw !== undefined && statusRaw !== '' && statusRaw !== 'all') {
     where.status = Number(statusRaw);
   }
-  if (keyword) where.name = { contains: keyword };
+  if (keyword) {
+    // 搜索字段来自配置（resources.search.fields）；默认 name。
+    // 泛化：unit 的名称列是 unitName，不能硬编码 name。
+    const searchFields = cfg.search?.fields?.length ? cfg.search.fields : ['name'];
+    where.OR = searchFields.map((f) => ({ [f]: { contains: keyword } }));
+  }
 
   const d = delegate(cfg);
   const [total, list] = await Promise.all([
@@ -118,7 +133,7 @@ export async function listResourceHandler(req: Request, res: Response) {
 // ============================================================
 export async function getResourceHandler(req: Request, res: Response) {
   const cfg = cfgOf(req);
-  const id = BigInt(String(req.params.id));
+  const id = parseId(cfg, req.params.id);
   const row = await delegate(cfg).findUnique({ where: { id }, include: includeOf(cfg) });
   if (!row) throw Errors.notFound(`${cfg.label}不存在`);
   return ok(res, row);
@@ -129,9 +144,12 @@ export async function getResourceHandler(req: Request, res: Response) {
 // ============================================================
 export async function createResourceHandler(req: Request, res: Response) {
   const cfg = cfgOf(req);
+  if (cfg.readOnly) {
+    throw Errors.unprocessable(`资源「${cfg.label ?? cfg.key}」为只读登记（单据类只暴露读与列表），写操作请走专属 service`);
+  }
   const data = pickWritable(cfg, req.body, false);
   const created = await delegate(cfg).create({ data, include: includeOf(cfg) });
-  await audit(req, cfg, 'create', created.id as bigint);
+  await audit(req, cfg, 'create', BigInt(created.id));
   return ok(res, created, '创建成功', 201);
 }
 
@@ -140,14 +158,17 @@ export async function createResourceHandler(req: Request, res: Response) {
 // ============================================================
 export async function updateResourceHandler(req: Request, res: Response) {
   const cfg = cfgOf(req);
-  const id = BigInt(String(req.params.id));
+  if (cfg.readOnly) {
+    throw Errors.unprocessable(`资源「${cfg.label ?? cfg.key}」为只读登记（单据类只暴露读与列表），写操作请走专属 service`);
+  }
+  const id = parseId(cfg, req.params.id);
   const data = pickWritable(cfg, req.body, true);
   if (Object.keys(data).length === 0) throw Errors.unprocessable('没有可更新的字段');
   const d = delegate(cfg);
   const exists = await d.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw Errors.notFound(`${cfg.label}不存在`);
   const updated = await d.update({ where: { id }, data, include: includeOf(cfg) });
-  await audit(req, cfg, 'update', id);
+  await audit(req, cfg, 'update', BigInt(id));
   return ok(res, updated);
 }
 
@@ -157,7 +178,10 @@ export async function updateResourceHandler(req: Request, res: Response) {
 // ============================================================
 export async function deleteResourceHandler(req: Request, res: Response) {
   const cfg = cfgOf(req);
-  const id = BigInt(String(req.params.id));
+  if (cfg.readOnly) {
+    throw Errors.unprocessable(`资源「${cfg.label ?? cfg.key}」为只读登记（单据类只暴露读与列表），写操作请走专属 service`);
+  }
+  const id = parseId(cfg, req.params.id);
   const d = delegate(cfg);
   const exists = await d.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw Errors.notFound(`${cfg.label}不存在`);
@@ -175,7 +199,7 @@ export async function deleteResourceHandler(req: Request, res: Response) {
   } else {
     await d.delete({ where: { id } });
   }
-  await audit(req, cfg, 'delete', id);
+  await audit(req, cfg, 'delete', BigInt(id));
   return ok(res, { id: String(id), refCounts });
 }
 
@@ -185,22 +209,29 @@ export async function deleteResourceHandler(req: Request, res: Response) {
 // ============================================================
 export async function quickAddResourceHandler(req: Request, res: Response) {
   const cfg = cfgOf(req);
-  const name = String((req.body as Record<string, unknown>)?.name ?? '').trim();
+  if (cfg.readOnly) {
+    throw Errors.unprocessable(`资源「${cfg.label ?? cfg.key}」为只读登记（单据类只暴露读与列表），快建请走专属 service`);
+  }
+  // 名称字段来自配置（resources.search.fields[0]）；默认 name。
+  // 泛化：unit 的名称列是 unitName，不能硬编码读取 body.name。
+  const nameField = cfg.search?.fields?.[0] ?? 'name';
+  const name = String((req.body as Record<string, unknown>)?.[nameField] ?? '').trim();
   if (!name) throw Errors.unprocessable('名称不能为空');
   // 名称唯一性由 yml 的 search.dictUnique 声明；global 才允许走 registry 快建
   if (cfg.search?.dictUnique && cfg.search.dictUnique !== 'global') {
     throw Errors.unprocessable(`${cfg.label}为父级从属命名，不能全局快建（dictUnique=${cfg.search.dictUnique}）`);
   }
   // RegistryDef 由声明组装（registryFrom 是 registry 内部工厂，未导出）：
-  //   model 来自 resources.model，唯一键策略来自 search.dictUnique
+  //   model 来自 resources.model，唯一键策略来自 search.dictUnique，名称列来自 search.fields
   const def: reg.RegistryDef = {
     model: cfg.model || cfg.table,
     label: cfg.label ?? cfg.key,
     uniqueKey: { type: 'global' },
+    nameField,
     defaults: () => ({}),
   };
   const created = await reg.quickAdd(prisma as unknown as reg.RegistryDb, def, name);
-  await audit(req, cfg, 'quick_add', created.id);
+  await audit(req, cfg, 'quick_add', BigInt(created.id));
   return ok(res, created, '已快速新增', 201);
 }
 
@@ -209,7 +240,7 @@ export async function quickAddResourceHandler(req: Request, res: Response) {
 // ============================================================
 export async function refCountsHandler(req: Request, res: Response) {
   const cfg = cfgOf(req);
-  const id = BigInt(String(req.params.id));
+  const id = parseId(cfg, req.params.id);
   const refCounts: Array<{ label: string; count: number }> = [];
   for (const t of cfg.refTargets ?? []) {
     const td = (prisma as any)[t.table];
