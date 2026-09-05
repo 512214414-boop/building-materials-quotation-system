@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { assertInventoryNotReferenced } from '../dictInventoryGuard.js';
@@ -68,8 +69,8 @@ export async function listBrands(query: Record<string, unknown>) {
     order: 'desc',
   });
   const [total, list] = await Promise.all([
-    prisma.brand.count({ where }),
-    prisma.brand.findMany({
+    repositories.catalogRepository.brand.count({ where }),
+    repositories.catalogRepository.brand.findMany({
       where,
       orderBy: sort,
       skip,
@@ -85,7 +86,7 @@ export async function listBrands(query: Record<string, unknown>) {
 }
 
 export async function getBrand(id: bigint) {
-  const b = await prisma.brand.findUnique({
+  const b = await repositories.catalogRepository.brand.findUnique({
     where: { id },
     include: {
       _count: { select: { specs: true, productBrands: true } },
@@ -99,10 +100,10 @@ export async function createBrand(data: BrandCreateInput) {
   const name = data.name.trim();
   if (!name) throw Errors.unprocessable('品牌名称不能为空');
   // name 全局唯一（v14.0：品牌独立档案，仿 supplier/分类按名复用）
-  const existing = await prisma.brand.findUnique({ where: { name } });
+  const existing = await repositories.catalogRepository.brand.findUnique({ where: { name } });
   if (existing) throw Errors.unprocessable(`品牌「${name}」已存在`);
 
-  const created = await prisma.brand.create({
+  const created = await repositories.catalogRepository.brand.create({
     data: {
       name,
       status: data.status ?? 1,
@@ -122,7 +123,7 @@ export async function quickAddBrand(name: string) {
 }
 
 export async function updateBrand(id: bigint, data: BrandUpdateInput) {
-  const existing = await prisma.brand.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.brand.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('品牌不存在');
 
   const update: Prisma.brandUpdateInput = {};
@@ -131,13 +132,13 @@ export async function updateBrand(id: bigint, data: BrandUpdateInput) {
 
   // 唯一性校验（name 全局唯一）
   if (data.name !== undefined && data.name !== existing.name) {
-    const conflict = await prisma.brand.findUnique({ where: { name: data.name } });
+    const conflict = await repositories.catalogRepository.brand.findUnique({ where: { name: data.name } });
     if (conflict && conflict.id !== id) {
       throw Errors.unprocessable(`品牌「${data.name}」已存在`);
     }
   }
 
-  const updated = await prisma.brand.update({ where: { id }, data: update });
+  const updated = await repositories.catalogRepository.brand.update({ where: { id }, data: update });
   // v14.0：品牌改名/停启用 → 同步所有引用它的规格宽表行（brandName/keywords/status）
   //   品牌为全局档案：一次改名，所有引用该品牌的规格（spec_brand）全局生效
   if (data.name !== undefined || data.status !== undefined) {
@@ -155,11 +156,11 @@ export async function updateBrand(id: bigint, data: BrandUpdateInput) {
  *     保证「删除档案不误伤其他规格引用」
  */
 export async function deleteBrand(id: bigint) {
-  const existing = await prisma.brand.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.brand.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('品牌不存在');
 
   // v14.0：校验规格引用（全局档案删除保护——被引用时禁止删除，需先解除各规格关联）
-  const refCount = await prisma.spec.count({ where: { brandId: id } });
+  const refCount = await repositories.catalogRepository.spec.count({ where: { brandId: id } });
   if (refCount > 0) {
     throw Errors.unprocessable(`品牌「${existing.name}」正被 ${refCount} 个规格引用，请先在规格中更换品牌或删除关联后再删除档案`);
   }
@@ -168,10 +169,10 @@ export async function deleteBrand(id: bigint) {
   await assertInventoryNotReferenced('brand', id);
 
   // v11.0：查询单据引用数（用于审计日志，不阻止删除）
-  const docLineCount = await prisma.document_lines.count({ where: { brandId: id } });
+  const docLineCount = await repositories.documentRepository.document_lines.count({ where: { brandId: id } });
 
   // （去宽表改造：无需再同步删除宽表行，只需删品牌档案本身）
-  await prisma.brand.delete({ where: { id } });
+  await repositories.catalogRepository.brand.delete({ where: { id } });
 
   return { id, deletedDocLineRefs: docLineCount };
 }

@@ -13,6 +13,7 @@
  *  - 退货扣减 = SUM(refund_lines.refund_amount WHERE refund_type=refund)
  *  - 最终净利润 = 销售额 - 真实成本 - 退货扣减
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { round2 } from '../engines/pricing-engine.js';
@@ -40,7 +41,7 @@ interface DocumentSummary {
  * 归集单个单据的汇总数据。
  */
 export async function getDocumentSummary(documentId: bigint): Promise<DocumentSummary> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: {
       id: true,
@@ -56,28 +57,28 @@ export async function getDocumentSummary(documentId: bigint): Promise<DocumentSu
   if (!doc) throw Errors.notFound('单据不存在');
 
   // 销售额 = SUM(document_lines.amount)
-  const salesAgg = await prisma.document_lines.aggregate({
+  const salesAgg = await repositories.documentRepository.document_lines.aggregate({
     where: { documentId },
     _sum: { amount: true },
   });
   const salesAmount = round2(Number(salesAgg._sum?.amount ?? 0));
 
   // 实际回款 = SUM(payment_records.amount WHERE reconcile_status=reconciled)
-  const paymentAgg = await prisma.payment_records.aggregate({
+  const paymentAgg = await repositories.documentRepository.payment_records.aggregate({
     where: { document_id: documentId, reconcile_status: 'reconciled' },
     _sum: { amount: true },
   });
   const receivedAmount = round2(Number(paymentAgg._sum?.amount ?? 0));
 
   // 真实成本 = SUM(cost_lines.cost_amount)
-  const costAgg = await prisma.cost_lines.aggregate({
+  const costAgg = await repositories.orderRepository.cost_lines.aggregate({
     where: { document_line: { documentId } },
     _sum: { cost_amount: true },
   });
   const costAmount = round2(Number(costAgg._sum?.cost_amount ?? 0));
 
   // 退货扣减 = SUM(refund_lines.refund_amount WHERE refund_type=refund)
-  const refundAgg = await prisma.refund_lines.aggregate({
+  const refundAgg = await repositories.orderRepository.refund_lines.aggregate({
     where: { document_line: { documentId }, refund_type: 'refund' },
     _sum: { refund_amount: true },
   });

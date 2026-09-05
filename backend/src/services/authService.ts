@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma.js';
@@ -54,7 +55,7 @@ export async function loadUserAuth(userId: bigint): Promise<{
   viewPermissions: ViewPermissions;
 }> {
   // 先查 username 判定超级管理员（账号级硬编码放行）
-  const userRow = await prisma.users.findUnique({
+  const userRow = await repositories.identityRepository.users.findUnique({
     where: { id: userId },
     select: { username: true },
   });
@@ -65,7 +66,7 @@ export async function loadUserAuth(userId: bigint): Promise<{
     };
   }
 
-  const ur = await prisma.user_roles.findMany({
+  const ur = await repositories.identityRepository.user_roles.findMany({
     where: { user_id: userId },
     include: { role: true },
   });
@@ -80,13 +81,13 @@ export async function loadUserAuth(userId: bigint): Promise<{
 }
 
 export async function staffLogin(username: string, password: string) {
-  const user = await prisma.users.findUnique({ where: { username } });
+  const user = await repositories.identityRepository.users.findUnique({ where: { username } });
   if (!user) throw Errors.unauthorized('用户名或密码错误', 40101);
   if (user.status === 'disabled') throw Errors.forbidden('账号已禁用', 40301);
   const ok = await verifyPassword(password, user.password_hash);
   if (!ok) throw Errors.unauthorized('用户名或密码错误', 40101);
 
-  await prisma.users.update({
+  await repositories.identityRepository.users.update({
     where: { id: user.id },
     data: { last_login_at: new Date() },
   });

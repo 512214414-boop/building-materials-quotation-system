@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 
@@ -20,18 +21,18 @@ export async function assertInventoryNotReferenced(dict: DictKind, id: bigint): 
   let count = 0;
 
   if (dict === 'brand') {
-    count = await prisma.inventory.count({ where: { brand_id: id } });
+    count = await repositories.inventoryRepository.inventory.count({ where: { brand_id: id } });
   } else if (dict === 'unit') {
-    count = await prisma.inventory.count({ where: { unit_id: id } });
+    count = await repositories.inventoryRepository.inventory.count({ where: { unit_id: id } });
   } else {
     // category：inventory 无直接 categoryId，经 spec → product 反查引用
     //   id 入参为 bigint，categoryId 是 Int，需 Number() 转换以满足 Prisma 类型
-    const specIds = await prisma.spec.findMany({
+    const specIds = await repositories.catalogRepository.spec.findMany({
       where: { product: { categoryId: Number(id) } },
       select: { id: true },
     });
     const ids = specIds.map((s) => s.id);
-    count = ids.length > 0 ? await prisma.inventory.count({ where: { spec_id: { in: ids } } }) : 0;
+    count = ids.length > 0 ? await repositories.inventoryRepository.inventory.count({ where: { spec_id: { in: ids } } }) : 0;
   }
 
   if (count > 0) {

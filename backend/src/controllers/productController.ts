@@ -771,6 +771,35 @@ export async function searchProductsHandler(req: Request, res: Response) {
   return ok(res, result);
 }
 
+/** §9.1 产品级分组搜索 Handler（searchProductsGroupedHandler）——档案统一化 Phase 2「分组」模式 */
+export async function searchProductsGroupedHandler(req: Request, res: Response) {
+  const q = req.query as Record<string, string>;
+  const result = await productSvc.searchProductsGrouped({
+    keyword: q.keyword ?? q.q ?? '',
+    categoryId: q.categoryId ? Number(q.categoryId) : undefined,
+    brandId: q.brandId || undefined,
+    brandName: q.brandName || undefined,
+    productId: q.productId || undefined,
+    productName: q.productName || undefined,
+    specModel: q.specModel || undefined,
+    specExact: q.specExact === '0' || q.specExact === 'false' ? false : q.specExact === '1' || q.specExact === 'true' ? true : undefined,
+    page: q.page ? Number(q.page) : 1,
+    size: q.size ? Number(q.size) : 20,
+    status: q.status !== undefined ? Number(q.status) : undefined,
+    entryView: q.entryView || undefined,
+  });
+  // 公开端（无 req.user）剥离进价
+  if (!req.user) {
+    result.list = result.list.map((row) => {
+      if (row.type === 'sku') {
+        return { ...row, purchasePriceDefault: null };
+      }
+      return row;
+    });
+  }
+  return ok(res, result);
+}
+
 /** 档案列表表头级联：当前结果里的产品名 / 品牌 / 规格，不是全局字典 */
 export async function listSkuSearchFacetsHandler(req: Request, res: Response) {
   const q = req.query as Record<string, string>;

@@ -8,6 +8,7 @@
  *  3. setPurchaseQuoteStatus：设置 pending|confirmed|voided，并最小同步 documents.status
  *  4. getDocumentTotal / syncDocumentTotals：从 document_lines 汇总写回单据
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { calcLineAmount, round2 } from '../engines/pricing-engine.js';
@@ -33,13 +34,13 @@ function syncStatusFromPurchaseQuote(stage: StageStatus): DocumentStatus | null 
 // ============================================================
 
 export async function listLines(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, purchase_quote_status: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
   });
@@ -74,7 +75,7 @@ export async function listLines(documentId: bigint) {
  * v2.6：不开票(need_invoice=false)时税额为 0，订单应收 = 计税基数
  */
 export async function getDocumentTotal(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: {
       id: true,
@@ -87,7 +88,7 @@ export async function getDocumentTotal(documentId: bigint) {
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     select: { qty: true, unitPrice: true, lineDiscount: true, amount: true },
   });
@@ -135,7 +136,7 @@ export async function getDocumentTotal(documentId: bigint) {
 /** 将汇总写回 documents 冗余字段 */
 export async function syncDocumentTotals(documentId: bigint) {
   const total = await getDocumentTotal(documentId);
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: {
       subtotal_amount: total.subtotal,
@@ -229,7 +230,7 @@ export async function batchUpdatePrices(
   items: PriceUpdateItem[],
   _actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, purchase_quote_status: true },
   });
@@ -239,7 +240,7 @@ export async function batchUpdatePrices(
     throw Errors.unprocessable('单据已作废，无法修改售价', 42202);
   }
 
-  const docLines = await prisma.document_lines.findMany({
+  const docLines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     select: { id: true, qty: true },
   });
@@ -298,7 +299,7 @@ export async function setPurchaseQuoteStatus(
   actor: { id: bigint; name: string },
   lockVersion?: number,
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: {
       id: true,
@@ -314,7 +315,7 @@ export async function setPurchaseQuoteStatus(
   }
 
   if (status === 'confirmed') {
-    const lines = await prisma.document_lines.findMany({
+    const lines = await repositories.documentRepository.document_lines.findMany({
       where: { documentId },
       select: { id: true },
     });
@@ -329,7 +330,7 @@ export async function setPurchaseQuoteStatus(
   }
 
   const syncedStatus = syncStatusFromPurchaseQuote(status);
-  const updated = await prisma.documents.updateMany({
+  const updated = await repositories.documentRepository.documents.updateMany({
     where: { id: documentId, lock_version: lockVersion ?? doc.lock_version },
     data: {
       purchase_quote_status: status,
@@ -343,7 +344,7 @@ export async function setPurchaseQuoteStatus(
 
   const newLockVersion = (lockVersion ?? doc.lock_version) + 1;
 
-  await prisma.audit_logs.create({
+  await repositories.auditRepository.audit_logs.create({
     data: {
       user_id: actor.id,
       // v11.0 解耦：actor.name 即 user.real_name 快照

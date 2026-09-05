@@ -1,4 +1,5 @@
 // v20 供应商拆表：联系信息 / 地址 / 经营品类 读写与 API 视图映射
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { resolveCategoryRef } from './businessDefaults.js';
@@ -233,7 +234,7 @@ export function formatSupplierView(s: SupplierWithRelations) {
 }
 
 export async function loadSupplierWithRelations(id: bigint): Promise<SupplierWithRelations | null> {
-  return prisma.supplier.findUnique({ where: { id }, include: supplierInclude });
+  return repositories.partnerRepository.supplier.findUnique({ where: { id }, include: supplierInclude });
 }
 
 export { supplierInclude };

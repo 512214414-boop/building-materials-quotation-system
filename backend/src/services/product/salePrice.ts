@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -77,8 +78,8 @@ export async function listSalePrices(query: Record<string, unknown>) {
   }
 
   const [total, list] = await Promise.all([
-    prisma.sale_price.count({ where }),
-    prisma.sale_price.findMany({
+    repositories.pricingRepository.sale_price.count({ where }),
+    repositories.pricingRepository.sale_price.findMany({
       where,
       orderBy: [{ specId: 'asc' }, { unitId: 'asc' }, { priceTypeId: 'asc' }],
       skip,
@@ -102,7 +103,7 @@ export async function listSalePrices(query: Record<string, unknown>) {
 }
 
 export async function getSalePrice(id: bigint) {
-  const sp = await prisma.sale_price.findUnique({
+  const sp = await repositories.pricingRepository.sale_price.findUnique({
     where: { id },
     include: {
       spec: {
@@ -124,8 +125,8 @@ export async function getSalePrice(id: bigint) {
 
 export async function createSalePrice(data: SalePriceCreateInput) {
   const [specBrand, unit] = await Promise.all([
-    prisma.spec.findUnique({ where: { id: data.specBrandId } }),
-    prisma.unit.findUnique({ where: { id: data.unitId } }),
+    repositories.catalogRepository.spec.findUnique({ where: { id: data.specBrandId } }),
+    repositories.catalogRepository.unit.findUnique({ where: { id: data.unitId } }),
   ]);
   if (!specBrand) throw Errors.unprocessable('品牌关联不存在');
   if (!unit) throw Errors.unprocessable('单位不存在');
@@ -138,13 +139,13 @@ export async function createSalePrice(data: SalePriceCreateInput) {
 
   // v9.1：若设为默认售价，先清除同 SKU 其他默认标记
   if (data.isDefault) {
-    await prisma.sale_price.updateMany({
+    await repositories.pricingRepository.sale_price.updateMany({
       where: { specId: data.specBrandId, unitId: data.unitId, isDefault: true },
       data: { isDefault: false },
     });
   }
 
-  const created = await prisma.sale_price.create({
+  const created = await repositories.pricingRepository.sale_price.create({
     data: {
       specId: data.specBrandId,
       unitId: data.unitId,
@@ -159,13 +160,13 @@ export async function createSalePrice(data: SalePriceCreateInput) {
 }
 
 export async function updateSalePrice(id: bigint, data: SalePriceUpdateInput) {
-  const existing = await prisma.sale_price.findUnique({ where: { id } });
+  const existing = await repositories.pricingRepository.sale_price.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('售价不存在');
 
   if (data.priceTypeId !== undefined && data.priceTypeId !== existing.priceTypeId) {
-    const pt = await prisma.price_type.findUnique({ where: { id: data.priceTypeId } });
+    const pt = await repositories.pricingRepository.price_type.findUnique({ where: { id: data.priceTypeId } });
     if (!pt) throw Errors.unprocessable('售价类型不存在');
-    const clash = await prisma.sale_price.findUnique({
+    const clash = await repositories.pricingRepository.sale_price.findUnique({
       where: {
         specId_unitId_priceTypeId: {
           specId: existing.specId,
@@ -184,22 +185,22 @@ export async function updateSalePrice(id: bigint, data: SalePriceUpdateInput) {
   if (data.isDefault !== undefined) {
     update.isDefault = data.isDefault;
     if (data.isDefault) {
-      await prisma.sale_price.updateMany({
+      await repositories.pricingRepository.sale_price.updateMany({
         where: { specId: existing.specId, unitId: existing.unitId, isDefault: true, id: { not: id } },
         data: { isDefault: false },
       });
     }
   }
 
-  const updated = await prisma.sale_price.update({ where: { id }, data: update });
+  const updated = await repositories.pricingRepository.sale_price.update({ where: { id }, data: update });
   return updated;
 }
 
 export async function deleteSalePrice(id: bigint) {
-  const existing = await prisma.sale_price.findUnique({ where: { id } });
+  const existing = await repositories.pricingRepository.sale_price.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('售价不存在');
 
-  await prisma.sale_price.delete({ where: { id } });
+  await repositories.pricingRepository.sale_price.delete({ where: { id } });
   return { id };
 }
 

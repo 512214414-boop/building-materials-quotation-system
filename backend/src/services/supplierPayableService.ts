@@ -3,7 +3,7 @@
 //   - supplier_payable_lines 为业务台账：等额直发（allocation_external）/ 超额入库（inbound_task）/ 独立采购（purchase）
 //   - 对账视图按供应商汇总 pending 应付，支持按单据/供应商结算打款，结算后置 settled + settled_at
 //   - 与客户应收（收款对账）物理分表，互不干扰；v11.0 解耦：无物理外键 + 名称快照
-import { prisma } from '../config/prisma.js';
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
@@ -50,7 +50,7 @@ export async function listPayables(query: Record<string, unknown>) {
   }
 
   // 供应商汇总（全量，不受分页影响）
-  const grouped = await prisma.supplier_payable_lines.groupBy({
+  const grouped = await repositories.documentRepository.supplier_payable_lines.groupBy({
     by: ['supplier_id', 'supplierName', 'status'],
     _count: { id: true },
     _sum: { amount: true },
@@ -85,8 +85,8 @@ export async function listPayables(query: Record<string, unknown>) {
     .sort((a, b) => b.pendingAmount - a.pendingAmount);
 
   const [total, list] = await Promise.all([
-    prisma.supplier_payable_lines.count({ where }),
-    prisma.supplier_payable_lines.findMany({
+    repositories.documentRepository.supplier_payable_lines.count({ where }),
+    repositories.documentRepository.supplier_payable_lines.findMany({
       where,
       orderBy: [{ status: 'asc' }, { created_at: 'desc' }],
       skip,
@@ -108,10 +108,10 @@ export async function listPayables(query: Record<string, unknown>) {
 
 /** 结算应付（仅 pending 可结算） */
 export async function settlePayable(id: bigint, actor: { id: bigint; name: string }) {
-  const existing = await prisma.supplier_payable_lines.findUnique({ where: { id } });
+  const existing = await repositories.documentRepository.supplier_payable_lines.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('应付记录不存在');
   if (existing.status === 'settled') throw Errors.unprocessable('该应付记录已结算');
-  return prisma.supplier_payable_lines.update({
+  return repositories.documentRepository.supplier_payable_lines.update({
     where: { id },
     data: { status: 'settled', settled_at: new Date(), remark: `结算人：${actor.name}` },
   });
@@ -119,7 +119,7 @@ export async function settlePayable(id: bigint, actor: { id: bigint; name: strin
 
 /** 对账单导出全量（仅 pending，按供应商分组；CSV 生成用） */
 export async function listPayablesForExport() {
-  const rows = await prisma.supplier_payable_lines.findMany({
+  const rows = await repositories.documentRepository.supplier_payable_lines.findMany({
     where: { status: 'pending' },
     orderBy: [{ supplier_id: 'asc' }, { created_at: 'asc' }],
   });
@@ -132,7 +132,7 @@ export async function listPayablesForExport() {
 
 /** 应付账龄：仅未结算，按生成日分桶（聚合，禁全表 N+1） */
 export async function apAging() {
-  const rows = await prisma.supplier_payable_lines.findMany({
+  const rows = await repositories.documentRepository.supplier_payable_lines.findMany({
     where: { status: 'pending' },
     select: {
       id: true,

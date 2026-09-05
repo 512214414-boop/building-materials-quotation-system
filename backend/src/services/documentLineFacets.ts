@@ -3,6 +3,7 @@
  * 选项来自这一张单的全部行，不是全局档案。锁语义与
  * frontend/src/shared/utils/documentLineFacets.ts 同步。
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { entryFieldMatches } from './search-scoring.js';
@@ -138,13 +139,13 @@ export async function listDocumentLineFacets(
   documentId: bigint,
   params: DocumentLineFacetLocks & { field: DocumentLineFacetField; keyword?: string },
 ): Promise<Array<{ type: 'existing'; label: string; value: string; id: string }>> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const rows = await prisma.document_lines.findMany({
+  const rows = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
     select: {

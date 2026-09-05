@@ -3,6 +3,7 @@
 //   - 配货确认时超额部分自动生成待入库（不阻塞主线），归属最后选定外部供应商，默认入主仓
 //   - 工作人员空闲时一键确认入库：加库存（加权平均重算）+ 增供应商应付 + 自动冲抵欠库
 //   - 订单内超额走本模块；订单外囤货走独立采购模块（两条流程长期并存，不可合并）
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
@@ -225,8 +226,8 @@ export async function listTasks(query: Record<string, unknown>) {
     ];
   }
   const [total, list] = await Promise.all([
-    prisma.inbound_tasks.count({ where }),
-    prisma.inbound_tasks.findMany({
+    repositories.inboundRepository.inbound_tasks.count({ where }),
+    repositories.inboundRepository.inbound_tasks.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -238,7 +239,7 @@ export async function listTasks(query: Record<string, unknown>) {
 }
 
 export async function getTask(id: bigint) {
-  const t = await prisma.inbound_tasks.findUnique({
+  const t = await repositories.inboundRepository.inbound_tasks.findUnique({
     where: { id },
     include: { inbound_lines: { orderBy: { id: 'asc' } } },
   });
@@ -248,17 +249,17 @@ export async function getTask(id: bigint) {
 
 /** 修改目标入库仓库（默认主仓，允许手动修改内部仓库点位） */
 export async function updateTask(id: bigint, data: { targetWarehouseId?: bigint; note?: string }) {
-  const existing = await prisma.inbound_tasks.findUnique({ where: { id } });
+  const existing = await repositories.inboundRepository.inbound_tasks.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('待入库单不存在');
   if (existing.status !== 'pending') throw Errors.unprocessable('仅待确认的待入库单可修改');
   if (data.targetWarehouseId !== undefined) {
-    const w = await prisma.warehouse.findUnique({ where: { id: data.targetWarehouseId } });
+    const w = await repositories.warehouseRepository.warehouse.findUnique({ where: { id: data.targetWarehouseId } });
     if (!w) throw Errors.unprocessable('目标仓库不存在');
   }
   const update: Record<string, unknown> = {};
   if (data.targetWarehouseId !== undefined) update.target_warehouse_id = data.targetWarehouseId;
   if (data.note !== undefined) update.note = data.note;
-  return prisma.inbound_tasks.update({ where: { id }, data: update });
+  return repositories.inboundRepository.inbound_tasks.update({ where: { id }, data: update });
 }
 
 /**
@@ -346,10 +347,10 @@ export async function confirmTask(id: bigint, actor: { id: bigint; name: string 
 
 /** 取消待入库 */
 export async function cancelTask(id: bigint, actor: { id: bigint; name: string }) {
-  const existing = await prisma.inbound_tasks.findUnique({ where: { id } });
+  const existing = await repositories.inboundRepository.inbound_tasks.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('待入库单不存在');
   if (existing.status !== 'pending') throw Errors.unprocessable('仅待确认的待入库单可取消');
-  return prisma.inbound_tasks.update({
+  return repositories.inboundRepository.inbound_tasks.update({
     where: { id },
     data: { status: 'cancelled', confirmed_by: actor.id, confirmedName: actor.name },
   });
@@ -373,13 +374,13 @@ export async function createBackorder(input: {
   const qtyNum = Number(input.qty);
   if (!isFinite(qtyNum) || qtyNum <= 0) throw Errors.unprocessable('欠库数量必须大于 0');
 
-  const line = await prisma.document_lines.findUnique({
+  const line = await repositories.documentRepository.document_lines.findUnique({
     where: { id: input.lineId },
     select: { id: true, documentId: true, specId: true, brandId: true, unitId: true },
   });
   if (!line) throw Errors.notFound('单据行不存在');
 
-  const warehouse = await prisma.warehouse.findUnique({
+  const warehouse = await repositories.warehouseRepository.warehouse.findUnique({
     where: { id: input.warehouseId },
     select: { id: true, status: true },
   });
@@ -388,7 +389,7 @@ export async function createBackorder(input: {
 
   // v28：写入时落 SKU 维度名称快照，删品牌/单位/规格后仍能读出
   const snap = await resolveSkuNameSnapshot(line.specId ?? 0n, line.brandId ?? 0n, line.unitId ?? 0n);
-  return prisma.backorders.create({
+  return repositories.orderRepository.backorders.create({
     data: {
       document_id: line.documentId,
       line_id: line.id,
@@ -424,8 +425,8 @@ export async function listBackorders(query: Record<string, unknown>) {
     where.OR = matched.map((m) => ({ spec_id: BigInt(m.specId), brand_id: BigInt(m.brandId) }));
   }
   const [total, list] = await Promise.all([
-    prisma.backorders.count({ where }),
-    prisma.backorders.findMany({
+    repositories.orderRepository.backorders.count({ where }),
+    repositories.orderRepository.backorders.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -439,7 +440,7 @@ export async function listBackorders(query: Record<string, unknown>) {
 
 /** 欠库导出全量（采购补货清单，仅 pending；CSV 生成用） */
 export async function listBackordersForExport() {
-  const list = await prisma.backorders.findMany({
+  const list = await repositories.orderRepository.backorders.findMany({
     where: { status: 'pending' },
     orderBy: { created_at: 'asc' },
   });
@@ -447,9 +448,9 @@ export async function listBackordersForExport() {
 }
 
 export async function cancelBackorder(id: bigint) {
-  const existing = await prisma.backorders.findUnique({ where: { id } });
+  const existing = await repositories.orderRepository.backorders.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('欠库记录不存在');
-  return prisma.backorders.update({
+  return repositories.orderRepository.backorders.update({
     where: { id },
     data: { status: 'cancelled' },
   });

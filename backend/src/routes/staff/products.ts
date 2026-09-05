@@ -58,6 +58,7 @@ router.post('/staff/categories/quick-add', requireStaff, requireViewPermission('
 // v11.0：产品ID 应用层时间戳生成，支持物理删除（即便被单据引用）+ 停用/启用
 // 注意：具体子路径（search/sku/options/suggest/save/quick-create/convert-qty）必须在 :id 之前注册
 router.get('/staff/products/search', requireStaff, requireViewPermission('product_manage', 'ro'), asyncHandler(productCtrl.searchProductsHandler));
+router.get('/staff/products/search/grouped', requireStaff, requireViewPermission('product_manage', 'ro'), asyncHandler(productCtrl.searchProductsGroupedHandler));
 router.get('/staff/products/search/facets', requireStaff, requireViewPermission('product_manage', 'ro'), asyncHandler(productCtrl.listSkuSearchFacetsHandler));
 router.get('/staff/products/sku/options', requireStaff, requireViewPermission('product_manage', 'ro'), asyncHandler(productCtrl.getSkuOptionsHandler));
 router.get('/staff/products/spec-brands/resolve', requireStaff, requireViewPermission('product_manage', 'ro'), asyncHandler(productCtrl.resolveSpecBrandHandler));

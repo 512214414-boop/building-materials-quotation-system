@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
@@ -46,8 +47,8 @@ export async function listPurchaseInbounds(query: Record<string, unknown>) {
     ];
   }
   const [total, list] = await Promise.all([
-    prisma.purchase_inbounds.count({ where }),
-    prisma.purchase_inbounds.findMany({
+    repositories.inboundRepository.purchase_inbounds.count({ where }),
+    repositories.inboundRepository.purchase_inbounds.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -71,12 +72,12 @@ export async function confirmPurchaseInbound(
   actor: { id: bigint; name: string },
 ) {
   if (!input.lines.length) throw Errors.unprocessable('至少录入一行采购明细');
-  const supplier = await prisma.supplier.findUnique({
+  const supplier = await repositories.partnerRepository.supplier.findUnique({
     where: { id: input.supplierId },
     select: { id: true, name: true, status: true },
   });
   if (!supplier) throw Errors.notFound('供应商不存在');
-  const warehouse = await prisma.warehouse.findUnique({
+  const warehouse = await repositories.warehouseRepository.warehouse.findUnique({
     where: { id: input.warehouseId },
     select: { id: true, name: true, status: true },
   });

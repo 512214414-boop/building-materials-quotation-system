@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import * as registry from '../registry.js';
@@ -28,10 +29,10 @@ async function ensureProductBrand(
  * 若传入 container 时代 specId + brandId，则按 productId+brandId+specModel 定位。
  */
 export async function resolveSpecBrandId(specId: bigint, brandId?: bigint): Promise<bigint | null> {
-  const spec = await prisma.spec.findUnique({ where: { id: specId } });
+  const spec = await repositories.catalogRepository.spec.findUnique({ where: { id: specId } });
   if (!spec) return null;
   if (brandId == null || spec.brandId === brandId) return spec.id;
-  const match = await prisma.spec.findFirst({
+  const match = await repositories.catalogRepository.spec.findFirst({
     where: { productId: spec.productId, brandId, specModel: spec.specModel },
     select: { id: true },
   });
@@ -53,9 +54,9 @@ export interface PickerSkuCreated {
 }
 
 async function copyConversions(fromSpecId: bigint, toSpecId: bigint) {
-  const convs = await prisma.brand_unit_conversion.findMany({ where: { specId: fromSpecId } });
+  const convs = await repositories.catalogRepository.brand_unit_conversion.findMany({ where: { specId: fromSpecId } });
   for (const conv of convs) {
-    await prisma.brand_unit_conversion.upsert({
+    await repositories.catalogRepository.brand_unit_conversion.upsert({
       where: { specId_unitId: { specId: toSpecId, unitId: conv.unitId } },
       create: { specId: toSpecId, unitId: conv.unitId, conversionRate: conv.conversionRate },
       update: {},
@@ -66,7 +67,7 @@ async function copyConversions(fromSpecId: bigint, toSpecId: bigint) {
 async function serializePickerSku(specId: bigint): Promise<PickerSkuCreated> {
   // 去宽表改造：直接读范式表（spec + product + category + brand + 默认单位），
   //   不再依赖宽表冗余行（宽表已删，检索/展示改为范式实时计算）
-  const specRow = await prisma.spec.findUnique({
+  const specRow = await repositories.catalogRepository.spec.findUnique({
     where: { id: specId },
     include: { product: { include: { category: true } }, brand: true },
   });
@@ -94,7 +95,7 @@ export async function attachBrandToProduct(
 ): Promise<PickerSkuCreated[]> {
   const name = brandName.trim();
   if (!name) throw Errors.unprocessable('品牌名不能为空');
-  const product = await prisma.product.findUnique({
+  const product = await repositories.catalogRepository.product.findUnique({
     where: { id: productId },
     include: { specs: true },
   });
@@ -110,18 +111,18 @@ export async function attachBrandToProduct(
 
   const out: PickerSkuCreated[] = [];
   for (const specModel of specModels) {
-    let spec = await prisma.spec.findUnique({
+    let spec = await repositories.catalogRepository.spec.findUnique({
       where: { productId_brandId_specModel: { productId, brandId: brand.id, specModel } },
     });
     if (!spec) {
       const donor = product.specs.find((s) => s.specModel === specModel);
-      spec = await prisma.spec.create({
+      spec = await repositories.catalogRepository.spec.create({
         data: { productId, brandId: brand.id, specModel, remark: '', sortOrder: 0, status: 1 },
       });
       if (donor) {
-        const links = await prisma.spec_unit.findMany({ where: { specId: donor.id } });
+        const links = await repositories.catalogRepository.spec_unit.findMany({ where: { specId: donor.id } });
         for (const link of links) {
-          await prisma.spec_unit.create({
+          await repositories.catalogRepository.spec_unit.create({
             data: {
               specId: spec.id,
               unitId: link.unitId,
@@ -149,31 +150,31 @@ export async function ensureSpecOnProductBrand(
   const model = specModel.trim() || DEFAULT_SPEC_MODEL;
   const bName = brandName.trim();
   if (!bName) throw Errors.unprocessable('品牌名不能为空');
-  const product = await prisma.product.findUnique({ where: { id: productId } });
+  const product = await repositories.catalogRepository.product.findUnique({ where: { id: productId } });
   if (!product) throw Errors.notFound('产品不存在');
 
   const brand = await registry.ensureByName(prisma, registry.BRAND_REGISTRY, bName);
   await ensureProductBrand(prisma, product.id, brand.id);
 
-  let spec = await prisma.spec.findUnique({
+  let spec = await repositories.catalogRepository.spec.findUnique({
     where: { productId_brandId_specModel: { productId, brandId: brand.id, specModel: model } },
   });
   if (!spec) {
-    const sibling = await prisma.spec.findFirst({
+    const sibling = await repositories.catalogRepository.spec.findFirst({
       where: { productId, brandId: brand.id, NOT: { specModel: model } },
     });
     const donor =
       sibling ??
-      (await prisma.spec.findFirst({
+      (await repositories.catalogRepository.spec.findFirst({
         where: { productId, specModel: model },
       }));
-    spec = await prisma.spec.create({
+    spec = await repositories.catalogRepository.spec.create({
       data: { productId, brandId: brand.id, specModel: model, remark: '', sortOrder: 0, status: 1 },
     });
     if (donor) {
-      const links = await prisma.spec_unit.findMany({ where: { specId: donor.id } });
+      const links = await repositories.catalogRepository.spec_unit.findMany({ where: { specId: donor.id } });
       for (const link of links) {
-        await prisma.spec_unit.create({
+        await repositories.catalogRepository.spec_unit.create({
           data: {
             specId: spec.id,
             unitId: link.unitId,
@@ -184,7 +185,7 @@ export async function ensureSpecOnProductBrand(
       }
       await copyConversions(donor.id, spec.id);
     }
-    if ((await prisma.spec_unit.count({ where: { specId: spec.id } })) === 0) {
+    if ((await repositories.catalogRepository.spec_unit.count({ where: { specId: spec.id } })) === 0) {
       await resolveUnitInSpec(prisma, spec.id, DEFAULT_UNIT_NAME, { isBase: true, isDisplay: true });
     }
   }
@@ -198,11 +199,11 @@ export async function rebindSpecBrand(
 ): Promise<PickerSkuCreated> {
   const name = brandName.trim();
   if (!name) throw Errors.unprocessable('品牌名不能为空');
-  const existing = await prisma.spec.findUnique({ where: { id: specBrandId } });
+  const existing = await repositories.catalogRepository.spec.findUnique({ where: { id: specBrandId } });
   if (!existing) throw Errors.notFound('规格不存在');
   const brand = await registry.ensureByName(prisma, registry.BRAND_REGISTRY, name);
   if (brand.id === existing.brandId) return serializePickerSku(specBrandId);
-  const clash = await prisma.spec.findUnique({
+  const clash = await repositories.catalogRepository.spec.findUnique({
     where: {
       productId_brandId_specModel: {
         productId: existing.productId,
@@ -213,7 +214,7 @@ export async function rebindSpecBrand(
   });
   if (clash) throw Errors.unprocessable('该品牌下已有此规格');
   await ensureProductBrand(prisma, existing.productId, brand.id);
-  await prisma.spec.update({
+  await repositories.catalogRepository.spec.update({
     where: { id: specBrandId },
     data: { brandId: brand.id },
   });
@@ -225,11 +226,11 @@ export async function updateSpecBrandRemark(
   specBrandId: bigint,
   remark: string,
 ): Promise<PickerSkuCreated> {
-  const existing = await prisma.spec.findUnique({ where: { id: specBrandId } });
+  const existing = await repositories.catalogRepository.spec.findUnique({ where: { id: specBrandId } });
   if (!existing) throw Errors.notFound('规格不存在');
   const next = remark.trim();
   if ((existing.remark ?? '') !== next) {
-    await prisma.spec.update({
+    await repositories.catalogRepository.spec.update({
       where: { id: specBrandId },
       data: { remark: next },
     });

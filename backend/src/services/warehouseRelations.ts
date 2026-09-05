@@ -1,4 +1,5 @@
 // v20 库房拆表：区位 / 负责人联系信息 读写与 API 视图映射
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 
@@ -119,7 +120,7 @@ export function formatWarehouseView(w: WarehouseWithRelations) {
 }
 
 export async function loadWarehouseWithRelations(id: bigint) {
-  return prisma.warehouse.findUnique({ where: { id }, include: warehouseInclude });
+  return repositories.warehouseRepository.warehouse.findUnique({ where: { id }, include: warehouseInclude });
 }
 
 export { warehouseInclude };

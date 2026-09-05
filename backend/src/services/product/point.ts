@@ -1,5 +1,6 @@
 // 点位读：规格例外 → 组默认 → 1。实际价 = 面价 × 点位，不存。
 // 确认修改（当前）= 写规格例外；改全局 = 只改组默认，已有例外的规格不动。
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { calcEffectivePrice } from './shared.js';
@@ -21,11 +22,11 @@ export async function resolvePurchasePoints(
   const categoryNames = [...new Set(items.map((i) => i.categoryName).filter(Boolean))];
 
   const [exceptions, groups] = await Promise.all([
-    prisma.purchase_spec_point.findMany({
+    repositories.rulesRepository.purchase_spec_point.findMany({
       where: { specId: { in: specBrandIds }, supplierId: { in: supplierIds } },
     }),
     brandNames.length
-      ? prisma.supplier_point_rule.findMany({
+      ? repositories.partnerRepository.supplier_point_rule.findMany({
           where: { brandName: { in: brandNames }, categoryName: { in: categoryNames } },
         })
       : Promise.resolve([]),
@@ -60,11 +61,11 @@ export async function resolveSalePoints(
   const categoryNames = [...new Set(items.map((i) => i.categoryName).filter(Boolean))];
 
   const [exceptions, groups] = await Promise.all([
-    prisma.sale_spec_point.findMany({
+    repositories.rulesRepository.sale_spec_point.findMany({
       where: { specId: { in: specBrandIds }, priceTypeId: { in: priceTypeIds } },
     }),
     brandNames.length
-      ? prisma.sale_point_rule.findMany({
+      ? repositories.rulesRepository.sale_point_rule.findMany({
           where: { brandName: { in: brandNames }, categoryName: { in: categoryNames } },
         })
       : Promise.resolve([]),
@@ -141,9 +142,9 @@ export async function upsertSaleSpecPoint(
   point: number,
 ) {
   if (!Number.isFinite(point) || point <= 0) throw Errors.unprocessable('点位必须大于 0');
-  const sb = await prisma.spec.findUnique({ where: { id: specBrandId }, select: { id: true } });
+  const sb = await repositories.catalogRepository.spec.findUnique({ where: { id: specBrandId }, select: { id: true } });
   if (!sb) throw Errors.notFound('规格不存在');
-  await prisma.sale_spec_point.upsert({
+  await repositories.rulesRepository.sale_spec_point.upsert({
     where: { specId_priceTypeId: { specId: specBrandId, priceTypeId } },
     create: { specId: specBrandId, priceTypeId, point },
     update: { point },
@@ -157,9 +158,9 @@ export async function upsertPurchaseSpecPoint(
   point: number,
 ) {
   if (!Number.isFinite(point) || point <= 0) throw Errors.unprocessable('点位必须大于 0');
-  const sb = await prisma.spec.findUnique({ where: { id: specBrandId }, select: { id: true } });
+  const sb = await repositories.catalogRepository.spec.findUnique({ where: { id: specBrandId }, select: { id: true } });
   if (!sb) throw Errors.notFound('规格不存在');
-  await prisma.purchase_spec_point.upsert({
+  await repositories.rulesRepository.purchase_spec_point.upsert({
     where: { specId_supplierId: { specId: specBrandId, supplierId } },
     create: { specId: specBrandId, supplierId, point },
     update: { point },
@@ -177,12 +178,12 @@ export async function resolveGroupSpecBrandIds(
   brandName: string,
   categoryName: string,
 ): Promise<bigint[]> {
-  const brands = await prisma.brand.findMany({
+  const brands = await repositories.catalogRepository.brand.findMany({
     where: { name: brandName },
     select: { id: true },
   });
   if (brands.length === 0) return [];
-  const specBrands = await prisma.spec.findMany({
+  const specBrands = await repositories.catalogRepository.spec.findMany({
     where: { brandId: { in: brands.map((b) => b.id) } },
     include: { product: { include: { category: true } } },
   });
@@ -220,7 +221,7 @@ export interface PointChangePreview {
 async function loadGroupSpecLabels(ids: bigint[]): Promise<Map<string, { productName: string; specModel: string }>> {
   const out = new Map<string, { productName: string; specModel: string }>();
   if (ids.length === 0) return out;
-  const rows = await prisma.spec.findMany({
+  const rows = await repositories.catalogRepository.spec.findMany({
     where: { id: { in: ids } },
     select: {
       id: true,
@@ -266,7 +267,7 @@ export async function previewPointChange(input: PointChangePreviewInput): Promis
   if (input.side === 'sale') {
     if (!input.priceTypeId) throw Errors.unprocessable('请指定售价类型');
     const specBrandIds = await resolveGroupSpecBrandIds(brandName, categoryName);
-    const rule = await prisma.sale_point_rule.findUnique({
+    const rule = await repositories.rulesRepository.sale_point_rule.findUnique({
       where: {
         priceTypeId_brandName_categoryName: {
           priceTypeId: input.priceTypeId,
@@ -295,11 +296,11 @@ export async function previewPointChange(input: PointChangePreviewInput): Promis
       };
     }
     const [priced, exceptions] = await Promise.all([
-      prisma.sale_price.findMany({
+      repositories.pricingRepository.sale_price.findMany({
         where: { specId: { in: specBrandIds }, priceTypeId: input.priceTypeId },
         select: { specId: true },
       }),
-      prisma.sale_spec_point.findMany({
+      repositories.rulesRepository.sale_spec_point.findMany({
         where: { specId: { in: specBrandIds }, priceTypeId: input.priceTypeId },
         select: { specId: true },
       }),
@@ -336,7 +337,7 @@ export async function previewPointChange(input: PointChangePreviewInput): Promis
 
   if (!input.supplierId) throw Errors.unprocessable('请指定供应渠道');
   const specBrandIds = await resolveGroupSpecBrandIds(brandName, categoryName);
-  const rule = await prisma.supplier_point_rule.findUnique({
+  const rule = await repositories.partnerRepository.supplier_point_rule.findUnique({
     where: {
       supplierId_brandName_categoryName: {
         supplierId: input.supplierId,
@@ -365,11 +366,11 @@ export async function previewPointChange(input: PointChangePreviewInput): Promis
     };
   }
   const [priced, exceptions] = await Promise.all([
-    prisma.purchase_price.findMany({
+    repositories.pricingRepository.purchase_price.findMany({
       where: { specId: { in: specBrandIds }, supplierId: input.supplierId },
         select: { specId: true },
       }),
-      prisma.purchase_spec_point.findMany({
+      repositories.rulesRepository.purchase_spec_point.findMany({
         where: { specId: { in: specBrandIds }, supplierId: input.supplierId },
         select: { specId: true },
       }),
@@ -420,9 +421,9 @@ export async function upsertSaleGroupPoint(
   const bn = brandName.trim();
   const cn = categoryName.trim();
   if (!bn || !cn) throw Errors.unprocessable('品牌和分类不能空');
-  const pt = await prisma.price_type.findUnique({ where: { id: priceTypeId }, select: { id: true } });
+  const pt = await repositories.pricingRepository.price_type.findUnique({ where: { id: priceTypeId }, select: { id: true } });
   if (!pt) throw Errors.notFound('售价类型不存在');
-  await prisma.sale_point_rule.upsert({
+  await repositories.rulesRepository.sale_point_rule.upsert({
     where: { priceTypeId_brandName_categoryName: { priceTypeId, brandName: bn, categoryName: cn } },
     create: { priceTypeId, brandName: bn, categoryName: cn, point: p },
     update: { point: p },
@@ -443,12 +444,12 @@ export async function upsertPurchaseGroupPoint(
   const bn = brandName.trim();
   const cn = categoryName.trim();
   if (!bn || !cn) throw Errors.unprocessable('品牌和分类不能空');
-  const supplier = await prisma.supplier.findUnique({
+  const supplier = await repositories.partnerRepository.supplier.findUnique({
     where: { id: supplierId },
     select: { id: true, name: true },
   });
   if (!supplier) throw Errors.notFound('供应商不存在');
-  await prisma.supplier_point_rule.upsert({
+  await repositories.partnerRepository.supplier_point_rule.upsert({
     where: { supplierId_brandName_categoryName: { supplierId, brandName: bn, categoryName: cn } },
     create: {
       supplierId,

@@ -37,7 +37,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "npx prisma generate && npx prisma db push --skip-generate && npx prisma db seed && node dist/index.js"
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npx prisma db seed && node dist/index.js"
 
 volumes:
   db_data:

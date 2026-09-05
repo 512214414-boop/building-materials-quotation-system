@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -53,7 +54,7 @@ export async function cleanupImageFilesIfUnreferenced(
 ): Promise<void> {
   const urls = [...new Set(imageUrls.filter(Boolean))];
   if (urls.length === 0) return;
-  const remaining = await prisma.product_image.count({
+  const remaining = await repositories.catalogRepository.product_image.count({
     where: { imageUrl: { in: urls } },
   });
   if (remaining > 0) {
@@ -87,7 +88,7 @@ export async function listProductImages(query: Record<string, unknown>) {
   if (typeof query.specBrandId === 'string' && query.specBrandId) {
     where.specId = BigInt(query.specBrandId);
   }
-  return prisma.product_image.findMany({
+  return repositories.catalogRepository.product_image.findMany({
     where,
     orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
   });
@@ -106,7 +107,7 @@ export async function listProductImageLibrary() {
   // v1.5.6.1 修复【关键】：原实现同时传 include 与 select，Prisma 运行时抛
   //   "Please either choose select or include" 异常 → 接口 500 → 前端图片库永远为空。
   //   只保留 select（含嵌套 brand→product→category），字段一一对齐
-  const all = await prisma.product_image.findMany({
+  const all = await repositories.catalogRepository.product_image.findMany({
     where: { hash: { not: '' } },
     orderBy: [{ id: 'desc' }],
     select: {
@@ -162,18 +163,18 @@ export async function listProductImageLibrary() {
 }
 
 export async function createProductImage(data: ProductImageCreateInput) {
-  const specBrand = await prisma.spec.findUnique({ where: { id: data.specBrandId } });
+  const specBrand = await repositories.catalogRepository.spec.findUnique({ where: { id: data.specBrandId } });
   if (!specBrand) throw Errors.unprocessable('品牌关联不存在');
 
   // 若设为主图，先清除其他主图
   if (data.isMain === 1) {
-    await prisma.product_image.updateMany({
+    await repositories.catalogRepository.product_image.updateMany({
       where: { specId: data.specBrandId, isMain: 1 },
       data: { isMain: 0 },
     });
   }
 
-  const created = await prisma.product_image.create({
+  const created = await repositories.catalogRepository.product_image.create({
     data: {
       specId: data.specBrandId,
       imageUrl: data.imageUrl,
@@ -195,27 +196,27 @@ export async function createProductImage(data: ProductImageCreateInput) {
 }
 
 export async function updateProductImage(id: bigint, data: { sortOrder?: number; isMain?: number }) {
-  const existing = await prisma.product_image.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product_image.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('图片不存在');
 
   if (data.isMain === 1) {
-    await prisma.product_image.updateMany({
+    await repositories.catalogRepository.product_image.updateMany({
       where: { specId: existing.specId, isMain: 1, id: { not: id } },
       data: { isMain: 0 },
     });
   }
 
-  const updated = await prisma.product_image.update({ where: { id }, data });
+  const updated = await repositories.catalogRepository.product_image.update({ where: { id }, data });
   if (data.isMain !== undefined) {
   }
   return updated;
 }
 
 export async function deleteProductImage(id: bigint) {
-  const existing = await prisma.product_image.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product_image.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('图片不存在');
 
-  await prisma.product_image.delete({ where: { id } });
+  await repositories.catalogRepository.product_image.delete({ where: { id } });
   if (existing.isMain === 1) {
   }
 

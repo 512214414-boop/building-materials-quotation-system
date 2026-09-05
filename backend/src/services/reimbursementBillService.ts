@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
@@ -30,7 +31,7 @@ export async function createReimbursementBill(
   input: CreateReimbursementBillInput,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: input.sourceDocumentId },
     select: { id: true, document_no: true },
   });
@@ -54,7 +55,7 @@ export async function createReimbursementBill(
   const subtotal = lines.reduce((s, l) => s + Number(l.amount), 0);
   const billNo = generateBillNo();
 
-  const bill = await prisma.reimbursement_bills.create({
+  const bill = await repositories.financeRepository.reimbursement_bills.create({
     data: {
       source_document_id: input.sourceDocumentId,
       bill_no: billNo,
@@ -84,7 +85,7 @@ export async function createReimbursementBill(
 }
 
 export async function listReimbursementBills(documentId: bigint) {
-  const bills = await prisma.reimbursement_bills.findMany({
+  const bills = await repositories.financeRepository.reimbursement_bills.findMany({
     where: { source_document_id: documentId },
     include: {
       lines: { orderBy: { seq: 'asc' } },
@@ -96,7 +97,7 @@ export async function listReimbursementBills(documentId: bigint) {
 }
 
 export async function getReimbursementBill(billId: bigint) {
-  const bill = await prisma.reimbursement_bills.findUnique({
+  const bill = await repositories.financeRepository.reimbursement_bills.findUnique({
     where: { id: billId },
     include: {
       lines: { orderBy: { seq: 'asc' } },
@@ -109,13 +110,13 @@ export async function getReimbursementBill(billId: bigint) {
 }
 
 export async function deleteReimbursementBill(billId: bigint, actor: { id: bigint; name: string }) {
-  const bill = await prisma.reimbursement_bills.findUnique({
+  const bill = await repositories.financeRepository.reimbursement_bills.findUnique({
     where: { id: billId },
     select: { id: true, bill_no: true, created_by: true },
   });
   if (!bill) throw Errors.notFound('报销副单不存在');
 
-  await prisma.reimbursement_bills.delete({ where: { id: billId } });
+  await repositories.financeRepository.reimbursement_bills.delete({ where: { id: billId } });
 
   logger.info('报销副单删除', { billNo: bill.bill_no, actor: actor.name });
   return { success: true };

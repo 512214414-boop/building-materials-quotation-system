@@ -18,6 +18,7 @@
  *  - 缺口实时计算：shortage = qty - SUM(alloc_qty WHERE pending_status='allocated')
  *  - v9.0：supplier 表不再有 type 字段，类型由 allocation_lines.source_type 记录
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
@@ -90,12 +91,12 @@ async function getDefaultExternalCost(docLine: {
 }) {
   if (!docLine.specId || !docLine.brandId || !docLine.unitId) return 0;
   // v22：document_lines.specId 即为 SKU 规格行 id（原 spec_brand.id）
-  const prices = await prisma.purchase_price.findMany({
+  const prices = await repositories.pricingRepository.purchase_price.findMany({
     where: { specId: docLine.specId, unitId: docLine.unitId },
     select: { supplierId: true, price: true },
   });
   if (prices.length === 0) return 0;
-  const rules = await prisma.supplier_point_rule.findMany({
+  const rules = await repositories.partnerRepository.supplier_point_rule.findMany({
     where: {
       supplierId: { in: prices.map((p) => p.supplierId) },
       ...(docLine.brandName ? { brandName: docLine.brandName } : {}),
@@ -154,7 +155,7 @@ async function upsertShortageBackorder(input: {
 }) {
   const qtyNum = round2(input.shortage);
   if (qtyNum <= 0) return;
-  const existing = await prisma.backorders.findFirst({
+  const existing = await repositories.orderRepository.backorders.findFirst({
     where: {
       line_id: input.lineId,
       warehouse_id: input.warehouseId,
@@ -162,7 +163,7 @@ async function upsertShortageBackorder(input: {
     },
   });
   if (existing) {
-    await prisma.backorders.update({
+    await repositories.orderRepository.backorders.update({
       where: { id: existing.id },
       data: { qty: round2(Number(existing.qty) + qtyNum) },
     });
@@ -170,7 +171,7 @@ async function upsertShortageBackorder(input: {
   }
   // v28：写入时落 SKU 维度名称快照，删品牌/单位/规格后仍能读出
   const snap = await resolveSkuNameSnapshot(input.specId, input.brandId, input.unitId);
-  await prisma.backorders.create({
+  await repositories.orderRepository.backorders.create({
     data: {
       document_id: input.documentId,
       line_id: input.lineId,
@@ -269,10 +270,10 @@ async function rebalanceLineTx(
  * 返回所有 document_lines，每行带出已分配的 allocation_lines。
  */
 export async function listByDocument(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
     include: {
@@ -357,11 +358,11 @@ export async function upsertLine(
   input: AllocationLineUpsertInput,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
   // 1. 校验 lineId 属于 documentId（携带 SKU 关联用于库存扣减/进价兜底）
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: input.lineId },
     select: {
       id: true,
@@ -381,7 +382,7 @@ export async function upsertLine(
   // 2. 校验来源存在且状态启用（v1.7.0：按类型分别校验仓库/供应商档案）
   let sourceName: string;
   if (input.sourceType === 'warehouse') {
-    const w = await prisma.warehouse.findUnique({
+    const w = await repositories.warehouseRepository.warehouse.findUnique({
       where: { id: input.sourceId },
       select: { id: true, name: true, status: true },
     });
@@ -389,7 +390,7 @@ export async function upsertLine(
     if (w.status !== 1) throw Errors.badRequest(`仓库 ${input.sourceId} 已停用`, 42210);
     sourceName = w.name;
   } else {
-    const s = await prisma.supplier.findUnique({
+    const s = await repositories.partnerRepository.supplier.findUnique({
       where: { id: input.sourceId },
       select: { id: true, name: true, status: true },
     });
@@ -570,7 +571,7 @@ export async function updateLine(
   input: AllocationLineUpdateInput,
   actor: { id: bigint; name: string },
 ) {
-  const existing = await prisma.allocation_lines.findUnique({
+  const existing = await repositories.documentRepository.allocation_lines.findUnique({
     where: { id: allocationLineId },
     select: { id: true, line_id: true, source_id: true, source_type: true, alloc_qty: true, pending_status: true },
   });
@@ -587,7 +588,7 @@ export async function updateLine(
   const shouldSetAllocAt = allocQty > 0 && Number(existing.alloc_qty) === 0;
 
   // 反查单据行（SKU 关联 + 单据 ID）
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: existing.line_id },
     select: { id: true, qty: true, documentId: true, specId: true, brandId: true, unitId: true },
   });
@@ -679,7 +680,7 @@ export async function updateLine(
     actor: actor.name,
   });
 
-  const fresh = await prisma.allocation_lines.findUnique({ where: { id: allocationLineId } });
+  const fresh = await repositories.documentRepository.allocation_lines.findUnique({ where: { id: allocationLineId } });
   return {
     id: fresh!.id,
     lineId: fresh!.line_id,
@@ -707,13 +708,13 @@ export async function updateLine(
  * v1.7.0：内部行删除时回补库存；删除后重算超额/应付。
  */
 export async function removeLine(allocationLineId: bigint, actor: { id: bigint; name: string }) {
-  const existing = await prisma.allocation_lines.findUnique({
+  const existing = await repositories.documentRepository.allocation_lines.findUnique({
     where: { id: allocationLineId },
     select: { id: true, line_id: true, source_id: true, source_type: true, alloc_qty: true, pending_status: true },
   });
   if (!existing) throw Errors.notFound('配货行不存在');
 
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: existing.line_id },
     select: { id: true, qty: true, documentId: true, specId: true, brandId: true, unitId: true },
   });
@@ -774,7 +775,7 @@ export async function listSources(query: Record<string, unknown>) {
   const keyword = typeof query.keyword === 'string' ? query.keyword.trim() : '';
 
   // 内部仓库：启用优先 + 主仓优先 + 排序字段（warehouseService 同口径）
-  const warehouses = await prisma.warehouse.findMany({
+  const warehouses = await repositories.warehouseRepository.warehouse.findMany({
     where: { status: 1 },
     orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
     select: {
@@ -785,7 +786,7 @@ export async function listSources(query: Record<string, unknown>) {
     },
   });
   // 外部供应商：启用优先 + 名称排序
-  const supplierRows = await prisma.supplier.findMany({
+  const supplierRows = await repositories.partnerRepository.supplier.findMany({
     where: { status: 1 },
     orderBy: [{ name: 'asc' }],
     include: {
@@ -845,7 +846,7 @@ export async function listSources(query: Record<string, unknown>) {
  * v1.7.1 解耦收敛：供应商快速新建统一走 supplierService.quickAddSupplier（标准接口，幂等 + 兜底） */
 export async function quickCreateSource(input: { kind: 'warehouse' | 'supplier'; name: string }) {
   if (input.kind === 'warehouse') {
-    const created = await prisma.warehouse.create({
+    const created = await repositories.warehouseRepository.warehouse.create({
       data: { name: input.name.trim(), status: 1, sortOrder: 0 },
     });
     return { kind: 'warehouse' as const, id: created.id, name: created.name, sourceType: 'warehouse' as const };
@@ -873,7 +874,7 @@ async function maybeAdvanceAllocationInProgress(
   documentId: bigint,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, lock_version: true },
   });

@@ -1,4 +1,11 @@
 // 建材报价系统 v9.0 - Prisma Schema (MySQL 8)
+//
+// ── P2 物理模型约定（2026-09-05 落地）──────────────────────────────────────
+// ・每张表已含 tenantId(BigInt UNSIGNED NOT NULL DEFAULT 1, 多租户预留) + legacyCode(VARCHAR(64) NULL, 旧业务编码只读快照)。
+// ・新增表一律：id BigInt @id @db.UnsignedBigInt，由应用层 Snowflake 生成器写号（禁用数据库 autoincrement / 禁用业务编码作 PK）。
+//   存量 62 张表 PK 切 Snowflake + 应用双写 legacy_code，属分阶段后续（见 docs/架构重构/P2 执行记录），不在本次迁移内。
+// ・部署走 `prisma migrate deploy`；严禁 `prisma db push`（docker-compose 已退役）。迁移历史已线性化：baseline_v31 → p2_tenant_id_legacy_code。
+// ───────────────────────────────────────────────────────────────────────
 // v9.0 产品数据层 SPU 合并模型 + 价格分表 + SKU 检索宽表 + 品牌单位换算 + 供应商独立表
 //
 // v9.0 设计原则（对齐用户最新设计，根本性重构）：
@@ -106,6 +113,9 @@ datasource db {
 
 model roles {
   id               Int          @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   code             String       @unique @db.VarChar(30)
   name             String       @db.VarChar(50)
   description      String?      @db.VarChar(200)
@@ -121,6 +131,9 @@ model roles {
 
 model users {
   id            BigInt      @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   // v2.7 员工编码：暂保留，下一轮全局去业务编号时删除
   user_code     String      @unique @db.VarChar(30)
   username      String      @unique @db.VarChar(50)
@@ -145,6 +158,9 @@ model users {
 
 model user_roles {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   user_id    BigInt
   role_id    Int
   created_at DateTime @default(now())
@@ -163,6 +179,9 @@ model user_roles {
 
 model customers {
   id             BigInt          @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   // v2.7 客户编码：暂保留，下一轮全局去业务编号时删除
   customer_code  String          @unique @db.VarChar(30)
   // v2.10 phone 可空 + 保留 @unique（NULL 多值）。历史兼容；登录认 customer_contact.isDefault，界面不给人填。
@@ -192,6 +211,9 @@ model customers {
 
 model authorization_codes {
   id          BigInt    @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   code        String    @unique @db.VarChar(10)
   phone       String?   @db.VarChar(200)
   status      String    @default("active") @db.VarChar(20)
@@ -215,6 +237,9 @@ model authorization_codes {
 
 model access_requests {
   id                      BigInt    @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   phone                   String    @db.VarChar(200)
   status                  String    @default("pending") @db.VarChar(20)
   reviewedBy              BigInt?
@@ -236,6 +261,9 @@ model access_requests {
 
 model customer_sessions {
   id                  BigInt               @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   customerId          BigInt
   token               String               @unique @db.VarChar(255)
   authorizationCodeId BigInt?
@@ -250,6 +278,9 @@ model customer_sessions {
 
 model customer_addresses {
   id         BigInt    @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   customerId BigInt
   label      String?   @db.VarChar(50)
   contact    String    @db.VarChar(100)
@@ -270,6 +301,9 @@ model customer_addresses {
 /// 客户类型字典（v25：原 enum personal/company）
 model customer_type {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   name      String   @unique @db.VarChar(50)
   sortOrder Int      @default(0)
   status    Int      @default(1)
@@ -282,6 +316,9 @@ model customer_type {
 /// 客户联系信息（与 supplier_contact 同构）
 model customer_contact {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   customerId BigInt
   name       String   @default("") @db.VarChar(100)
   method     String   @default("") @db.VarChar(50)
@@ -301,6 +338,9 @@ model customer_contact {
 /// 客户开票信息（多行；一套资料一行）
 model customer_invoice {
   id           BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   customerId   BigInt
   invoiceTitle String   @default("") @db.VarChar(200)
   taxNumber    String   @default("") @db.VarChar(50)
@@ -349,6 +389,9 @@ model customer_invoice {
 /// 产品分类空输入时由 resolveCategoryRef ensure「未分类」按名复用/建档，不再有 categoryId=0 魔数语义
 model category {
   id        Int      @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 分类名称
   name      String   @db.VarChar(100)
   /// 排序号
@@ -379,6 +422,9 @@ model product {
   /// 不取消 autoincrement 是因为 spec/unit/product_image 等子表通过 @relation 外键引用 product.id，
   /// MySQL 不允许变更被外键引用列的 autoincrement 属性
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 产品名称（必填，如「PPR热水管」）
   name       String   @db.VarChar(200)
   /// v15.3 分类ID：总是应用层解析后的有效分类记录 id（空输入由 resolveCategoryRef 按 name ensure「未分类」；无 DB 默认值）
@@ -406,6 +452,9 @@ model product {
 /// 3. 规格系列表（v22.0）：产品 → 品牌 → 规格；每条记录已含品牌维度
 model spec {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 所属产品
   productId  BigInt
   /// 所属品牌（全局品牌档案）
@@ -443,6 +492,9 @@ model spec {
 /// 3.5 产品×品牌关联表（v22.0 新增）：产品售卖哪些品牌
 model product_brand {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   productId  BigInt
   brandId    BigInt
   sortOrder  Int      @default(0)
@@ -468,6 +520,9 @@ model product_brand {
 ///   - 删除某规格的品牌关联 → 只删 spec_brand 记录，不影响其他规格与全局品牌档案
 model brand {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 品牌名称（全局唯一，如「伟星」「日丰」「普通品牌」）
   name      String   @unique @db.VarChar(100)
   /// 状态 1启用 0停用（全局启停用：停用后所有引用该品牌的规格不再可用）
@@ -494,6 +549,9 @@ model brand {
 /// v9.0：换算率已按品牌独立，存于 brand_unit_conversion 表（unitId 关联本表）
 model unit {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 单位名称（全局唯一，如「米」「根」「个」「捆」）
   unitName  String   @db.VarChar(50)
   /// 状态 1启用 0停用（全局启停用：停用后所有引用该单位的规格不再可用）
@@ -523,6 +581,9 @@ model unit {
 ///   - 换算率不在此表，按品牌独立存于 brand_unit_conversion（specBrandId + unitId）
 model spec_unit {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 所属规格变体
   specId    BigInt
   /// 全局单位 ID
@@ -546,6 +607,9 @@ model spec_unit {
 /// 9. 品牌单位换算表（v22.0 挂 spec）：换算系数按「品牌+规格」独立
 model brand_unit_conversion {
   id             BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// v22.0：规格 ID（原 specBrandId）
   specId         BigInt
   /// 单位ID
@@ -571,6 +635,9 @@ model brand_unit_conversion {
 ///   - 唯一约束：name 不重复
 model price_type {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 价格类型名称（如「零售价」「批发价」「工程价」）
   name      String   @db.VarChar(50)
   /// 排序
@@ -593,6 +660,9 @@ model price_type {
 ///   - 唯一约束：name 不重复；已使用的方式作为字符串保留在联系信息中，删除字典不影响历史数据
 model contact_method {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 方式名称（如「微信」「电话」「邮箱」「QQ」）
   name      String   @db.VarChar(50)
   /// 排序
@@ -609,6 +679,9 @@ model contact_method {
 /// v22.0：SKU = 规格（含品牌）× 单位
 model sale_price {
   id          BigInt  @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// v22.0：规格 ID（原 specBrandId）
   specId      BigInt
   /// 单位ID
@@ -635,6 +708,9 @@ model sale_price {
 /// 6. 产品进价表（v22.0 挂 spec）
 model purchase_price {
   id           BigInt  @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// v22.0：规格 ID（原 specBrandId）
   specId       BigInt
   /// 单位ID
@@ -678,6 +754,9 @@ model purchase_price {
 /// 8. 产品图片表（v22.0 挂 spec）
 model product_image {
   id           BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// v22.0：规格 ID（原 specBrandId）
   specId       BigInt
   /// 主图URL（原图 maxSize 1280，详情页用）
@@ -713,6 +792,9 @@ model product_image {
 /// purchase_price / allocation_lines / cost_lines 仍通过 supplierId 逻辑引用
 model supplier {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 供应商名称（v13.2 唯一约束：按名称唯一复用/合并）
   name      String   @unique @db.VarChar(200)
   /// 备注
@@ -734,6 +816,9 @@ model supplier {
 /// 地址类型字典（公司地址 / 库房地址 / 门店地址 / 办公地址…）
 model address_type {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   name      String   @unique @db.VarChar(50)
   sortOrder Int      @default(0)
   status    Int      @default(1)
@@ -748,6 +833,9 @@ model address_type {
 /// 供应商联系信息（一对多，结构与 warehouse_contact 同构）
 model supplier_contact {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   supplierId BigInt
   name       String   @default("") @db.VarChar(100)
   method     String   @default("") @db.VarChar(50)
@@ -766,6 +854,9 @@ model supplier_contact {
 /// 供应商地址（一对多；lng/lat 存 GCJ-02，供导航/分享定位）
 model supplier_address {
   id            BigInt        @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   supplierId    BigInt
   addressTypeId BigInt?
   addressText   String        @db.VarChar(500)
@@ -789,6 +880,9 @@ model supplier_address {
 /// 供应商经营品类（关联 category 字典，支持按分类查供应商）
 model supplier_business_category {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   supplierId BigInt
   categoryId Int
   createdAt  DateTime @default(now())
@@ -805,6 +899,9 @@ model supplier_business_category {
 /// 供应商经营品牌（关联 brand 字典，支持按品牌查供应商）
 model supplier_business_brand {
   id         BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   supplierId BigInt
   brandId    BigInt
   createdAt  DateTime @default(now())
@@ -825,6 +922,9 @@ model supplier_business_brand {
 /// v11.0 解耦对齐：supplierId 不建物理外键，保留 BigInt 字段 + 索引 + supplierName 快照
 model supplier_point_rule {
   id           BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 供应商ID
   supplierId   BigInt
   /// 供应商名称快照（来自 supplier.name）
@@ -848,6 +948,9 @@ model supplier_point_rule {
 /// 售价组默认点位：售价类型 + 品牌名 + 分类名。成组调只改本表，已有规格例外的不动
 model sale_point_rule {
   id           BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   priceTypeId  BigInt
   brandName    String   @db.VarChar(100)
   categoryName String   @db.VarChar(100)
@@ -864,6 +967,9 @@ model sale_point_rule {
 /// 售价规格例外。点位不跟单位拆。有行则盖过组默认；删行即重新跟组
 model sale_spec_point {
   id          BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   specId      BigInt
   priceTypeId BigInt
   point       Decimal  @db.Decimal(10, 4)
@@ -882,6 +988,9 @@ model sale_spec_point {
 /// 进价规格例外。点位不跟单位拆。有行则盖过组默认；删行即重新跟组
 model purchase_spec_point {
   id          BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   specId      BigInt
   supplierId  BigInt
   point       Decimal  @db.Decimal(10, 4)
@@ -908,6 +1017,9 @@ model purchase_spec_point {
 /// 内部仓库档案（v1.7.0 新增，v20 拆表：区位 / 负责人联系信息独立表）
 model warehouse {
   id        BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 仓库名称
   name      String   @db.VarChar(200)
   /// 主地址（库房字典级地址，可选 lng/lat）
@@ -935,6 +1047,9 @@ model warehouse {
 /// 库房区位（一对多，库存位置可挂区位）
 model warehouse_zone {
   id          BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   warehouseId BigInt
   name        String   @db.VarChar(100)
   sortOrder   Int      @default(0)
@@ -951,6 +1066,9 @@ model warehouse_zone {
 /// 库房负责人联系信息（与 supplier_contact 同构）
 model warehouse_contact {
   id          BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   warehouseId BigInt
   name        String   @default("") @db.VarChar(100)
   method      String   @default("") @db.VarChar(50)
@@ -970,6 +1088,9 @@ model warehouse_contact {
 /// 加权平均进价（本仓入库采购单价）：内部出库成本取本记录；入库时重算
 model inventory {
   id               BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 仓库 ID（v11.0 解耦：无物理外键）
   warehouse_id     BigInt
   /// 库区点位 ID（可选，v20 挂区位）
@@ -1006,6 +1127,9 @@ model inventory {
 /// 库存流水（v1.7.0 新增，v14.0 SKU 升级为 规格×品牌×单位，加权平均进价演变与追溯依据）
 model inventory_ledger {
   id               BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 流水号（追溯双向索引，如 IN20260808xxxx）
   ledger_no        String   @unique @db.VarChar(50)
   /// 仓库 ID（无物理外键）
@@ -1055,6 +1179,9 @@ model inventory_ledger {
 
 model audit_logs {
   id            BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   user_id       BigInt?
   /// v11.0 解耦：用户名称快照（来自 users.real_name）
   userName      String?  @db.VarChar(50)
@@ -1082,6 +1209,9 @@ model audit_logs {
 
 model system_config {
   id          Int      @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   key         String   @unique @db.VarChar(100)
   value       String   @db.VarChar(1000)
   description String?  @db.VarChar(500)
@@ -1092,6 +1222,9 @@ model system_config {
 
 model field_change_logs {
   id            BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   table_name    String   @db.VarChar(50)
   record_id     BigInt
   field_name    String   @db.VarChar(100)
@@ -1116,6 +1249,9 @@ model field_change_logs {
 /// 单据主表（唯一事实源）
 model documents {
   id                    BigInt          @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   document_no           String          @unique @db.VarChar(30)
   customer_id           BigInt?
   title                 String?         @db.VarChar(200)
@@ -1214,6 +1350,9 @@ model documents {
 /// 字段统一 camelCase，保留冗余快照字段：打印/展示不依赖产品档案当前状态
 model document_lines {
   id         BigInt  @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   documentId BigInt
   seq        Int
   /// v14.0：规格变体ID（v11.0 解耦：移除物理外键约束，保留索引与逻辑关联）
@@ -1283,6 +1422,9 @@ model document_lines {
 /// 收款对账视图标注
 model payment_records {
   id               BigInt           @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   document_id      BigInt
   payment_type     payment_type
   method           String           @db.VarChar(50)
@@ -1309,6 +1451,9 @@ model payment_records {
 /// 配货视图标注（V4+V5 合并：仓库出库 + 外部调货统一表）
 model allocation_lines {
   id             BigInt                    @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   line_id        BigInt
   source_type    supplier_type
   source_id      BigInt
@@ -1348,6 +1493,9 @@ model allocation_lines {
 /// v11.0 解耦：supplierId 无物理外键 + supplierName 快照
 model supplier_payable_lines {
   id           BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 应付单号（如 AP20260808xxxx）
   payable_no   String   @unique @db.VarChar(50)
   /// 供应商 ID（无物理外键）
@@ -1384,6 +1532,9 @@ model supplier_payable_lines {
 /// 归属：超额部分全部归属本次该单品最后选定的外部供应商，默认入主自有库房（可改）
 model inbound_tasks {
   id                   BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 待入库单号（如 IB20260808xxxx）
   inbound_no           String   @unique @db.VarChar(50)
   /// 来源订单（无物理外键）
@@ -1418,6 +1569,9 @@ model inbound_tasks {
 /// 待入库行表（v1.7.0 新增，v14.0 SKU 升级为 规格×品牌×单位）
 model inbound_lines {
   id          BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   task_id     BigInt
   /// 来源单据行（无物理外键）
   line_id     BigInt?
@@ -1452,6 +1606,9 @@ model inbound_lines {
 /// 独立采购入库单（不绑客户订单的囤货入库）
 model purchase_inbounds {
   id             BigInt              @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   purchase_no    String              @unique @db.VarChar(50)
   supplier_id    BigInt
   supplierName   String?             @db.VarChar(200)
@@ -1476,6 +1633,9 @@ model purchase_inbounds {
 
 model purchase_inbound_lines {
   id           BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   inbound_id   BigInt
   spec_id      BigInt
   brand_id     BigInt
@@ -1500,6 +1660,9 @@ model purchase_inbound_lines {
 /// 内部出库库存不足时，已有库存全额扣除，缺口挂欠库；补货入库后自动冲抵
 model backorders {
   id             BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   /// 欠库来源订单（无物理外键）
   document_id    BigInt
   /// 欠库来源单据行
@@ -1536,6 +1699,9 @@ model backorders {
 /// 交付履约视图标注
 model delivery_records {
   id              BigInt          @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   document_id     BigInt
   delivery_method delivery_method
   tracking_no     String?         @db.VarChar(100)
@@ -1564,6 +1730,9 @@ model delivery_records {
 ///   - external_excess 段入库确认后回填 inbound_line_id（追溯锚点）
 model cost_lines {
   id               BigInt            @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   line_id          BigInt
   /// v1.7.0 成本分层段（内部出库 / 外部刚需 / 外部超额）
   cost_segment     cost_segment
@@ -1605,6 +1774,9 @@ model cost_lines {
 /// 退换售后视图标注（强制继承原单基准数据）
 model refund_lines {
   id             BigInt        @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   line_id        BigInt
   refund_type    refund_type
   original_qty   Decimal       @db.Decimal(12, 2)
@@ -1639,6 +1811,9 @@ model refund_lines {
 /// 销售定档
 model archived_orders {
   id                   BigInt         @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   original_document_id BigInt
   document_no          String         @db.VarChar(30)
   customer_id          BigInt
@@ -1673,6 +1848,9 @@ model archived_orders {
 /// 销售定档明细行
 model archived_order_lines {
   id                BigInt  @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   archived_order_id BigInt
   seq               Int
   product_ref       String  @db.VarChar(500)
@@ -1697,6 +1875,9 @@ model archived_order_lines {
 /// 配货定档
 model archived_logistics {
   id                   BigInt         @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   original_document_id BigInt
   document_no          String         @db.VarChar(30)
   logistics_date       DateTime
@@ -1718,6 +1899,9 @@ model archived_logistics {
 /// 成本定档
 model archived_costs {
   id                   BigInt         @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   original_document_id BigInt
   document_no          String         @db.VarChar(30)
   cost_date            DateTime
@@ -1740,6 +1924,9 @@ model archived_costs {
 /// 退换记录
 model archived_refunds {
   id                   BigInt      @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   original_document_id BigInt
   document_no          String      @db.VarChar(30)
   line_id              BigInt
@@ -1766,6 +1953,9 @@ model archived_refunds {
 
 model reimbursement_bills {
   id                 BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   source_document_id BigInt
   bill_no            String   @unique @db.VarChar(30)
   note               String?  @db.VarChar(500)
@@ -1789,6 +1979,9 @@ model reimbursement_bills {
 
 model reimbursement_bill_lines {
   id          BigInt   @id @default(autoincrement())
+  // P2 (2026-09-05) 多租户预留 + 旧业务编码只读保留
+  tenantId   BigInt   @default(1) @db.UnsignedBigInt
+  legacyCode String?  @db.VarChar(64)
   bill_id     BigInt
   seq         Int
   product_ref String   @db.VarChar(500)

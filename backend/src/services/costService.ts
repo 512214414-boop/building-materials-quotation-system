@@ -21,6 +21,7 @@
  *  - 毛利重算：核定后实时计算毛利（与 document_lines.amount 对比）
  *  - v9.0：supplier 表不再有 type 字段，类型由 allocation_lines.source_type 记录
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { wsManager } from '../ws/index.js';
@@ -193,13 +194,13 @@ export async function syncCostLinesTx(
  * 供预设成本锚点使用：preset_unit_cost = min(进价 WHERE specId + unitId)
  */
 async function buildLowestPurchasePriceMap(specIds: bigint[], unitIds: bigint[]): Promise<Map<string, number>> {
-  const purchases = await prisma.purchase_price.findMany({
+  const purchases = await repositories.pricingRepository.purchase_price.findMany({
     where: { specId: { in: specIds }, unitId: { in: unitIds } },
     select: { specId: true, unitId: true, supplierId: true, price: true },
   });
   if (purchases.length === 0) return new Map();
 
-  const specs = await prisma.spec.findMany({
+  const specs = await repositories.catalogRepository.spec.findMany({
     where: { id: { in: [...new Set(purchases.map((p) => p.specId))] } },
     include: {
       brand: { select: { name: true } },
@@ -213,7 +214,7 @@ async function buildLowestPurchasePriceMap(specIds: bigint[], unitIds: bigint[])
   const brandNames = specs.map((b) => b.brand.name);
   const catNames = specs.map((b) => b.product.category?.name ?? '未分类');
   const rules = brandNames.length
-    ? await prisma.supplier_point_rule.findMany({
+    ? await repositories.partnerRepository.supplier_point_rule.findMany({
         where: { brandName: { in: brandNames }, categoryName: { in: catNames } },
       })
     : [];
@@ -324,10 +325,10 @@ interface DocumentLineCostView {
  * 订单成本口径（方案 §5.4）：仅计 internal + external_agreed；external_excess 不计订单成本。
  */
 export async function listByDocument(documentId: bigint): Promise<DocumentLineCostView[]> {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
     include: {
@@ -437,11 +438,11 @@ export async function batchUpdate(
   items: CostLineItem[],
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
   // 校验所有 lineId 属于该 document
-  const docLines = await prisma.document_lines.findMany({
+  const docLines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     select: {
       id: true,
@@ -506,7 +507,7 @@ export async function batchUpdate(
     const costAdjust = round2(item.unitCost - presetUnitCost);
     const costAmount = calcCostLine(item.unitCost, item.freight, costQty);
 
-    await prisma.cost_lines.upsert({
+    await repositories.orderRepository.cost_lines.upsert({
       where: {
         line_id_cost_segment_source_id: {
           line_id: item.lineId,
@@ -570,7 +571,7 @@ export async function updateCostLine(
   params: { actualCost: number; remark?: string },
   actor: { id: bigint; name: string },
 ) {
-  const existing = await prisma.cost_lines.findUnique({
+  const existing = await repositories.orderRepository.cost_lines.findUnique({
     where: { id: costLineId },
     select: { id: true, line_id: true, preset_unit_cost: true, cost_qty: true, freight: true },
   });
@@ -584,7 +585,7 @@ export async function updateCostLine(
   const costAmount = calcCostLine(params.actualCost, freight, costQty);
   const now = new Date();
 
-  const updated = await prisma.cost_lines.update({
+  const updated = await repositories.orderRepository.cost_lines.update({
     where: { id: costLineId },
     data: {
       actual_cost: params.actualCost,
@@ -597,7 +598,7 @@ export async function updateCostLine(
   });
 
   // 查 document_id 用于广播
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: existing.line_id },
     select: { documentId: true },
   });
@@ -641,19 +642,19 @@ export async function updateCostLine(
  * - 返回 { costTotal, grossProfit, profitRate }
  */
 export async function calcDocumentCost(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, total_amount: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const lineIds = await prisma.document_lines.findMany({
+  const lineIds = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     select: { id: true },
   });
 
   const costLines = lineIds.length > 0
-    ? await prisma.cost_lines.findMany({
+    ? await repositories.orderRepository.cost_lines.findMany({
         where: { line_id: { in: lineIds.map((l) => l.id) } },
         select: { cost_amount: true },
       })
@@ -664,7 +665,7 @@ export async function calcDocumentCost(documentId: bigint) {
   const grossProfit = round2(totalAmount - costTotal);
   const profitRate = totalAmount > 0 ? round2((grossProfit / totalAmount) * 100) : 0;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: {
       cost_total: costTotal,
@@ -695,14 +696,14 @@ export async function verifyCost(
   documentId: bigint,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, lock_version: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
   // 查所有 document_lines 是否都有分层 cost_lines（内部出库 / 外部刚需 / 外部超额）
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     select: {
       id: true,

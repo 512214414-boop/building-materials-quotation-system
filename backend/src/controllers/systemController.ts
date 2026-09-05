@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { ok, fail } from '../utils/response.js';
@@ -41,7 +42,7 @@ function mapRole(r: {
 }
 
 export async function listRolesHandler(_req: Request, res: Response) {
-  const roles = await prisma.roles.findMany({ orderBy: [{ is_system: 'desc' }, { id: 'asc' }] });
+  const roles = await repositories.identityRepository.roles.findMany({ orderBy: [{ is_system: 'desc' }, { id: 'asc' }] });
   return ok(res, roles.map(mapRole));
 }
 
@@ -70,7 +71,7 @@ export async function createRoleHandler(req: Request, res: Response) {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
 
-  const exists = await prisma.roles.findUnique({ where: { code: parsed.data.code } });
+  const exists = await repositories.identityRepository.roles.findUnique({ where: { code: parsed.data.code } });
   if (exists) return fail(res, 409, 40901, '角色编码已存在');
 
   const view_permissions: ViewPermissions = { ...emptyPermissions() };
@@ -81,7 +82,7 @@ export async function createRoleHandler(req: Request, res: Response) {
     }
   }
 
-  const created = await prisma.roles.create({
+  const created = await repositories.identityRepository.roles.create({
     data: {
       code: parsed.data.code,
       name: parsed.data.name,
@@ -104,10 +105,10 @@ export async function updateRoleHandler(req: Request, res: Response) {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
 
-  const role = await prisma.roles.findUnique({ where: { code } });
+  const role = await repositories.identityRepository.roles.findUnique({ where: { code } });
   if (!role) return fail(res, 404, 40401, '角色不存在');
 
-  const updated = await prisma.roles.update({
+  const updated = await repositories.identityRepository.roles.update({
     where: { code },
     data: {
       ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
@@ -121,7 +122,7 @@ export async function updateRoleHandler(req: Request, res: Response) {
 /** 删除自定义角色（系统角色禁止；仍有用户绑定时禁止） */
 export async function deleteRoleHandler(req: Request, res: Response) {
   const code = req.params.code as string;
-  const role = await prisma.roles.findUnique({
+  const role = await repositories.identityRepository.roles.findUnique({
     where: { code },
     include: { _count: { select: { user_roles: true } } },
   });
@@ -131,7 +132,7 @@ export async function deleteRoleHandler(req: Request, res: Response) {
     return fail(res, 409, 40902, `仍有 ${role._count.user_roles} 个用户绑定该角色，请先解除`);
   }
 
-  await prisma.roles.delete({ where: { code } });
+  await repositories.identityRepository.roles.delete({ where: { code } });
   await req.audit?.('role_delete', 'roles', BigInt(role.id), { code });
   return ok(res, { code });
 }
@@ -144,7 +145,7 @@ export async function updateRolePermissionsHandler(req: Request, res: Response) 
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return fail(res, 422, 42201, '参数错误', parsed.error.issues);
 
-  const role = await prisma.roles.findUnique({ where: { code } });
+  const role = await repositories.identityRepository.roles.findUnique({ where: { code } });
   if (!role) return fail(res, 404, 40401, '角色不存在');
 
   const next: ViewPermissions = {};
@@ -153,7 +154,7 @@ export async function updateRolePermissionsHandler(req: Request, res: Response) 
     next[vc] = (raw as ViewPermission | undefined) ?? 'none';
   }
 
-  const updated = await prisma.roles.update({
+  const updated = await repositories.identityRepository.roles.update({
     where: { code },
     data: { view_permissions: next },
   });
@@ -173,13 +174,13 @@ export async function listFieldChangeLogsHandler(req: Request, res: Response) {
 
 export async function dashboardHandler(_req: Request, res: Response) {
   const [customers, products, suppliers, documents, demandPending, quoteConfirmed] = await Promise.all([
-    prisma.customers.count(),
+    repositories.customerRepository.customers.count(),
     // v7.1：product 表为产品主体（SPU），计数上架状态的产品
-    prisma.product.count({ where: { status: 1 } }),
-    prisma.supplier.count(),
-    prisma.documents.count(),
-    prisma.documents.count({ where: { status: 'demand_pending' } }),
-    prisma.documents.count({ where: { status: 'quote_confirmed' } }),
+    repositories.catalogRepository.product.count({ where: { status: 1 } }),
+    repositories.partnerRepository.supplier.count(),
+    repositories.documentRepository.documents.count(),
+    repositories.documentRepository.documents.count({ where: { status: 'demand_pending' } }),
+    repositories.documentRepository.documents.count({ where: { status: 'quote_confirmed' } }),
   ]);
   return ok(res, {
     customers,

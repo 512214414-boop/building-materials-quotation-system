@@ -24,6 +24,7 @@
  *
  * 设计原则：document_lines 是唯一事实源（含对外售价 + 完整快照字段）
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Prisma } from '@prisma/client';
 import { Errors } from '../utils/errors.js';
@@ -138,25 +139,25 @@ async function resolveLineSnapshotsBatch(lines: DocumentLineInput[]): Promise<Li
   // v14.0：spec 为 SKU 维度的锚点（specModel + productId），product/brand/unit 均按 id 直接查
   const [brands, units, products, specs] = await Promise.all([
     brandIds.size
-      ? prisma.brand.findMany({
+      ? repositories.catalogRepository.brand.findMany({
           where: { id: { in: Array.from(brandIds) } },
           select: { id: true, name: true },
         })
       : Promise.resolve([]),
     unitIds.size
-      ? prisma.unit.findMany({
+      ? repositories.catalogRepository.unit.findMany({
           where: { id: { in: Array.from(unitIds) } },
           select: { id: true, unitName: true },
         })
       : Promise.resolve([]),
     productIds.size
-      ? prisma.product.findMany({
+      ? repositories.catalogRepository.product.findMany({
           where: { id: { in: Array.from(productIds) } },
           select: { id: true, name: true, categoryId: true },
         })
       : Promise.resolve([]),
     specIds.size
-      ? prisma.spec.findMany({
+      ? repositories.catalogRepository.spec.findMany({
           where: { id: { in: Array.from(specIds) } },
           select: { id: true, specModel: true, productId: true },
         })
@@ -171,7 +172,7 @@ async function resolveLineSnapshotsBatch(lines: DocumentLineInput[]): Promise<Li
     if (!knownProductIds.has(s.productId)) fallbackProductIds.add(s.productId);
   }
   const fallbackProducts = fallbackProductIds.size
-    ? await prisma.product.findMany({
+    ? await repositories.catalogRepository.product.findMany({
         where: { id: { in: Array.from(fallbackProductIds) } },
         select: { id: true, name: true, categoryId: true },
       })
@@ -184,7 +185,7 @@ async function resolveLineSnapshotsBatch(lines: DocumentLineInput[]): Promise<Li
     if (p.categoryId && p.categoryId > 0) categoryIds.add(p.categoryId);
   }
   const categories = categoryIds.size
-    ? await prisma.category.findMany({
+    ? await repositories.catalogRepository.category.findMany({
         where: { id: { in: Array.from(categoryIds) } },
         select: { id: true, name: true },
       })
@@ -229,7 +230,7 @@ async function resolveLineSnapshotsBatch(lines: DocumentLineInput[]): Promise<Li
  * 若需产品档案当前状态作为参考，调用方通过 productId 单独查询。
  */
 export async function listLines(documentId: bigint) {
-  return prisma.document_lines.findMany({
+  return repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
   });
@@ -237,7 +238,7 @@ export async function listLines(documentId: bigint) {
 
 /** 计算单据下一个 seq（max(seq) + 1，从 1 开始） */
 async function nextSeq(documentId: bigint): Promise<number> {
-  const last = await prisma.document_lines.findFirst({
+  const last = await repositories.documentRepository.document_lines.findFirst({
     where: { documentId },
     orderBy: { seq: 'desc' },
     select: { seq: true },
@@ -246,7 +247,7 @@ async function nextSeq(documentId: bigint): Promise<number> {
 }
 
 export async function addLine(documentId: bigint, input: DocumentLineInput) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, purchase_quote_status: true, sales_archive_status: true },
   });
@@ -326,10 +327,10 @@ export async function updateLine(
   input: Partial<DocumentLineInput>,
   lineVersion?: number,
 ) {
-  const existing = await prisma.document_lines.findUnique({ where: { id: lineId } });
+  const existing = await repositories.documentRepository.document_lines.findUnique({ where: { id: lineId } });
   if (!existing) throw Errors.notFound('单据行不存在');
 
-  const parent = await prisma.documents.findUnique({
+  const parent = await repositories.documentRepository.documents.findUnique({
     where: { id: existing.documentId },
     select: { status: true, sales_archive_status: true },
   });
@@ -410,7 +411,7 @@ export async function updateLine(
       update.specModel = input.spec !== undefined ? input.spec : snapshots.specModel;
       update.unitName = snapshots.unitName ?? (input.unit !== undefined ? input.unit : null);
     } else if (mergedInput.unitId) {
-      const unitRow = await prisma.unit.findUnique({
+      const unitRow = await repositories.catalogRepository.unit.findUnique({
         where: { id: mergedInput.unitId },
         select: { unitName: true },
       });
@@ -420,7 +421,7 @@ export async function updateLine(
     }
   }
 
-  const updated = await prisma.document_lines.update({
+  const updated = await repositories.documentRepository.document_lines.update({
     where: { id: lineId },
     data: update,
   });
@@ -430,10 +431,10 @@ export async function updateLine(
 }
 
 export async function removeLine(lineId: bigint, lineVersion?: number) {
-  const existing = await prisma.document_lines.findUnique({ where: { id: lineId } });
+  const existing = await repositories.documentRepository.document_lines.findUnique({ where: { id: lineId } });
   if (!existing) throw Errors.notFound('单据行不存在');
 
-  const parent = await prisma.documents.findUnique({
+  const parent = await repositories.documentRepository.documents.findUnique({
     where: { id: existing.documentId },
     select: { status: true, sales_archive_status: true },
   });
@@ -444,7 +445,7 @@ export async function removeLine(lineId: bigint, lineVersion?: number) {
     throw Errors.conflict('单据行已被其他操作修改，请刷新后重试', 40901);
   }
 
-  await prisma.document_lines.delete({ where: { id: lineId } });
+  await repositories.documentRepository.document_lines.delete({ where: { id: lineId } });
   await normalizeSeq(existing.documentId);
   await syncDocumentTotals(existing.documentId);
   broadcastLinesUpdated(existing.documentId);
@@ -453,7 +454,7 @@ export async function removeLine(lineId: bigint, lineVersion?: number) {
 
 /** 重新整理单据内所有行的 seq（按当前顺序从 1 重排） */
 async function normalizeSeq(documentId: bigint) {
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
     select: { id: true, seq: true },
@@ -461,7 +462,7 @@ async function normalizeSeq(documentId: bigint) {
   let seq = 1;
   for (const line of lines) {
     if (line.seq !== seq) {
-      await prisma.document_lines.update({ where: { id: line.id }, data: { seq } });
+      await repositories.documentRepository.document_lines.update({ where: { id: line.id }, data: { seq } });
     }
     seq++;
   }
@@ -469,14 +470,14 @@ async function normalizeSeq(documentId: bigint) {
 
 /** 重新整理单据内所有行的 seq（按当前顺序从 1 重排，保留行 ID，不破坏快照/跨视图引用） */
 export async function resequenceLines(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { status: true, sales_archive_status: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
   assertSalesLinesWritable(doc);
 
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     select: { id: true, productRef: true, productId: true },
   });
@@ -484,7 +485,7 @@ export async function resequenceLines(documentId: bigint) {
     .filter((l) => !l.productRef.trim() && l.productId == null)
     .map((l) => l.id);
   if (blankIds.length > 0) {
-    await prisma.document_lines.deleteMany({ where: { id: { in: blankIds } } });
+    await repositories.documentRepository.document_lines.deleteMany({ where: { id: { in: blankIds } } });
   }
   await normalizeSeq(documentId);
   broadcastLinesUpdated(documentId);
@@ -498,7 +499,7 @@ export async function resequenceLines(documentId: bigint) {
  * 避免循环中多次 DB 查询。
  */
 export async function replaceLines(documentId: bigint, lines: DocumentLineInput[]) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, sales_archive_status: true },
   });
@@ -509,8 +510,8 @@ export async function replaceLines(documentId: bigint, lines: DocumentLineInput[
   const snapshotsList = await resolveLineSnapshotsBatch(lines);
 
   await prisma.$transaction([
-    prisma.document_lines.deleteMany({ where: { documentId } }),
-    prisma.document_lines.createMany({
+    repositories.documentRepository.document_lines.deleteMany({ where: { documentId } }),
+    repositories.documentRepository.document_lines.createMany({
       data: lines.map((line, idx) => {
         const unitPrice = round2(line.unitPrice ?? 0);
         const lineDiscount = round2(line.lineDiscount ?? 0);

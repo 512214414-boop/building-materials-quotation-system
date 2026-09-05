@@ -10,6 +10,7 @@
  *
  * 设计原则：payment_records 是单据的标注表，不修改 document_lines
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { wsManager } from '../ws/index.js';
@@ -48,9 +49,9 @@ function broadcastPaymentUpdated(documentId: bigint) {
 // ============================================================
 
 export async function listByDocument(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
-  return prisma.payment_records.findMany({
+  return repositories.documentRepository.payment_records.findMany({
     where: { document_id: documentId },
     orderBy: [{ paid_at: 'asc' }, { created_at: 'asc' }],
   });
@@ -60,7 +61,7 @@ export async function listByDocument(documentId: bigint) {
  * 收款对账汇总：返回应收总额（documents.total_amount 优先，否则 Σ document_lines.amount）
  */
 export async function getPaymentSummary(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, total_amount: true },
   });
@@ -69,14 +70,14 @@ export async function getPaymentSummary(documentId: bigint) {
   // 应收：优先用单据冗余合计，否则从行汇总
   let payableAmount = Number(doc.total_amount);
   if (!payableAmount) {
-    const lines = await prisma.document_lines.findMany({
+    const lines = await repositories.documentRepository.document_lines.findMany({
       where: { documentId },
       select: { amount: true },
     });
     payableAmount = lines.reduce((sum, l) => sum + Number(l.amount), 0);
   }
 
-  const payments = await prisma.payment_records.findMany({
+  const payments = await repositories.documentRepository.payment_records.findMany({
     where: { document_id: documentId },
     select: { amount: true, reconcile_status: true, payment_type: true },
   });
@@ -108,10 +109,10 @@ export async function getPaymentSummary(documentId: bigint) {
 // ============================================================
 
 export async function addPayment(documentId: bigint, input: PaymentCreateInput, actor: { id: bigint; name: string }) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const created = await prisma.payment_records.create({
+  const created = await repositories.documentRepository.payment_records.create({
     data: {
       document_id: documentId,
       payment_type: input.paymentType,
@@ -128,7 +129,7 @@ export async function addPayment(documentId: bigint, input: PaymentCreateInput, 
 }
 
 export async function updatePayment(paymentId: bigint, input: PaymentUpdateInput) {
-  const existing = await prisma.payment_records.findUnique({
+  const existing = await repositories.documentRepository.payment_records.findUnique({
     where: { id: paymentId },
     select: { id: true, document_id: true },
   });
@@ -142,7 +143,7 @@ export async function updatePayment(paymentId: bigint, input: PaymentUpdateInput
   if (input.invoiceInfo !== undefined) update.invoice_info = input.invoiceInfo as object;
   if (input.reconcileStatus !== undefined) update.reconcile_status = input.reconcileStatus;
 
-  const updated = await prisma.payment_records.update({ where: { id: paymentId }, data: update });
+  const updated = await repositories.documentRepository.payment_records.update({ where: { id: paymentId }, data: update });
   broadcastPaymentUpdated(existing.document_id);
   return updated;
 }
@@ -155,7 +156,7 @@ export async function updatePayment(paymentId: bigint, input: PaymentUpdateInput
  * 任一写入失败则整体回滚，避免出现「收款已核销但单据状态未推进」的中间态。
  */
 export async function reconcilePayment(paymentId: bigint, status: reconcile_status) {
-  const existing = await prisma.payment_records.findUnique({
+  const existing = await repositories.documentRepository.payment_records.findUnique({
     where: { id: paymentId },
     select: { id: true, document_id: true, reconcile_status: true },
   });
@@ -166,7 +167,7 @@ export async function reconcilePayment(paymentId: bigint, status: reconcile_stat
 
   // 使用对象包装规避 TS 控制流分析在异步闭包内赋值后收窄为 null 的问题
   const ctx: {
-    updated: Awaited<ReturnType<typeof prisma.payment_records.update>> | undefined;
+    updated: Awaited<ReturnType<typeof repositories.documentRepository.payment_records.update>> | undefined;
     advanceResult: TransitionResult | null;
   } = {
     updated: undefined,
@@ -242,12 +243,12 @@ async function maybeAdvancePaymentSettled(
 }
 
 export async function removePayment(paymentId: bigint) {
-  const existing = await prisma.payment_records.findUnique({
+  const existing = await repositories.documentRepository.payment_records.findUnique({
     where: { id: paymentId },
     select: { id: true, document_id: true },
   });
   if (!existing) throw Errors.notFound('收款记录不存在');
-  await prisma.payment_records.delete({ where: { id: paymentId } });
+  await repositories.documentRepository.payment_records.delete({ where: { id: paymentId } });
   broadcastPaymentUpdated(existing.document_id);
   return { id: paymentId };
 }
@@ -263,7 +264,7 @@ const VIEW_LOCK_KEY = 'payment_reconcile';
  * 在 documents.view_locks JSON 中设置 payment_reconcile=true。
  */
 export async function lockView(documentId: bigint, actor: { id: bigint; name: string }) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { view_locks: true },
   });
@@ -272,7 +273,7 @@ export async function lockView(documentId: bigint, actor: { id: bigint; name: st
   const locks = (doc.view_locks ?? {}) as Record<string, boolean>;
   locks[VIEW_LOCK_KEY] = true;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { view_locks: locks },
   });
@@ -289,7 +290,7 @@ export async function lockView(documentId: bigint, actor: { id: bigint; name: st
  * 解锁收款对账视图。
  */
 export async function unlockView(documentId: bigint, actor: { id: bigint; name: string }) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { view_locks: true },
   });
@@ -298,7 +299,7 @@ export async function unlockView(documentId: bigint, actor: { id: bigint; name: 
   const locks = (doc.view_locks ?? {}) as Record<string, boolean>;
   locks[VIEW_LOCK_KEY] = false;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { view_locks: locks },
   });

@@ -1,4 +1,5 @@
 // v1.7.0 内部仓库档案服务（v20 拆表：区位 / 负责人联系信息）
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
@@ -96,8 +97,8 @@ export async function listWarehouses(query: Record<string, unknown>) {
   const where = buildWarehouseWhere(query, queryTrim(query.keyword));
 
   const [total, list] = await Promise.all([
-    prisma.warehouse.count({ where }),
-    prisma.warehouse.findMany({
+    repositories.warehouseRepository.warehouse.count({ where }),
+    repositories.warehouseRepository.warehouse.findMany({
       where,
       orderBy: [{ status: 'desc' }, { isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
       skip,
@@ -119,7 +120,7 @@ export async function listWarehouseFacets(query: Record<string, unknown>) {
   const haystack = queryTrim(query.q);
   const where = buildWarehouseWhere(query, haystack, 'name');
   if (!headerKw && !haystack) return [];
-  const rows = await prisma.warehouse.findMany({
+  const rows = await repositories.warehouseRepository.warehouse.findMany({
     where: headerKw ? { AND: [where, { name: { contains: headerKw } }] } : where,
     select: { id: true, name: true },
     orderBy: { name: 'asc' },
@@ -131,7 +132,7 @@ export async function listWarehouseFacets(query: Record<string, unknown>) {
 }
 
 export async function listEnabledWarehouses() {
-  const list = await prisma.warehouse.findMany({
+  const list = await repositories.warehouseRepository.warehouse.findMany({
     where: { status: 1 },
     orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
     include: warehouseInclude,
@@ -146,13 +147,13 @@ export async function getWarehouse(id: bigint) {
 }
 
 export async function getMainWarehouse() {
-  const main = await prisma.warehouse.findFirst({
+  const main = await repositories.warehouseRepository.warehouse.findFirst({
     where: { status: 1, isMain: true },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     include: warehouseInclude,
   });
   if (main) return formatWarehouseView(main);
-  const fallback = await prisma.warehouse.findFirst({
+  const fallback = await repositories.warehouseRepository.warehouse.findFirst({
     where: { status: 1 },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     include: warehouseInclude,
@@ -175,7 +176,7 @@ async function applyWarehouseExtras(id: bigint, data: Partial<CreateWarehouseInp
 export async function createWarehouse(data: CreateWarehouseInput) {
   const name = data.name.trim();
   if (!name) throw Errors.unprocessable('仓库名称不能为空');
-  const count = await prisma.warehouse.count();
+  const count = await repositories.warehouseRepository.warehouse.count();
   const isMain = data.isMain === true || count === 0;
   const created = await prisma.$transaction(async (tx) => {
     if (isMain) {
@@ -203,7 +204,7 @@ export async function createWarehouse(data: CreateWarehouseInput) {
 export async function quickAddWarehouse(name: string) {
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable('仓库名称不能为空');
-  const existing = await prisma.warehouse.findFirst({
+  const existing = await repositories.warehouseRepository.warehouse.findFirst({
     where: { name: trimmed },
     include: warehouseInclude,
   });
@@ -215,7 +216,7 @@ export async function updateWarehouse(
   id: bigint,
   data: Partial<CreateWarehouseInput> & { status?: number },
 ) {
-  const existing = await prisma.warehouse.findUnique({ where: { id } });
+  const existing = await repositories.warehouseRepository.warehouse.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('仓库不存在');
   const update: Prisma.warehouseUpdateInput = {};
   if (data.name !== undefined) {
@@ -236,14 +237,14 @@ export async function updateWarehouse(
       await tx.warehouse.update({ where: { id }, data: { ...update, isMain: true } });
     });
   } else if (data.isMain === false) {
-    const otherMain = await prisma.warehouse.findFirst({
+    const otherMain = await repositories.warehouseRepository.warehouse.findFirst({
       where: { isMain: true, id: { not: id }, status: 1 },
     });
     if (!otherMain) throw Errors.unprocessable('至少保留一个主自有库房，请先设置其他仓库为主仓');
     update.isMain = false;
-    await prisma.warehouse.update({ where: { id }, data: update });
+    await repositories.warehouseRepository.warehouse.update({ where: { id }, data: update });
   } else if (Object.keys(update).length > 0) {
-    await prisma.warehouse.update({ where: { id }, data: update });
+    await repositories.warehouseRepository.warehouse.update({ where: { id }, data: update });
   }
 
   await applyWarehouseExtras(id, data);
@@ -253,16 +254,16 @@ export async function updateWarehouse(
 }
 
 export async function setWarehouseStatus(id: bigint, status: number) {
-  const existing = await prisma.warehouse.findUnique({ where: { id } });
+  const existing = await repositories.warehouseRepository.warehouse.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('仓库不存在');
   if (status !== 0 && status !== 1) throw Errors.unprocessable('状态值必须为 0 或 1');
   if (status === 0 && existing.isMain) {
-    const otherMain = await prisma.warehouse.findFirst({
+    const otherMain = await repositories.warehouseRepository.warehouse.findFirst({
       where: { isMain: true, id: { not: id }, status: 1 },
     });
     if (!otherMain) throw Errors.unprocessable('主自有库房不能停用，请先设置其他仓库为主仓');
   }
-  await prisma.warehouse.update({ where: { id }, data: { status } });
+  await repositories.warehouseRepository.warehouse.update({ where: { id }, data: { status } });
   const record = await loadWarehouseWithRelations(id);
   if (!record) throw Errors.notFound('仓库不存在');
   return formatWarehouseView(record);
@@ -279,12 +280,12 @@ export async function batchSetWarehouseStatus(ids: bigint[], status: number) {
 }
 
 export async function getWarehouseRefCounts(id: bigint) {
-  const existing = await prisma.warehouse.findUnique({ where: { id }, select: { id: true } });
+  const existing = await repositories.warehouseRepository.warehouse.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw Errors.notFound('仓库不存在');
 
   const [inventoryCount, allocationCount] = await Promise.all([
-    prisma.inventory.count({ where: { warehouse_id: id } }),
-    prisma.allocation_lines.count({ where: { source_id: id } }),
+    repositories.inventoryRepository.inventory.count({ where: { warehouse_id: id } }),
+    repositories.documentRepository.allocation_lines.count({ where: { source_id: id } }),
   ]);
 
   return {
@@ -296,18 +297,18 @@ export async function getWarehouseRefCounts(id: bigint) {
 }
 
 export async function deleteWarehouse(id: bigint) {
-  const existing = await prisma.warehouse.findUnique({ where: { id } });
+  const existing = await repositories.warehouseRepository.warehouse.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('仓库不存在');
   if (existing.isMain) {
-    const otherMain = await prisma.warehouse.findFirst({
+    const otherMain = await repositories.warehouseRepository.warehouse.findFirst({
       where: { isMain: true, id: { not: id } },
     });
     if (!otherMain) throw Errors.unprocessable('主自有库房不能删除，请先设置其他仓库为主仓');
   }
 
   const [inventoryCount, allocationCount] = await Promise.all([
-    prisma.inventory.count({ where: { warehouse_id: id } }),
-    prisma.allocation_lines.count({ where: { source_id: id } }),
+    repositories.inventoryRepository.inventory.count({ where: { warehouse_id: id } }),
+    repositories.documentRepository.allocation_lines.count({ where: { source_id: id } }),
   ]);
 
   await prisma.$transaction(async (tx) => {

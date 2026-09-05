@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -21,6 +22,8 @@ import {
   entryFieldMatches,
   uniqueSearchNeedles,
   skuMatchesProductQuery,
+  groupSkuRowsToProducts,
+  type ProductGroupRow,
 } from '../search-scoring.js';
 import {
   ensureGlobalUnit,
@@ -260,7 +263,7 @@ async function recallSkuRowsBySupplier(
 }> {
   const needles = uniqueSearchNeedles(keyword);
   if (needles.length === 0) return { hits: [], channelNames: [] };
-  const suppliers = await prisma.supplier.findMany({
+  const suppliers = await repositories.partnerRepository.supplier.findMany({
     where: { status: 1, OR: needles.map((n) => ({ name: { contains: n } })) },
     select: { id: true, name: true },
     take: 80,
@@ -272,7 +275,7 @@ async function recallSkuRowsBySupplier(
   if (suppliers.length > 0) {
     priceOr.push({ supplierId: { in: suppliers.map((s) => s.id) } });
   }
-  const prices = await prisma.purchase_price.findMany({
+  const prices = await repositories.pricingRepository.purchase_price.findMany({
     where: { status: 1, OR: priceOr },
     select: { specId: true, supplierId: true, supplierName: true },
     take: recallLimit,
@@ -345,7 +348,7 @@ async function recallSkuRowsByChannel(
   const categoryIds = [...new Set(productRows.map((r) => Number(r.categoryId)))];
   const rowBySpec = new Map(productRows.map((r) => [String(r.specId), r]));
 
-  const specPrices = await prisma.purchase_price.findMany({
+  const specPrices = await repositories.pricingRepository.purchase_price.findMany({
     where: { status: 1, specId: { in: specIds } },
     select: { specId: true, supplierId: true, supplierName: true },
     take: recallLimit,
@@ -364,7 +367,7 @@ async function recallSkuRowsByChannel(
   }
   if (scopeOr.length === 0) return out;
 
-  const scopedSuppliers = await prisma.supplier.findMany({
+  const scopedSuppliers = await repositories.partnerRepository.supplier.findMany({
     where: { status: 1, OR: scopeOr },
     select: {
       id: true,
@@ -908,6 +911,102 @@ export async function searchProducts(
 }
 
 // ============================================================
+// §9.1 产品级分组搜索（searchProductsGrouped）——档案统一化 Phase 2
+// 生产级：SKU 量级几百万~上千万，前端不可全量聚合。复用 searchProducts 的索引召回
+// （候选集 LIMIT 500，FULLTEXT + 范式表），在服务端 GROUP BY productId 落产品级一行。
+// 纯聚合函数 groupSkuRowsToProducts 见 ../search-scoring.js（无 DB 依赖，可单测）。
+// 这是通用 displayLevel='parent' 的「分组」模式后端（任何复合体实体可复用此模式）。
+// ============================================================
+
+/** 产品级分组搜索：拉满索引召回候选集（≤500），服务端 GROUP BY productId，再做产品级分页。 */
+export async function searchProductsGrouped(
+  params: {
+    keyword?: string;
+    categoryId?: number;
+    brandId?: string;
+    brandName?: string;
+    productId?: string;
+    productName?: string;
+    specModel?: string;
+    specExact?: boolean;
+    status?: number;
+    page?: number;
+    size?: number;
+    entryView?: string;
+  },
+): Promise<SearchProductResult> {
+  const page = Math.max(1, params.page ?? 1);
+  const size = Math.min(50, Math.max(1, params.size ?? 20));
+  // 拉满索引召回候选集（不前端聚合）；候选集上限由 searchProducts 内部 RECALL_LIMIT 控制
+  const pulled = await searchProducts({ ...params, page: 1, size: 500 });
+  const skuRows = pulled.list.filter((r): r is SkuSearchRow => r.type === 'sku');
+  const products = groupSkuRowsToProducts(skuRows);
+  const total = products.length;
+  const skip = (page - 1) * size;
+  const paged = products.slice(skip, skip + size);
+  // 产品聚合图片（读时计算，与 buildSkuRows 同范式）：当页产品的全部规格图，按「规格组」附到行上。
+  // 两级约定：行内轮播切规格（显示各规格默认图）；预览翻当前规格内的图。组顺序 = 召回序，组内 = isMain → sortOrder。
+  const pagedSpecIds = [
+    ...new Set(
+      skuRows
+        .filter((r) => paged.some((p) => String(p.productId) === String(r.productId)))
+        .map((r) => BigInt(r.specId)),
+    ),
+  ];
+  let specImagesByProduct = new Map<
+    string,
+    { specId: string; specModel: string; images: { url: string; thumbUrl: string | null }[] }[]
+  >();
+  if (pagedSpecIds.length > 0) {
+    const imgs = await repositories.catalogRepository.product_image.findMany({
+      where: { specId: { in: pagedSpecIds } },
+      orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
+      select: { specId: true, imageUrl: true, thumbnailUrl: true },
+    });
+    const specMeta = new Map(skuRows.map((r) => [String(r.specId), r]));
+    // 组内图已按 isMain/sortOrder 排好，按 specId 分桶（保持 DB 序）
+    const imgsBySpec = new Map<string, typeof imgs>();
+    for (const img of imgs) {
+      const k = String(img.specId);
+      const bucket = imgsBySpec.get(k);
+      if (bucket) bucket.push(img);
+      else imgsBySpec.set(k, [img]);
+    }
+    // 规格组顺序 = 召回序（与首行代表图的来源一致）
+    const specOrder: string[] = [];
+    for (const r of skuRows) {
+      const k = String(r.specId);
+      if (!specOrder.includes(k)) specOrder.push(k);
+    }
+    for (const k of specOrder) {
+      const meta = specMeta.get(k);
+      const specImgs = imgsBySpec.get(k);
+      if (!meta || !specImgs || specImgs.length === 0) continue;
+      const pid = String(meta.productId);
+      const list = specImagesByProduct.get(pid) ?? [];
+      list.push({
+        specId: k,
+        specModel: meta.specModel,
+        images: specImgs.map((img) => ({
+          url: img.imageUrl,
+          thumbUrl: img.thumbnailUrl || img.imageUrl.replace(/_orig\.webp$/, '_thumb.webp'),
+        })),
+      });
+      specImagesByProduct.set(pid, list);
+    }
+  }
+  return {
+    list: paged.map((p) => ({
+      ...p,
+      specImages: specImagesByProduct.get(String(p.productId)) ?? [],
+    })),
+    total,
+    page,
+    size,
+  };
+}
+
+// ============================================================
 // §10 SKU 选项（getSkuOptions）
 // v14.0：按 specBrandId（规格×品牌）返回该规格下所有单位及其全部售价/进价 + 换算率
 // 用于列表下拉切换（单位/售价/进价）
@@ -971,7 +1070,7 @@ export interface SkuOptionUnit {
 export async function getSkuOptions(
   specBrandId: bigint,
 ): Promise<{ units: SkuOptionUnit[]; conversions: SkuOptionConversion[] }> {
-  const specRow = await prisma.spec.findUnique({
+  const specRow = await repositories.catalogRepository.spec.findUnique({
     where: { id: specBrandId },
     include: { brand: true, product: { include: { category: true } } },
   });
@@ -980,7 +1079,7 @@ export async function getSkuOptions(
   const brandName = specRow.brand.name;
   const categoryName = specRow.product.category?.name ?? '未分类';
 
-  const specUnits = await prisma.spec_unit.findMany({
+  const specUnits = await repositories.catalogRepository.spec_unit.findMany({
     where: { specId: specBrandId, unit: { status: 1 } },
     orderBy: [{ isBase: 'desc' }, { id: 'asc' }],
     include: {
@@ -1002,7 +1101,7 @@ export async function getSkuOptions(
     },
   });
 
-  const conversions = await prisma.brand_unit_conversion.findMany({
+  const conversions = await repositories.catalogRepository.brand_unit_conversion.findMany({
     where: { specId: specBrandId },
     orderBy: [{ unitId: 'asc' }],
   });
@@ -1219,7 +1318,7 @@ export async function suggest(
       //   编辑模式下通过 options.productId 排除当前产品，避免显示自己为"已存在"
       const where: Prisma.productWhereInput = { name: { contains: kw } };
       if (options?.productId) where.id = { not: options.productId };
-      const list = await prisma.product.findMany({
+      const list = await repositories.catalogRepository.product.findMany({
         where,
         take: 10,
         orderBy: [{ updatedAt: 'desc' }],
@@ -1237,7 +1336,7 @@ export async function suggest(
     }
     case 'brand': {
       // v14.0：品牌全局档案检索（name 全局唯一），用户可看到所有用过的品牌名
-      const list = await prisma.brand.findMany({
+      const list = await repositories.catalogRepository.brand.findMany({
         where: { name: { contains: kw } },
         take: 10,
         orderBy: [{ name: 'asc' }],
@@ -1253,7 +1352,7 @@ export async function suggest(
       //   用户希望看到其他产品用过的规格型号（不同产品规格可能一致，可复用）
       const where: Prisma.specWhereInput = { specModel: { contains: kw } };
       if (options?.productId) where.productId = { not: options.productId };
-      const list = await prisma.spec.findMany({
+      const list = await repositories.catalogRepository.spec.findMany({
         where,
         take: 20,
         orderBy: [{ specModel: 'asc' }],
@@ -1275,7 +1374,7 @@ export async function suggest(
     case 'unit': {
       // v9.5：单位全局检索（不限于当前 SPU），用户可看到所有 SPU 用过的单位名
       //   options.productId 不再作为"仅查当前 SPU"过滤（原语义误解）
-      const list = await prisma.unit.findMany({
+      const list = await repositories.catalogRepository.unit.findMany({
         where: { unitName: { contains: kw } },
         take: 10,
         orderBy: [{ unitName: 'asc' }],
@@ -1291,7 +1390,7 @@ export async function suggest(
       //   仅提供检索辅助（用户历史输入过的备注去重列表），不提供快速新建
       const where: Prisma.productWhereInput = { remark: { contains: kw } };
       if (options?.productId) where.id = { not: options.productId };
-      const list = await prisma.product.findMany({
+      const list = await repositories.catalogRepository.product.findMany({
         where,
         take: 20,
         orderBy: [{ updatedAt: 'desc' }],
@@ -1313,7 +1412,7 @@ export async function suggest(
       break;
     }
     case 'category': {
-      const list = await prisma.category.findMany({
+      const list = await repositories.catalogRepository.category.findMany({
         where: { name: { contains: kw } },
         take: 10,
         orderBy: [{ name: 'asc' }],
@@ -1325,7 +1424,7 @@ export async function suggest(
       break;
     }
     case 'priceType': {
-      const list = await prisma.price_type.findMany({
+      const list = await repositories.pricingRepository.price_type.findMany({
         where: { name: { contains: kw }, status: 1 },
         take: 10,
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -1338,7 +1437,7 @@ export async function suggest(
     }
     case 'supplier': {
       // 名称 + 联系电话（尾号也中）。子表切档走 /suppliers/search?entryView=
-      const list = await prisma.supplier.findMany({
+      const list = await repositories.partnerRepository.supplier.findMany({
         where: {
           status: 1,
           OR: [
@@ -1371,7 +1470,7 @@ export async function suggest(
     }
     case 'contactMethod': {
       // v1.7.1.5：从 contact_method 字典表检索（联系方式方式，可自由维护）
-      const list = await prisma.contact_method.findMany({
+      const list = await repositories.customerRepository.contact_method.findMany({
         where: { name: { contains: kw }, status: 1 },
         take: 10,
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],

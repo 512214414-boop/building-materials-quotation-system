@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { parsePagination } from '../utils/validation.js';
 import { paginate } from '../utils/response.js';
@@ -17,8 +18,8 @@ export async function listAuditLogs(query: Record<string, unknown>) {
   if (query.to) where.created_at = { ...(where.created_at as object), lte: new Date(query.to as string) };
 
   const [total, list] = await Promise.all([
-    prisma.audit_logs.count({ where }),
-    prisma.audit_logs.findMany({
+    repositories.auditRepository.audit_logs.count({ where }),
+    repositories.auditRepository.audit_logs.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -36,8 +37,8 @@ export async function listFieldChangeLogs(query: Record<string, unknown>) {
   if (query.recordId) where.record_id = BigInt(query.recordId as string);
 
   const [total, list] = await Promise.all([
-    prisma.field_change_logs.count({ where }),
-    prisma.field_change_logs.findMany({ where, orderBy: { changed_at: 'desc' }, skip, take }),
+    repositories.auditRepository.field_change_logs.count({ where }),
+    repositories.auditRepository.field_change_logs.findMany({ where, orderBy: { changed_at: 'desc' }, skip, take }),
   ]);
   return paginate(list, total, page, pageSize);
 }

@@ -22,6 +22,7 @@
  *  - 退换独立：退换发生时同时写 refund_lines（待处理）+ archived_refunds（月度统计归月）
  *  - 强继承：refund_lines.original_qty/original_price 强制继承自 document_lines
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { wsManager } from '../ws/index.js';
@@ -76,7 +77,7 @@ export async function archiveSales(
   actor: Actor,
   remark?: string,
 ): Promise<{ archivedOrderId: bigint; lineCount: number }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: {
       id: true,
@@ -113,7 +114,7 @@ export async function archiveSales(
     throw Errors.unprocessable('购销报价未确认，无法销售定档', 42201);
   }
 
-  const docLines = await prisma.document_lines.findMany({
+  const docLines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     orderBy: { seq: 'asc' },
   });
@@ -122,7 +123,7 @@ export async function archiveSales(
   }
 
   // 校验存在 reconciled 的 payment_records
-  const reconciledPayments = await prisma.payment_records.count({
+  const reconciledPayments = await repositories.documentRepository.payment_records.count({
     where: { document_id: documentId, reconcile_status: 'reconciled' },
   });
   if (reconciledPayments === 0) {
@@ -130,7 +131,7 @@ export async function archiveSales(
   }
 
   // 校验存在 signed 的 delivery_records
-  const signedDeliveries = await prisma.delivery_records.count({
+  const signedDeliveries = await repositories.orderRepository.delivery_records.count({
     where: { document_id: documentId, status: 'signed' },
   });
   if (signedDeliveries === 0) {
@@ -140,7 +141,7 @@ export async function archiveSales(
   const now = new Date();
 
   const [archivedOrder] = await prisma.$transaction([
-    prisma.archived_orders.create({
+    repositories.orderRepository.archived_orders.create({
       data: {
         original_document_id: documentId,
         document_no: doc.document_no,
@@ -188,7 +189,7 @@ export async function archiveSales(
         },
       },
     }),
-    prisma.documents.update({
+    repositories.documentRepository.documents.update({
       where: { id: documentId },
       data: {
         sales_archive_status: 'archived',
@@ -220,7 +221,7 @@ export async function unarchiveSales(
   actor: Actor,
   remark?: string,
 ): Promise<{ revokedOrderId: bigint }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, sales_archive_status: true },
   });
@@ -234,7 +235,7 @@ export async function unarchiveSales(
     );
   }
 
-  const latestArchived = await prisma.archived_orders.findFirst({
+  const latestArchived = await repositories.orderRepository.archived_orders.findFirst({
     where: { original_document_id: documentId, archive_status: 'archived' },
     orderBy: { archived_at: 'desc' },
     select: { id: true },
@@ -245,7 +246,7 @@ export async function unarchiveSales(
 
   const now = new Date();
   await prisma.$transaction([
-    prisma.archived_orders.update({
+    repositories.orderRepository.archived_orders.update({
       where: { id: latestArchived.id },
       data: {
         archive_status: 'revoked',
@@ -253,7 +254,7 @@ export async function unarchiveSales(
         ...(remark !== undefined ? { archive_remark: remark } : {}),
       },
     }),
-    prisma.documents.update({
+    repositories.documentRepository.documents.update({
       where: { id: documentId },
       data: { sales_archive_status: 'working' },
     }),
@@ -286,7 +287,7 @@ export async function archiveLogistics(
   actor: Actor,
   remark?: string,
 ): Promise<{ archivedLogisticsId: bigint }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, document_no: true, logistics_archive_status: true },
   });
@@ -301,7 +302,7 @@ export async function archiveLogistics(
   }
 
   // 汇总 allocation_lines（V4+V5 合并后统一表）
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId },
     include: {
       allocation_lines: {
@@ -350,7 +351,7 @@ export async function archiveLogistics(
 
   const now = new Date();
   const [archivedLogistics] = await prisma.$transaction([
-    prisma.archived_logistics.create({
+    repositories.orderRepository.archived_logistics.create({
       data: {
         original_document_id: documentId,
         document_no: doc.document_no,
@@ -363,7 +364,7 @@ export async function archiveLogistics(
         archive_remark: remark ?? null,
       },
     }),
-    prisma.documents.update({
+    repositories.documentRepository.documents.update({
       where: { id: documentId },
       data: {
         logistics_archive_status: 'archived',
@@ -394,7 +395,7 @@ export async function unarchiveLogistics(
   actor: Actor,
   remark?: string,
 ): Promise<{ revokedLogisticsId: bigint }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, logistics_archive_status: true },
   });
@@ -408,7 +409,7 @@ export async function unarchiveLogistics(
     );
   }
 
-  const latestArchived = await prisma.archived_logistics.findFirst({
+  const latestArchived = await repositories.orderRepository.archived_logistics.findFirst({
     where: { original_document_id: documentId, archive_status: 'archived' },
     orderBy: { archived_at: 'desc' },
     select: { id: true },
@@ -419,7 +420,7 @@ export async function unarchiveLogistics(
 
   const now = new Date();
   await prisma.$transaction([
-    prisma.archived_logistics.update({
+    repositories.orderRepository.archived_logistics.update({
       where: { id: latestArchived.id },
       data: {
         archive_status: 'revoked',
@@ -427,7 +428,7 @@ export async function unarchiveLogistics(
         ...(remark !== undefined ? { archive_remark: remark } : {}),
       },
     }),
-    prisma.documents.update({
+    repositories.documentRepository.documents.update({
       where: { id: documentId },
       data: { logistics_archive_status: 'working' },
     }),
@@ -462,7 +463,7 @@ export async function archiveCosts(
   actor: Actor,
   remark?: string,
 ): Promise<{ archivedCostId: bigint; costTotal: number; grossProfit: number; profitRate: number }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: {
       id: true,
@@ -484,13 +485,13 @@ export async function archiveCosts(
   }
 
   // 校验 cost_lines 存在且 verified_at 不为空
-  const totalCostLines = await prisma.cost_lines.count({
+  const totalCostLines = await repositories.orderRepository.cost_lines.count({
     where: { document_line: { documentId } },
   });
   if (totalCostLines === 0) {
     throw Errors.unprocessable('单据无成本行，无法定档', 42201);
   }
-  const unverifiedCostLines = await prisma.cost_lines.count({
+  const unverifiedCostLines = await repositories.orderRepository.cost_lines.count({
     where: { document_line: { documentId }, verified_at: null },
   });
   if (unverifiedCostLines > 0) {
@@ -502,7 +503,7 @@ export async function archiveCosts(
   }
 
   // 汇总 freight_total
-  const freightAgg = await prisma.cost_lines.aggregate({
+  const freightAgg = await repositories.orderRepository.cost_lines.aggregate({
     where: { document_line: { documentId } },
     _sum: { freight: true },
   });
@@ -515,7 +516,7 @@ export async function archiveCosts(
 
   const now = new Date();
   const [archivedCost] = await prisma.$transaction([
-    prisma.archived_costs.create({
+    repositories.orderRepository.archived_costs.create({
       data: {
         original_document_id: documentId,
         document_no: doc.document_no,
@@ -529,7 +530,7 @@ export async function archiveCosts(
         archive_remark: remark ?? null,
       },
     }),
-    prisma.documents.update({
+    repositories.documentRepository.documents.update({
       where: { id: documentId },
       data: {
         cost_archive_status: 'archived',
@@ -565,7 +566,7 @@ export async function unarchiveCosts(
   actor: Actor,
   remark?: string,
 ): Promise<{ revokedCostId: bigint }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, cost_archive_status: true },
   });
@@ -579,7 +580,7 @@ export async function unarchiveCosts(
     );
   }
 
-  const latestArchived = await prisma.archived_costs.findFirst({
+  const latestArchived = await repositories.orderRepository.archived_costs.findFirst({
     where: { original_document_id: documentId, archive_status: 'archived' },
     orderBy: { archived_at: 'desc' },
     select: { id: true },
@@ -590,7 +591,7 @@ export async function unarchiveCosts(
 
   const now = new Date();
   await prisma.$transaction([
-    prisma.archived_costs.update({
+    repositories.orderRepository.archived_costs.update({
       where: { id: latestArchived.id },
       data: {
         archive_status: 'revoked',
@@ -598,7 +599,7 @@ export async function unarchiveCosts(
         ...(remark !== undefined ? { archive_remark: remark } : {}),
       },
     }),
-    prisma.documents.update({
+    repositories.documentRepository.documents.update({
       where: { id: documentId },
       data: { cost_archive_status: 'working' },
     }),
@@ -636,14 +637,14 @@ export async function recordRefund(
   refundData: RefundData,
   actor: Actor,
 ): Promise<{ refundLineId: bigint; archivedRefundId: bigint; refundAmount: number }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, document_no: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
   // 校验 lineId 属于 documentId，并强继承 original_qty / original_price
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: lineId },
     select: {
       id: true,
@@ -661,7 +662,7 @@ export async function recordRefund(
   const originalPrice = Number(docLine.unitPrice);
 
   // 超退校验
-  const existingRefunds = await prisma.refund_lines.findMany({
+  const existingRefunds = await repositories.orderRepository.refund_lines.findMany({
     where: { line_id: lineId },
     select: { refund_qty: true },
   });
@@ -679,7 +680,7 @@ export async function recordRefund(
 
   // 创建 refund_lines + archived_refunds
   const [refundLine, archivedRefund] = await prisma.$transaction([
-    prisma.refund_lines.create({
+    repositories.orderRepository.refund_lines.create({
       data: {
         line_id: lineId,
         refund_type: refundData.refundType,
@@ -694,7 +695,7 @@ export async function recordRefund(
         creatorName: actor.name,
       },
     }),
-    prisma.archived_refunds.create({
+    repositories.orderRepository.archived_refunds.create({
       data: {
         original_document_id: documentId,
         document_no: doc.document_no,
@@ -713,7 +714,7 @@ export async function recordRefund(
   ]);
 
   // 若原 archived_orders 已定档，同步更新对应的 archived_order_lines
-  const latestArchivedOrder = await prisma.archived_orders.findFirst({
+  const latestArchivedOrder = await repositories.orderRepository.archived_orders.findFirst({
     where: { original_document_id: documentId, archive_status: 'archived' },
     orderBy: { archived_at: 'desc' },
     select: { id: true },
@@ -721,7 +722,7 @@ export async function recordRefund(
 
   if (latestArchivedOrder) {
     // 通过 seq 匹配 archived_order_lines（document_lines.seq 与 archived_order_lines.seq 一致）
-    const archivedOrderLine = await prisma.archived_order_lines.findFirst({
+    const archivedOrderLine = await repositories.orderRepository.archived_order_lines.findFirst({
       where: {
         archived_order_id: latestArchivedOrder.id,
         seq: docLine.seq,
@@ -731,7 +732,7 @@ export async function recordRefund(
 
     if (archivedOrderLine) {
       // 重新汇总该 line_id 的所有 refund_qty，保证冗余字段与事实一致
-      const allRefunds = await prisma.refund_lines.aggregate({
+      const allRefunds = await repositories.orderRepository.refund_lines.aggregate({
         where: { line_id: lineId },
         _sum: { refund_qty: true },
       });
@@ -742,7 +743,7 @@ export async function recordRefund(
       const finalQty = round2(origQty - totalRefundQty);
       const finalAmount = round2(finalQty * unitPrice - lineDiscount);
 
-      await prisma.archived_order_lines.update({
+      await repositories.orderRepository.archived_order_lines.update({
         where: { id: archivedOrderLine.id },
         data: {
           refund_qty: totalRefundQty,
@@ -780,7 +781,7 @@ export async function recordRefund(
  * 查询单据的分阶段定档状态。
  */
 export async function getArchiveStatus(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: {
       sales_archive_status: true,
@@ -816,13 +817,13 @@ export async function confirmSummary(
   documentId: bigint,
   actor: Actor,
 ): Promise<{ confirmed: boolean }> {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { summary_confirmed: true },
   });

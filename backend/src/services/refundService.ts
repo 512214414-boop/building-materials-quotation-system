@@ -11,6 +11,7 @@
  *  - 防超退：SUM(refund_lines.refund_qty WHERE line_id) ≤ document_lines.qty
  *  - 强制继承：refund_amount = refund_qty * document_lines.unit_price（不接受前端传入金额）
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { wsManager } from '../ws/index.js';
@@ -53,10 +54,10 @@ function broadcastRefundChanged(documentId: bigint) {
  * 查询单据的所有退换售后行。
  */
 export async function listByDocument(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const refundLines = await prisma.refund_lines.findMany({
+  const refundLines = await repositories.orderRepository.refund_lines.findMany({
     where: { document_line: { documentId } },
     orderBy: { created_at: 'asc' },
     include: {
@@ -90,7 +91,7 @@ export async function listByDocument(documentId: bigint) {
 
   // 查所有相关 document_lines 的已退换总量，用于展示剩余可退换量
   const lineIds = refundLines.map((r) => r.line_id);
-  const allRefundSums = await prisma.refund_lines.groupBy({
+  const allRefundSums = await repositories.orderRepository.refund_lines.groupBy({
     by: ['line_id'],
     where: { line_id: { in: lineIds } },
     _sum: { refund_qty: true },
@@ -156,11 +157,11 @@ export async function addRefundLine(
   input: RefundLineCreateInput,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
   // 1. 校验 lineId 属于 documentId，并带出售价
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: input.lineId },
     select: {
       id: true,
@@ -178,7 +179,7 @@ export async function addRefundLine(
 
   // 2. 校验超退
   const qty = Number(docLine.qty);
-  const existingRefunds = await prisma.refund_lines.findMany({
+  const existingRefunds = await repositories.orderRepository.refund_lines.findMany({
     where: { line_id: input.lineId },
     select: { refund_qty: true },
   });
@@ -195,7 +196,7 @@ export async function addRefundLine(
   const refundAmount = round2(input.refundQty * unitPrice);
 
   // 强继承：original_qty = document_lines.qty，original_price = document_lines.unitPrice
-  const created = await prisma.refund_lines.create({
+  const created = await repositories.orderRepository.refund_lines.create({
     data: {
       line_id: input.lineId,
       refund_type: input.refundType,
@@ -234,7 +235,7 @@ export async function addRefundLine(
         remark: '售后退货回库',
       },
     );
-    await prisma.refund_lines.update({
+    await repositories.orderRepository.refund_lines.update({
       where: { id: created.id },
       data: { restock_warehouse_id: whId },
     });
@@ -276,7 +277,7 @@ export async function updateRefundLine(
   input: RefundLineUpdateInput,
   actor: { id: bigint; name: string },
 ) {
-  const existing = await prisma.refund_lines.findUnique({
+  const existing = await repositories.orderRepository.refund_lines.findUnique({
     where: { id: refundLineId },
     select: { id: true, line_id: true, refund_qty: true, reason: true },
   });
@@ -287,7 +288,7 @@ export async function updateRefundLine(
 
   // 若修改 refund_qty，需重新校验超退，并重算 refund_amount
   if (input.refundQty !== undefined && input.refundQty !== Number(existing.refund_qty)) {
-    const docLine = await prisma.document_lines.findUnique({
+    const docLine = await repositories.documentRepository.document_lines.findUnique({
       where: { id: existing.line_id },
       select: {
         id: true,
@@ -299,7 +300,7 @@ export async function updateRefundLine(
     if (!docLine) throw Errors.notFound('关联物料行不存在');
 
     const qty = Number(docLine.qty);
-    const otherRefunds = await prisma.refund_lines.findMany({
+    const otherRefunds = await repositories.orderRepository.refund_lines.findMany({
       where: { line_id: existing.line_id, id: { not: refundLineId } },
       select: { refund_qty: true },
     });
@@ -316,13 +317,13 @@ export async function updateRefundLine(
     data.refund_amount = round2(input.refundQty * unitPrice);
   }
 
-  const updated = await prisma.refund_lines.update({
+  const updated = await repositories.orderRepository.refund_lines.update({
     where: { id: refundLineId },
     data,
   });
 
   // 查 document_id 用于广播
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: existing.line_id },
     select: { documentId: true },
   });
@@ -356,7 +357,7 @@ export async function updateRefundLine(
  * 删除单条退换售后行。
  */
 export async function removeRefundLine(refundLineId: bigint, actor: { id: bigint; name: string }) {
-  const existing = await prisma.refund_lines.findUnique({
+  const existing = await repositories.orderRepository.refund_lines.findUnique({
     where: { id: refundLineId },
     select: {
       id: true,
@@ -368,7 +369,7 @@ export async function removeRefundLine(refundLineId: bigint, actor: { id: bigint
   });
   if (!existing) throw Errors.notFound('退换售后行不存在');
 
-  const docLine = await prisma.document_lines.findUnique({
+  const docLine = await repositories.documentRepository.document_lines.findUnique({
     where: { id: existing.line_id },
     select: { documentId: true, specId: true, brandId: true, unitId: true },
   });
@@ -397,7 +398,7 @@ export async function removeRefundLine(refundLineId: bigint, actor: { id: bigint
     );
   }
 
-  await prisma.refund_lines.delete({ where: { id: refundLineId } });
+  await repositories.orderRepository.refund_lines.delete({ where: { id: refundLineId } });
 
   if (docLine) {
     broadcastRefundChanged(docLine.documentId);
@@ -429,7 +430,7 @@ export async function searchSoldLines(keyword: string, documentIds: bigint[], en
   // entryView 决定精准匹配哪些字段（与产品检索 entryView 同构）
   const isLoose = entryView === 'loose';
 
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId: { in: ids } },
     select: {
       id: true,
@@ -457,7 +458,7 @@ export async function searchSoldLines(keyword: string, documentIds: bigint[], en
 
   const lineIds = lines.map((l) => l.id);
   const refundSums = lineIds.length
-    ? await prisma.refund_lines.groupBy({
+    ? await repositories.orderRepository.refund_lines.groupBy({
         by: ['line_id'],
         where: { line_id: { in: lineIds } },
         _sum: { refund_qty: true },

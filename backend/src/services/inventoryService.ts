@@ -5,6 +5,7 @@
 //   - 入库：加权平均进价重算（calcWeightedAvgCost，engines/pricing-engine.ts SSOT）
 //   - 库存不足：已有的库存全额扣除，缺口走欠库/外部补齐（欠库 Step5 落地）
 // v11.0 解耦对齐：inventory / inventory_ledger → warehouse/brand/unit 无物理外键 + ID 聚合
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
@@ -31,11 +32,11 @@ function genLedgerNo(): string {
 export async function resolveSkuNameSnapshot(specId: bigint, brandId: bigint, unitId: bigint) {
   // 去宽表改造：直接查范式表（spec + brand + unit），不再依赖宽表冗余列
   const [specRow, unit] = await Promise.all([
-    prisma.spec.findUnique({
+    repositories.catalogRepository.spec.findUnique({
       where: { id: specId },
       select: { specModel: true, brand: { select: { name: true } } },
     }),
-    prisma.unit.findUnique({ where: { id: unitId }, select: { unitName: true } }),
+    repositories.catalogRepository.unit.findUnique({ where: { id: unitId }, select: { unitName: true } }),
   ]);
   return {
     specModel: specRow?.specModel ?? null,
@@ -71,8 +72,8 @@ export async function listInventory(query: Record<string, unknown>) {
   }
 
   const [total, list] = await Promise.all([
-    prisma.inventory.count({ where }),
-    prisma.inventory.findMany({
+    repositories.inventoryRepository.inventory.count({ where }),
+    repositories.inventoryRepository.inventory.findMany({
       where,
       orderBy: [{ qty: 'desc' }, { updatedAt: 'desc' }],
       skip,
@@ -97,7 +98,7 @@ export async function attachSkuSnapshots(
   //   展示字段由 searchNormalized.buildSkuRows 读时批量组装（无 N+1）
   const [skuRows, unitMap] = await Promise.all([
     getSkuRowsBySpecIds([...new Set(invs.map((i) => i.spec_id))]),
-    prisma.unit.findMany({
+    repositories.catalogRepository.unit.findMany({
       where: { id: { in: unitIds } },
       select: { id: true, unitName: true },
     }),
@@ -149,8 +150,8 @@ export async function listLedgers(query: Record<string, unknown>) {
   }
 
   const [total, list] = await Promise.all([
-    prisma.inventory_ledger.count({ where }),
-    prisma.inventory_ledger.findMany({
+    repositories.inventoryRepository.inventory_ledger.count({ where }),
+    repositories.inventoryRepository.inventory_ledger.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -364,7 +365,7 @@ async function decreaseInventoryCore(
 
 /** 查询指定仓库 SKU 的库存可用量 */
 export async function getAvailableQty(warehouseId: bigint, specId: bigint, brandId: bigint, unitId: bigint) {
-  const existing = await prisma.inventory.findUnique({
+  const existing = await repositories.inventoryRepository.inventory.findUnique({
     where: {
       warehouse_id_spec_id_brand_id_unit_id: { warehouse_id: warehouseId, spec_id: specId, brand_id: brandId, unit_id: unitId },
     },
@@ -451,20 +452,20 @@ export async function openingInventory(
   if (!isFinite(qty) || qty <= 0) throw Errors.unprocessable('期初数量必须大于 0');
   if (!isFinite(unitCost) || unitCost < 0) throw Errors.unprocessable('期初成本不能为负');
 
-  const warehouse = await prisma.warehouse.findUnique({
+  const warehouse = await repositories.warehouseRepository.warehouse.findUnique({
     where: { id: input.warehouseId },
     select: { id: true, status: true },
   });
   if (!warehouse) throw Errors.notFound('仓库不存在');
   if (warehouse.status !== 1) throw Errors.unprocessable('仓库已停用');
 
-  const specRow = await prisma.spec.findFirst({
+  const specRow = await repositories.catalogRepository.spec.findFirst({
     where: { id: input.specId, brandId: input.brandId },
     select: { id: true },
   });
   if (!specRow) throw Errors.unprocessable('该规格品牌不存在，请先建档');
 
-  const existing = await prisma.inventory.findUnique({
+  const existing = await repositories.inventoryRepository.inventory.findUnique({
     where: {
       warehouse_id_spec_id_brand_id_unit_id: {
         warehouse_id: input.warehouseId,

@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
@@ -16,7 +17,7 @@ export interface CreateUserInput {
 }
 
 async function roleIdsByCodes(codes: RoleCode[]) {
-  const roles = await prisma.roles.findMany({ where: { code: { in: codes } } });
+  const roles = await repositories.identityRepository.roles.findMany({ where: { code: { in: codes } } });
   if (roles.length !== codes.length) {
     throw Errors.unprocessable('存在无效的角色编码', 42201);
   }
@@ -36,8 +37,8 @@ export async function listUsers(query: Record<string, unknown>) {
   if (typeof query.status === 'string' && query.status) where.status = query.status as user_status;
 
   const [total, list] = await Promise.all([
-    prisma.users.count({ where }),
-    prisma.users.findMany({
+    repositories.identityRepository.users.count({ where }),
+    repositories.identityRepository.users.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -59,7 +60,7 @@ export async function listUsers(query: Record<string, unknown>) {
 }
 
 export async function createUser(input: CreateUserInput) {
-  const exists = await prisma.users.findUnique({ where: { username: input.username } });
+  const exists = await repositories.identityRepository.users.findUnique({ where: { username: input.username } });
   if (exists) throw Errors.conflict('用户名已存在', 40901);
   const password_hash = await hashPassword(input.password);
   const roleIds = await roleIdsByCodes(input.roleCodes);
@@ -88,7 +89,7 @@ export async function updateUser(
   id: bigint,
   data: { realName?: string; phone?: string; status?: user_status; roleCodes?: RoleCode[] },
 ) {
-  const user = await prisma.users.findUnique({ where: { id } });
+  const user = await repositories.identityRepository.users.findUnique({ where: { id } });
   if (!user) throw Errors.notFound('员工不存在');
 
   return prisma.$transaction(async (tx) => {
@@ -111,8 +112,8 @@ export async function updateUser(
 }
 
 export async function resetPassword(id: bigint, newPassword: string) {
-  const user = await prisma.users.findUnique({ where: { id } });
+  const user = await repositories.identityRepository.users.findUnique({ where: { id } });
   if (!user) throw Errors.notFound('员工不存在');
   const password_hash = await hashPassword(newPassword);
-  return prisma.users.update({ where: { id }, data: { password_hash } });
+  return repositories.identityRepository.users.update({ where: { id }, data: { password_hash } });
 }

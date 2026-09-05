@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -187,7 +188,7 @@ export async function saveProduct(input: SaveProductInput) {
   // v11.0 维护性补全：编辑模式下事务前查询所有旧 imageUrl（事务内删除会清 DB 行，磁盘文件需事后清理）
   let oldImageUrls: string[] = [];
   if (input.specId) {
-    const oldImages = await prisma.product_image.findMany({
+    const oldImages = await repositories.catalogRepository.product_image.findMany({
       where: { specId: input.specId },
       select: { imageUrl: true },
     });

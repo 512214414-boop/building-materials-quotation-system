@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -73,8 +74,8 @@ export async function listPurchasePrices(query: Record<string, unknown>) {
   }
 
   const [total, list] = await Promise.all([
-    prisma.purchase_price.count({ where }),
-    prisma.purchase_price.findMany({
+    repositories.pricingRepository.purchase_price.count({ where }),
+    repositories.pricingRepository.purchase_price.findMany({
       where,
       orderBy: [{ specId: 'asc' }, { unitId: 'asc' }, { supplierId: 'asc' }],
       skip,
@@ -106,7 +107,7 @@ export async function listPurchasePrices(query: Record<string, unknown>) {
 }
 
 export async function getPurchasePrice(id: bigint) {
-  const pp = await prisma.purchase_price.findUnique({
+  const pp = await repositories.pricingRepository.purchase_price.findUnique({
     where: { id },
     include: {
       spec: {
@@ -136,8 +137,8 @@ export async function getPurchasePrice(id: bigint) {
 
 export async function createPurchasePrice(data: PurchasePriceCreateInput) {
   const [specBrand, unit] = await Promise.all([
-    prisma.spec.findUnique({ where: { id: data.specBrandId } }),
-    prisma.unit.findUnique({ where: { id: data.unitId } }),
+    repositories.catalogRepository.spec.findUnique({ where: { id: data.specBrandId } }),
+    repositories.catalogRepository.unit.findUnique({ where: { id: data.unitId } }),
   ]);
   if (!specBrand) throw Errors.unprocessable('品牌关联不存在');
   if (!unit) throw Errors.unprocessable('单位不存在');
@@ -150,13 +151,13 @@ export async function createPurchasePrice(data: PurchasePriceCreateInput) {
 
   // v9.0：若设为默认进价，先清除同 SKU 其他默认标记
   if (data.isDefault) {
-    await prisma.purchase_price.updateMany({
+    await repositories.pricingRepository.purchase_price.updateMany({
       where: { specId: data.specBrandId, unitId: data.unitId, isDefault: true },
       data: { isDefault: false },
     });
   }
 
-  const created = await prisma.purchase_price.create({
+  const created = await repositories.pricingRepository.purchase_price.create({
     data: {
       specId: data.specBrandId,
       unitId: data.unitId,
@@ -173,18 +174,18 @@ export async function createPurchasePrice(data: PurchasePriceCreateInput) {
 }
 
 export async function updatePurchasePrice(id: bigint, data: PurchasePriceUpdateInput) {
-  const existing = await prisma.purchase_price.findUnique({ where: { id } });
+  const existing = await repositories.pricingRepository.purchase_price.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('进价不存在');
 
   // v11.0 解耦：supplierId 变更时同步刷新 supplierName 快照
   let newSupplierName: string | null | undefined;
   if (data.supplierId !== undefined && data.supplierId !== existing.supplierId) {
-    const supplier = await prisma.supplier.findUnique({
+    const supplier = await repositories.partnerRepository.supplier.findUnique({
       where: { id: data.supplierId },
       select: { name: true },
     });
     if (!supplier) throw Errors.unprocessable('供应商不存在');
-    const clash = await prisma.purchase_price.findUnique({
+    const clash = await repositories.pricingRepository.purchase_price.findUnique({
       where: {
         specId_unitId_supplierId: {
           specId: existing.specId,
@@ -209,22 +210,22 @@ export async function updatePurchasePrice(id: bigint, data: PurchasePriceUpdateI
     update.isDefault = data.isDefault;
     // 若设为默认进价，先清除同 SKU 其他默认标记
     if (data.isDefault) {
-      await prisma.purchase_price.updateMany({
+      await repositories.pricingRepository.purchase_price.updateMany({
         where: { specId: existing.specId, unitId: existing.unitId, isDefault: true, id: { not: id } },
         data: { isDefault: false },
       });
     }
   }
 
-  const updated = await prisma.purchase_price.update({ where: { id }, data: update });
+  const updated = await repositories.pricingRepository.purchase_price.update({ where: { id }, data: update });
   return updated;
 }
 
 export async function deletePurchasePrice(id: bigint) {
-  const existing = await prisma.purchase_price.findUnique({ where: { id } });
+  const existing = await repositories.pricingRepository.purchase_price.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('进价不存在');
 
-  await prisma.purchase_price.delete({ where: { id } });
+  await repositories.pricingRepository.purchase_price.delete({ where: { id } });
   return { id };
 }
 
@@ -301,7 +302,7 @@ export async function attachPointToPurchaseRows<
       };
     });
   }
-  const rules = await prisma.supplier_point_rule.findMany({ where: { brandName, categoryName } });
+  const rules = await repositories.partnerRepository.supplier_point_rule.findMany({ where: { brandName, categoryName } });
   const ruleMap = new Map<string, number>();
   for (const r of rules) ruleMap.set(r.supplierId.toString(), r.point.toNumber());
   return rows.map((r) => {
@@ -357,7 +358,7 @@ export async function getPointRule(params: {
   brandName: string;
   categoryName: string;
 }) {
-  const rule = await prisma.supplier_point_rule.findUnique({
+  const rule = await repositories.partnerRepository.supplier_point_rule.findUnique({
     where: {
       supplierId_brandName_categoryName: {
         supplierId: params.supplierId,
@@ -387,14 +388,14 @@ export async function batchAdjustPreview(input: BatchAdjustInput) {
   }
 
   const [rows, exceptions] = await Promise.all([
-    prisma.purchase_price.findMany({
+    repositories.pricingRepository.purchase_price.findMany({
       where: { specId: { in: specBrandIds }, supplierId: input.supplierId },
       include: {
         spec: { include: { brand: true, product: true } },
         unit: { select: { unitName: true } },
       },
     }),
-    prisma.purchase_spec_point.findMany({
+    repositories.rulesRepository.purchase_spec_point.findMany({
       where: { specId: { in: specBrandIds }, supplierId: input.supplierId },
       select: { specId: true },
     }),
@@ -407,7 +408,7 @@ export async function batchAdjustPreview(input: BatchAdjustInput) {
   if (rows.length > 0) {
     supplierName = rows[0].supplierName ?? '';
     if (!supplierName) {
-      const sup = await prisma.supplier.findUnique({
+      const sup = await repositories.partnerRepository.supplier.findUnique({
         where: { id: input.supplierId },
         select: { name: true },
       });
@@ -416,7 +417,7 @@ export async function batchAdjustPreview(input: BatchAdjustInput) {
   }
 
   // 旧点位：规则自动带出，无规则默认 1
-  const rule = await prisma.supplier_point_rule.findUnique({
+  const rule = await repositories.partnerRepository.supplier_point_rule.findUnique({
     where: {
       supplierId_brandName_categoryName: {
         supplierId: input.supplierId,
@@ -453,7 +454,7 @@ export async function batchAdjustPurchasePrices(input: BatchAdjustInput) {
   const specBrandIds = await resolveGroupSpecBrandIds(input.brandName, input.categoryName);
   if (specBrandIds.length === 0) throw Errors.notFound('未找到「品牌 + 分类」下的产品');
 
-  const rows = await prisma.purchase_price.findMany({
+  const rows = await repositories.pricingRepository.purchase_price.findMany({
     where: { specId: { in: specBrandIds }, supplierId: input.supplierId },
   });
   if (rows.length === 0) throw Errors.notFound('该组下没有进价记录，无需调整');

@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -52,7 +53,7 @@ export interface PriceTypeUpdateInput {
 export async function listPriceTypes() {
   // v12.0：确保价格类型字典已预置三种（零售价/批发价/工程价），幂等
   await ensurePriceTypes();
-  return prisma.price_type.findMany({
+  return repositories.pricingRepository.price_type.findMany({
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     include: { _count: { select: { salePrices: true } } },
   });
@@ -63,18 +64,18 @@ export async function listPriceTypes() {
  * 幂等：已有任意价格类型时跳过；只在空库时写入
  */
 export async function ensurePriceTypes(): Promise<void> {
-  const count = await prisma.price_type.count();
+  const count = await repositories.pricingRepository.price_type.count();
   if (count > 0) return;
   const presets = [
     { name: '零售价', sortOrder: 0 },
     { name: '批发价', sortOrder: 1 },
     { name: '工程价', sortOrder: 2 },
   ];
-  await prisma.price_type.createMany({ data: presets });
+  await repositories.pricingRepository.price_type.createMany({ data: presets });
 }
 
 export async function getPriceType(id: bigint) {
-  const pt = await prisma.price_type.findUnique({
+  const pt = await repositories.pricingRepository.price_type.findUnique({
     where: { id },
     include: { _count: { select: { salePrices: true } } },
   });
@@ -83,9 +84,9 @@ export async function getPriceType(id: bigint) {
 }
 
 export async function createPriceType(data: PriceTypeCreateInput) {
-  const existing = await prisma.price_type.findUnique({ where: { name: data.name } });
+  const existing = await repositories.pricingRepository.price_type.findUnique({ where: { name: data.name } });
   if (existing) throw Errors.unprocessable(`价格类型「${data.name}」已存在`);
-  return prisma.price_type.create({
+  return repositories.pricingRepository.price_type.create({
     data: {
       name: data.name,
       sortOrder: data.sortOrder ?? 0,
@@ -95,27 +96,27 @@ export async function createPriceType(data: PriceTypeCreateInput) {
 }
 
 export async function updatePriceType(id: bigint, data: PriceTypeUpdateInput) {
-  const existing = await prisma.price_type.findUnique({ where: { id } });
+  const existing = await repositories.pricingRepository.price_type.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('价格类型不存在');
   const update: Prisma.price_typeUpdateInput = {};
   if (data.name !== undefined) {
-    const dup = await prisma.price_type.findUnique({ where: { name: data.name } });
+    const dup = await repositories.pricingRepository.price_type.findUnique({ where: { name: data.name } });
     if (dup && dup.id !== id) throw Errors.unprocessable(`价格类型「${data.name}」已存在`);
     update.name = data.name;
   }
   if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
   if (data.status !== undefined) update.status = data.status;
-  return prisma.price_type.update({ where: { id }, data: update });
+  return repositories.pricingRepository.price_type.update({ where: { id }, data: update });
 }
 
 export async function deletePriceType(id: bigint) {
-  const existing = await prisma.price_type.findUnique({ where: { id } });
+  const existing = await repositories.pricingRepository.price_type.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('价格类型不存在');
-  const saleCount = await prisma.sale_price.count({ where: { priceTypeId: id } });
+  const saleCount = await repositories.pricingRepository.sale_price.count({ where: { priceTypeId: id } });
   if (saleCount > 0) {
     throw Errors.unprocessable(`价格类型下存在 ${saleCount} 条售价记录，请先迁移后再删除`);
   }
-  return prisma.price_type.delete({ where: { id } });
+  return repositories.pricingRepository.price_type.delete({ where: { id } });
 }
 
 // ============================================================

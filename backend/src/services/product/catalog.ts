@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { parsePagination, parseSort } from '../../utils/validation.js';
@@ -71,8 +72,8 @@ export async function listProducts(query: Record<string, unknown>) {
     order: 'desc',
   });
   const [total, list] = await Promise.all([
-    prisma.product.count({ where }),
-    prisma.product.findMany({
+    repositories.catalogRepository.product.count({ where }),
+    repositories.catalogRepository.product.findMany({
       where,
       orderBy: sort,
       skip,
@@ -96,7 +97,7 @@ export async function listProducts(query: Record<string, unknown>) {
  *   - currentSpecId 为空 → 取首个规格；指定 → 定位到该规格
  */
 export async function getProduct(id: bigint, currentSpecId?: bigint, brandId?: bigint) {
-  const p = await prisma.product.findUnique({
+  const p = await repositories.catalogRepository.product.findUnique({
     where: { id },
     include: {
       category: true,
@@ -151,14 +152,14 @@ export async function getProduct(id: bigint, currentSpecId?: bigint, brandId?: b
 
   const [salePrices, rawPurchasePrices] = await Promise.all([
     specIds.length > 0
-      ? prisma.sale_price.findMany({
+      ? repositories.pricingRepository.sale_price.findMany({
           where: { specId: { in: specIds } },
           orderBy: [{ specId: 'asc' }, { unitId: 'asc' }, { priceTypeId: 'asc' }],
           include: { priceType: { select: { id: true, name: true } } },
         })
       : [],
     specIds.length > 0
-      ? prisma.purchase_price.findMany({
+      ? repositories.pricingRepository.purchase_price.findMany({
           where: { specId: { in: specIds } },
           orderBy: [{ specId: 'asc' }, { unitId: 'asc' }, { supplierId: 'asc' }],
         })
@@ -288,7 +289,7 @@ export async function getProduct(id: bigint, currentSpecId?: bigint, brandId?: b
  * 用途：产品编辑弹窗中规格切换 tab，让用户在同产品名的不同规格间快速切换查看/编辑
  */
 export async function getSiblingSpecs(productId: bigint, currentSpecId?: bigint, brandId?: bigint) {
-  const current = await prisma.product.findUnique({
+  const current = await repositories.catalogRepository.product.findUnique({
     where: { id: productId },
     select: { id: true, categoryId: true, name: true },
   });
@@ -297,7 +298,7 @@ export async function getSiblingSpecs(productId: bigint, currentSpecId?: bigint,
   const where: Prisma.specWhereInput = { productId: current.id };
   if (brandId != null) where.brandId = brandId;
 
-  const specs = await prisma.spec.findMany({
+  const specs = await repositories.catalogRepository.spec.findMany({
     where,
     orderBy: [{ specModel: 'asc' }, { id: 'asc' }],
     select: {
@@ -344,7 +345,7 @@ export async function createProduct(data: {
   // v1.5.6.3：规格空值补默认「通用」（产品下首个规格变体）
   const specModel = (data.specModel ?? '').trim() || DEFAULT_SPEC_MODEL;
   // 2026-09-05 收口：产品名全局唯一（原 v14 为同分类下唯一；撤产品名字典后收紧为全局）
-  const existing = await prisma.product.findUnique({
+  const existing = await repositories.catalogRepository.product.findUnique({
     where: { name: data.name },
   });
   if (existing) throw Errors.unprocessable(`已存在同名产品「${data.name}」，产品名全局唯一`);
@@ -382,7 +383,7 @@ export async function updateProduct(
   id: bigint,
   data: { name?: string; categoryId?: number; remark?: string; status?: number },
 ) {
-  const existing = await prisma.product.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('产品不存在');
 
   const update: Prisma.productUpdateInput = {};
@@ -400,7 +401,7 @@ export async function updateProduct(
 
   // 2026-09-05 收口：产品名全局唯一（改名冲突才校验；改分类不影响唯一性）
   if (data.name !== undefined && data.name !== existing.name) {
-    const conflict = await prisma.product.findUnique({
+    const conflict = await repositories.catalogRepository.product.findUnique({
       where: { name: data.name },
     });
     if (conflict && conflict.id !== id) {
@@ -408,7 +409,7 @@ export async function updateProduct(
     }
   }
 
-  const updated = await prisma.product.update({ where: { id }, data: update, include: { category: true } });
+  const updated = await repositories.catalogRepository.product.update({ where: { id }, data: update, include: { category: true } });
   // 产品信息变更（name/remark/status/categoryId）影响宽表 keywords/分类名/状态
   if (data.name !== undefined || data.remark !== undefined ||
       data.categoryId !== undefined || data.status !== undefined) {
@@ -420,14 +421,14 @@ export async function updateProduct(
  * 删除前预览（品牌/单位/单据引用/图片共享影响）
  */
 export async function getProductDeletePreview(id: bigint) {
-  const existing = await prisma.product.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('产品不存在');
 
   const [brandCount, unitCount, docLineCount, productImages] = await Promise.all([
-    prisma.product_brand.count({ where: { productId: id } }),
-    prisma.spec_unit.count({ where: { spec: { productId: id } } }),
+    repositories.catalogRepository.product_brand.count({ where: { productId: id } }),
+    repositories.catalogRepository.spec_unit.count({ where: { spec: { productId: id } } }),
     countProductDocLineRefs(id),
-    prisma.product_image.findMany({
+    repositories.catalogRepository.product_image.findMany({
       where: { spec: { productId: id } },
       select: {
         imageUrl: true,
@@ -448,7 +449,7 @@ export async function getProductDeletePreview(id: bigint) {
     urlSet.map(async (imageUrl) => {
       const thumb = productImages.find((i) => i.imageUrl === imageUrl)?.thumbnailUrl ?? '';
       const productLinkCount = productImages.filter((i) => i.imageUrl === imageUrl).length;
-      const allRefs = await prisma.product_image.findMany({
+      const allRefs = await repositories.catalogRepository.product_image.findMany({
         where: { imageUrl },
         select: {
           spec: {
@@ -523,14 +524,14 @@ export async function deleteProduct(
   id: bigint,
   options?: { purgeOrphanFiles?: boolean },
 ) {
-  const existing = await prisma.product.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('产品不存在');
 
   // v11.0：查询引用数（用于前端提示与审计日志，不阻止删除）
-  const docLineCount = await prisma.document_lines.count({ where: { productId: id } });
+  const docLineCount = await repositories.documentRepository.document_lines.count({ where: { productId: id } });
 
   // v11.0 维护性补全：事务前查询所有旧 imageUrl，事务后清理磁盘文件
-  const oldImages = await prisma.product_image.findMany({
+  const oldImages = await repositories.catalogRepository.product_image.findMany({
     where: { spec: { productId: id } },
     select: { imageUrl: true },
   });
@@ -538,7 +539,7 @@ export async function deleteProduct(
 
   // v14.0：product.delete → CASCADE spec → spec_brand/unit → 价格/图片/换算
   // （去宽表改造：原需同步删除 product_sku_search 宽表行，现检索走范式实时 join，无需同步）
-  await prisma.product.delete({ where: { id } });
+  await repositories.catalogRepository.product.delete({ where: { id } });
 
   // purgeOrphanFiles 默认 true：删 DB 关联后，仅无引用才清磁盘（共享 hash 永不误删）
   const purgeOrphanFiles = options?.purgeOrphanFiles !== false;
@@ -559,11 +560,11 @@ export async function deleteProduct(
  *   - 不清理任何数据，仅状态变更，可恢复
  */
 export async function deactivateProduct(id: bigint) {
-  const existing = await prisma.product.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('产品不存在');
 
   // （去宽表改造：无需再同步更新宽表 status，检索按范式表实时判定状态）
-  await prisma.product.update({
+  await repositories.catalogRepository.product.update({
     where: { id },
     data: { status: 0 },
   });
@@ -580,10 +581,10 @@ export async function deactivateProduct(id: bigint) {
  *   - 重新进入检索结果
  */
 export async function activateProduct(id: bigint) {
-  const existing = await prisma.product.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.product.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('产品不存在');
 
-  await prisma.product.update({
+  await repositories.catalogRepository.product.update({
     where: { id },
     data: { status: 1 },
   });
@@ -601,11 +602,11 @@ function uniqueBigIntIds(ids: bigint[]): bigint[] {
 export async function batchDeactivateProducts(ids: bigint[]) {
   const unique = uniqueBigIntIds(ids);
   if (unique.length === 0) return { count: 0, status: 0 as const };
-  const found = await prisma.product.count({ where: { id: { in: unique } } });
+  const found = await repositories.catalogRepository.product.count({ where: { id: { in: unique } } });
   if (found !== unique.length) throw Errors.notFound('部分产品不存在');
 
   // （去宽表改造：无需再同步更新宽表 status）
-  await prisma.product.updateMany({ where: { id: { in: unique } }, data: { status: 0 } });
+  await repositories.catalogRepository.product.updateMany({ where: { id: { in: unique } }, data: { status: 0 } });
 
   return { count: unique.length, status: 0 as const };
 }
@@ -629,7 +630,7 @@ export async function batchActivateProducts(ids: bigint[]) {
  * 不阻止删除，仅用于前端提示
  */
 export async function countProductDocLineRefs(id: bigint): Promise<number> {
-  return prisma.document_lines.count({ where: { productId: id } });
+  return repositories.documentRepository.document_lines.count({ where: { productId: id } });
 }
 
 /**
@@ -637,13 +638,13 @@ export async function countProductDocLineRefs(id: bigint): Promise<number> {
  * 规格为独立表（spec），改名后同步该规格下所有「规格×品牌」宽表行
  */
 export async function updateSpec(id: bigint, data: { specModel?: string; status?: number }) {
-  const existing = await prisma.spec.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.spec.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('规格不存在');
 
   const update: Prisma.specUpdateInput = {};
   if (data.specModel !== undefined) {
     const specModel = data.specModel.trim() || DEFAULT_SPEC_MODEL;
-    const conflict = await prisma.spec.findFirst({
+    const conflict = await repositories.catalogRepository.spec.findFirst({
       where: {
         productId: existing.productId,
         brandId: existing.brandId,
@@ -657,7 +658,7 @@ export async function updateSpec(id: bigint, data: { specModel?: string; status?
     update.specModel = specModel;
   }
 
-  const updated = await prisma.spec.update({ where: { id }, data: update });
+  const updated = await repositories.catalogRepository.spec.update({ where: { id }, data: update });
   // 规格改名影响宽表 specModel/keywords
   if (data.specModel !== undefined) {
   }
@@ -671,21 +672,21 @@ export async function updateSpec(id: bigint, data: { specModel?: string; status?
  * 单据行（document_lines.specId）解耦不级联，快照字段保留
  */
 export async function deleteSpec(id: bigint) {
-  const existing = await prisma.spec.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.spec.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('规格不存在');
 
   // v14.0：查询单据引用数（用于审计日志，不阻止删除）
-  const docLineCount = await prisma.document_lines.count({ where: { specId: id } });
+  const docLineCount = await repositories.documentRepository.document_lines.count({ where: { specId: id } });
 
   // 事务前查询旧 imageUrl（磁盘文件清理）
-  const oldImages = await prisma.product_image.findMany({
+  const oldImages = await repositories.catalogRepository.product_image.findMany({
     where: { specId: id },
     select: { imageUrl: true },
   });
   const oldImageUrls = oldImages.map((img) => img.imageUrl);
 
   // （去宽表改造：无需再同步删除宽表行）
-  await prisma.spec.delete({ where: { id } });
+  await repositories.catalogRepository.spec.delete({ where: { id } });
 
   // 事务成功后异步清理磁盘文件（不阻塞响应）
   if (oldImageUrls.length > 0) {
@@ -699,7 +700,7 @@ export async function deleteSpec(id: bigint) {
  * v14.0：查询规格被单据引用计数（删除规格二次确认用）
  */
 export async function countSpecDocLineRefs(id: bigint): Promise<number> {
-  return prisma.document_lines.count({ where: { specId: id } });
+  return repositories.documentRepository.document_lines.count({ where: { specId: id } });
 }
 
 // ============================================================

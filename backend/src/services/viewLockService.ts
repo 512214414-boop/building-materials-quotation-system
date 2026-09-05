@@ -15,6 +15,7 @@
  *  - cost_verify（成本核定）
  *  - refund_after_sale（退换售后）
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
@@ -35,7 +36,7 @@ export async function lockView(
   viewKey: ViewLockKey,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { view_locks: true },
   });
@@ -44,7 +45,7 @@ export async function lockView(
   const locks = (doc.view_locks ?? {}) as Record<string, boolean>;
   locks[viewKey] = true;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { view_locks: locks },
   });
@@ -66,7 +67,7 @@ export async function unlockView(
   viewKey: ViewLockKey,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { view_locks: true },
   });
@@ -75,7 +76,7 @@ export async function unlockView(
   const locks = (doc.view_locks ?? {}) as Record<string, boolean>;
   locks[viewKey] = false;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { view_locks: locks },
   });

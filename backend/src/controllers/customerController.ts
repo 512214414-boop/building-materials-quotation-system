@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { ok, fail } from '../utils/response.js';
@@ -96,7 +97,7 @@ export async function deleteCustomerHandler(req: Request, res: Response) {
 // 地址
 export async function listAddressesHandler(req: Request, res: Response) {
   const id = BigInt(req.params.id);
-  const list = await prisma.customer_addresses.findMany({
+  const list = await repositories.customerRepository.customer_addresses.findMany({
     where: { customerId: id },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
   });
@@ -151,7 +152,7 @@ export async function deleteAddressHandler(req: Request, res: Response) {
 
 export async function listMyAddressesHandler(req: Request, res: Response) {
   if (!req.customer) return fail(res, 401, 40101, '未登录');
-  const list = await prisma.customer_addresses.findMany({
+  const list = await repositories.customerRepository.customer_addresses.findMany({
     where: { customerId: req.customer.customerId },
     orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }],
   });

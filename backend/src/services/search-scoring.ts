@@ -1,5 +1,6 @@
 // v1.5.6 搜索打分纯函数模块（零依赖，可独立单元测试）
-//
+import type { SkuSearchRow } from './product/search.js';
+
 // 设计依据（唯一逻辑轴心：产品管理.md「品牌关键词优先排序规则」章节）：
 //   搜索打分分三层，完整级 > 语义段级 > 2-gram 级：
 //   1. 完整关键词级（v1.5.5）：用户输入的完整关键词与某字段 顺序一致/完全包含 → 权重最高
@@ -577,3 +578,62 @@ export const DOCUMENT_SCORE_CONFIG: GenericScoreConfig = {
     note: { fullExact: 2000, fullContains: 1500, fullReverse: 800, tokenExact: 200, tokenContains: 100 },
   },
 };
+
+// ============================================================
+// v2.0 产品级分组聚合（档案统一化 Phase 2「分组」模式，纯函数可单测）
+// 把 SKU 级召回行按 productId 聚合成产品级一行（带 skuCount / brandCount）。
+// 与 searchProducts 解耦：searchProductsGrouped 复用索引召回后调用本函数，前端也不做全量聚合。
+// ============================================================
+
+/** 产品聚合图片项（读时计算，来自该产品全部规格的 product_image） */
+export interface ProductImageItem {
+  /** 原图 URL（预览用） */
+  url: string;
+  /** 缩略图 URL（缺省回退 url） */
+  thumbUrl: string | null;
+}
+
+/** 产品聚合的「单规格图片组」：images[0] 即该规格的默认图（isMain 优先） */
+export interface ProductSpecImages {
+  specId: string;
+  specModel: string;
+  images: ProductImageItem[];
+}
+
+/** 产品级分组行：继承 SKU 行全部字段（取该产品首个 SKU 的产品级字段）+ 聚合计数 */
+export interface ProductGroupRow extends SkuSearchRow {
+  skuCount: number;
+  brandCount: number;
+  /**
+   * 产品下各规格的图片组，按约定顺序（召回序的规格 → 组内 isMain → sortOrder）。
+   * 与行上其他聚合字段同一套「父级显示 = 子级集合按约定取代表值」范式，两级各自对应天然关系：
+   *   行内轮播 = 在 specImages 之间切换（切的是规格，显示各规格默认图）；
+   *   大图预览 = 当前选中规格的 images（翻的是该规格内的图）。
+   * 由分组查询层读时附加（纯函数不查库）。
+   */
+  specImages?: ProductSpecImages[];
+}
+
+/** 纯函数：SKU 行 → 产品级一行（按 productId 分组，聚合 skuCount / 不同 brandId 数） */
+export function groupSkuRowsToProducts(rows: SkuSearchRow[]): ProductGroupRow[] {
+  const groups = new Map<string, ProductGroupRow>();
+  const brandSet = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const pid = String(r.productId);
+    if (!groups.has(pid)) {
+      // 行 id = productId（框架以 row.id 做编辑/批量/删除主键），其余字段取首个 SKU 的产品级值
+      groups.set(pid, { ...r, id: r.productId, skuCount: 0, brandCount: 0 });
+      brandSet.set(pid, new Set());
+    }
+    const g = groups.get(pid)!;
+    g.skuCount += 1;
+    if (r.brandId) brandSet.get(pid)!.add(String(r.brandId));
+  }
+  const products = [...groups.values()].map((g) => ({
+    ...g,
+    brandCount: brandSet.get(String(g.productId))!.size,
+  }));
+  // 产品级排序：按最近更新（与 sku 列表一致）
+  products.sort((a, b) => b.updateTime.getTime() - a.updateTime.getTime());
+  return products;
+}

@@ -2,6 +2,7 @@
  * 客户准入服务（授权码 + 准入申请 + 客户登录）
  * 审批通过时自动发放绑定手机号的授权码，供员工告知客户登录。
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { randomBytes } from 'crypto';
 import { prisma } from '../config/prisma.js';
 import { config } from '../config/index.js';
@@ -27,7 +28,7 @@ function generateCode(): string {
 async function uniqueCode(): Promise<string> {
   for (let i = 0; i < 12; i++) {
     const code = generateCode();
-    const hit = await prisma.authorization_codes.findUnique({ where: { code } });
+    const hit = await repositories.identityRepository.authorization_codes.findUnique({ where: { code } });
     if (!hit) return code;
   }
   throw Errors.unprocessable('授权码生成失败，请重试');
@@ -49,7 +50,7 @@ export async function createCodes(params: CreateCodesParams) {
   for (let i = 0; i < count; i++) {
     codes.push(await uniqueCode());
   }
-  await prisma.authorization_codes.createMany({
+  await repositories.identityRepository.authorization_codes.createMany({
     data: codes.map((code) => ({
       code,
       phone: params.phone ?? null,
@@ -70,8 +71,8 @@ export async function listCodes(query: Record<string, unknown>) {
   if (typeof query.code === 'string' && query.code) where.code = { contains: query.code };
 
   const [total, list] = await Promise.all([
-    prisma.authorization_codes.count({ where }),
-    prisma.authorization_codes.findMany({
+    repositories.identityRepository.authorization_codes.count({ where }),
+    repositories.identityRepository.authorization_codes.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       skip,
@@ -82,10 +83,10 @@ export async function listCodes(query: Record<string, unknown>) {
 }
 
 export async function revokeCode(id: bigint, _userId: bigint) {
-  const code = await prisma.authorization_codes.findUnique({ where: { id } });
+  const code = await repositories.identityRepository.authorization_codes.findUnique({ where: { id } });
   if (!code) throw Errors.notFound('授权码不存在');
   if (code.status === 'revoked') throw Errors.unprocessable('该码已被吊销');
-  return prisma.authorization_codes.update({
+  return repositories.identityRepository.authorization_codes.update({
     where: { id },
     data: { status: 'revoked' },
   });
@@ -93,11 +94,11 @@ export async function revokeCode(id: bigint, _userId: bigint) {
 
 export async function stats() {
   const [total, active, used, revoked, expired] = await Promise.all([
-    prisma.authorization_codes.count(),
-    prisma.authorization_codes.count({ where: { status: 'active' } }),
-    prisma.authorization_codes.count({ where: { status: 'used' } }),
-    prisma.authorization_codes.count({ where: { status: 'revoked' } }),
-    prisma.authorization_codes.count({
+    repositories.identityRepository.authorization_codes.count(),
+    repositories.identityRepository.authorization_codes.count({ where: { status: 'active' } }),
+    repositories.identityRepository.authorization_codes.count({ where: { status: 'used' } }),
+    repositories.identityRepository.authorization_codes.count({ where: { status: 'revoked' } }),
+    repositories.identityRepository.authorization_codes.count({
       where: { status: 'active', expiresAt: { lt: new Date() } },
     }),
   ]);
@@ -107,7 +108,7 @@ export async function stats() {
 export async function verify(login: string, code: string) {
   const phone = login.trim();
   assertLoginContactValue(phone, '登录账号');
-  const ac = await prisma.authorization_codes.findUnique({ where: { code } });
+  const ac = await repositories.identityRepository.authorization_codes.findUnique({ where: { code } });
   if (!ac) throw Errors.unauthorized('授权码无效', 40103);
   if (ac.status !== 'active') throw Errors.unauthorized('授权码已失效', 40103);
   if (ac.expiresAt < new Date()) throw Errors.unauthorized('授权码已过期', 40103);
@@ -119,7 +120,7 @@ export async function verify(login: string, code: string) {
   if (!customer) {
     await assertLoginValueAvailable(phone);
     const customer_code = await generateCustomerCode();
-    customer = await prisma.customers.create({
+    customer = await repositories.customerRepository.customers.create({
       data: { customer_code, phone: phone.length <= 20 ? phone : null },
     });
     await syncCustomerContacts(customer.id, [
@@ -127,14 +128,14 @@ export async function verify(login: string, code: string) {
     ]);
   }
 
-  await prisma.authorization_codes.update({
+  await repositories.identityRepository.authorization_codes.update({
     where: { id: ac.id },
     data: { status: 'used', activatedAt: new Date(), phone },
   });
 
   const token = signCustomer(customer.id, phone);
   const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
-  await prisma.customer_sessions.create({
+  await repositories.identityRepository.customer_sessions.create({
     data: { customerId: customer.id, token, authorizationCodeId: ac.id, expiresAt },
   });
 
@@ -145,11 +146,11 @@ export async function verify(login: string, code: string) {
 }
 
 export async function requestAccess(phone: string) {
-  const existing = await prisma.access_requests.findFirst({
+  const existing = await repositories.identityRepository.access_requests.findFirst({
     where: { phone, status: 'pending' },
   });
   if (existing) return existing;
-  return prisma.access_requests.create({ data: { phone, status: 'pending' } });
+  return repositories.identityRepository.access_requests.create({ data: { phone, status: 'pending' } });
 }
 
 export async function listAccessRequests(query: Record<string, unknown>) {
@@ -158,8 +159,8 @@ export async function listAccessRequests(query: Record<string, unknown>) {
   if (typeof query.status === 'string' && query.status) where.status = query.status;
   if (typeof query.phone === 'string' && query.phone) where.phone = query.phone;
   const [total, list] = await Promise.all([
-    prisma.access_requests.count({ where }),
-    prisma.access_requests.findMany({
+    repositories.identityRepository.access_requests.count({ where }),
+    repositories.identityRepository.access_requests.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       skip,
@@ -179,18 +180,18 @@ export async function reviewAccessRequest(
   reviewedBy: bigint,
   rejectReason?: string,
 ) {
-  const ar = await prisma.access_requests.findUnique({ where: { id } });
+  const ar = await repositories.identityRepository.access_requests.findUnique({ where: { id } });
   if (!ar) throw Errors.notFound('准入申请不存在');
   if (ar.status !== 'pending') throw Errors.unprocessable('该申请已处理');
 
   // v11.0 解耦：主动查询审核人 real_name 填充 reviewerName 快照
-  const reviewer = await prisma.users.findUnique({
+  const reviewer = await repositories.identityRepository.users.findUnique({
     where: { id: reviewedBy },
     select: { real_name: true },
   });
 
   if (status === 'rejected') {
-    return prisma.access_requests.update({
+    return repositories.identityRepository.access_requests.update({
       where: { id },
       data: {
         status: 'rejected',

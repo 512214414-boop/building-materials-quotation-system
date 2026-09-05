@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
@@ -40,24 +41,24 @@ export async function rangeSummary(query: Record<string, unknown>) {
   };
 
   const [documentCount, salesAgg, payAgg, costAgg, refundAgg, pageDocs] = await Promise.all([
-    prisma.documents.count({ where }),
-    prisma.document_lines.aggregate({
+    repositories.documentRepository.documents.count({ where }),
+    repositories.documentRepository.document_lines.aggregate({
       where: { document: where },
       _sum: { amount: true },
     }),
-    prisma.payment_records.aggregate({
+    repositories.documentRepository.payment_records.aggregate({
       where: { document: where, reconcile_status: 'reconciled' },
       _sum: { amount: true },
     }),
-    prisma.cost_lines.aggregate({
+    repositories.orderRepository.cost_lines.aggregate({
       where: { document_line: { document: where } },
       _sum: { cost_amount: true },
     }),
-    prisma.refund_lines.aggregate({
+    repositories.orderRepository.refund_lines.aggregate({
       where: { document_line: { document: where }, refund_type: 'refund' },
       _sum: { refund_amount: true },
     }),
-    prisma.documents.findMany({
+    repositories.documentRepository.documents.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -152,7 +153,7 @@ export async function salespersonPerf(query: Record<string, unknown>) {
 export async function purchaseSummary(query: Record<string, unknown>) {
   const { startDate, endDate } = parseRange(query);
   const [inbounds, payables] = await Promise.all([
-    prisma.purchase_inbounds.findMany({
+    repositories.inboundRepository.purchase_inbounds.findMany({
       where: { status: 'done', confirmed_at: { gte: startDate, lte: endDate } },
       select: {
         purchase_no: true,
@@ -165,7 +166,7 @@ export async function purchaseSummary(query: Record<string, unknown>) {
       orderBy: { confirmed_at: 'desc' },
       take: 200,
     }),
-    prisma.supplier_payable_lines.groupBy({
+    repositories.documentRepository.supplier_payable_lines.groupBy({
       by: ['biz_type'],
       where: { created_at: { gte: startDate, lte: endDate } },
       _sum: { amount: true },
@@ -187,7 +188,7 @@ export async function purchaseSummary(query: Record<string, unknown>) {
 }
 
 export async function arAging() {
-  const docs = await prisma.documents.findMany({
+  const docs = await repositories.documentRepository.documents.findMany({
     where: { status: { not: 'archived' } },
     select: {
       id: true,
@@ -226,7 +227,7 @@ export async function arAging() {
 }
 
 export async function inventoryTurnover() {
-  const invs = await prisma.inventory.findMany({
+  const invs = await repositories.inventoryRepository.inventory.findMany({
     where: { qty: { gt: 0 } },
     orderBy: { qty: 'desc' },
     take: 300,
@@ -238,7 +239,7 @@ export async function inventoryTurnover() {
     unit_id: i.unit_id,
   }));
   const lastOut = keys.length
-    ? await prisma.inventory_ledger.findMany({
+    ? await repositories.inventoryRepository.inventory_ledger.findMany({
         where: {
           movement_type: 'out',
           OR: keys,
@@ -285,13 +286,13 @@ export async function inventoryTurnover() {
 
 export async function refundStats(query: Record<string, unknown>) {
   const { startDate, endDate } = parseRange(query);
-  const grouped = await prisma.refund_lines.groupBy({
+  const grouped = await repositories.orderRepository.refund_lines.groupBy({
     by: ['refund_type'],
     where: { created_at: { gte: startDate, lte: endDate } },
     _sum: { refund_amount: true, refund_qty: true },
     _count: { id: true },
   });
-  const list = await prisma.refund_lines.findMany({
+  const list = await repositories.orderRepository.refund_lines.findMany({
     where: { created_at: { gte: startDate, lte: endDate } },
     orderBy: { created_at: 'desc' },
     take: 200,

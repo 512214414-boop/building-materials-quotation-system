@@ -1,3 +1,4 @@
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { assertInventoryNotReferenced } from '../dictInventoryGuard.js';
@@ -64,7 +65,7 @@ type CategoryWithCount = {
 };
 
 export async function listCategories(): Promise<CategoryWithCount[]> {
-  const list = await prisma.category.findMany({
+  const list = await repositories.catalogRepository.category.findMany({
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     include: {
       _count: { select: { products: true } },
@@ -77,7 +78,7 @@ export async function listCategories(): Promise<CategoryWithCount[]> {
 }
 
 export async function getCategory(id: number): Promise<CategoryWithCount> {
-  const c = await prisma.category.findUnique({
+  const c = await repositories.catalogRepository.category.findUnique({
     where: { id },
     include: {
       _count: { select: { products: true } },
@@ -89,7 +90,7 @@ export async function getCategory(id: number): Promise<CategoryWithCount> {
 }
 
 export async function createCategory(data: CategoryCreateInput) {
-  return prisma.category.create({
+  return repositories.catalogRepository.category.create({
     data: {
       name: data.name,
       sortOrder: data.sortOrder ?? 0,
@@ -99,13 +100,13 @@ export async function createCategory(data: CategoryCreateInput) {
 }
 
 export async function updateCategory(id: number, data: CategoryUpdateInput) {
-  const existing = await prisma.category.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.category.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('分类不存在');
   const update: Prisma.categoryUpdateInput = {};
   if (data.name !== undefined) update.name = data.name;
   if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
   if (data.status !== undefined) update.status = data.status;
-  const updated = await prisma.category.update({ where: { id }, data: update });
+  const updated = await repositories.catalogRepository.category.update({ where: { id }, data: update });
 
   // v1.5.6.2 修复【关键】：分类改名后宽表 categoryName/keywords 不同步
   //   → 列表展示旧分类名、按新分类名检索 keywords 不命中（检索与展示全面陈旧）
@@ -116,9 +117,9 @@ export async function updateCategory(id: number, data: CategoryUpdateInput) {
 }
 
 export async function deleteCategory(id: number) {
-  const existing = await prisma.category.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.category.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('分类不存在');
-  const productCount = await prisma.product.count({ where: { categoryId: id } });
+  const productCount = await repositories.catalogRepository.product.count({ where: { categoryId: id } });
   if (productCount > 0) {
     throw Errors.unprocessable(
       `分类下存在 ${productCount} 个产品，请先迁移后再删除`,
@@ -126,7 +127,7 @@ export async function deleteCategory(id: number) {
   }
   // v28：校验实时库存引用（inventory 无物理外键，被库存引用即禁止删除，经 spec→product 反查）
   await assertInventoryNotReferenced('category', BigInt(id));
-  return prisma.category.delete({ where: { id } });
+  return repositories.catalogRepository.category.delete({ where: { id } });
 }
 
 /**

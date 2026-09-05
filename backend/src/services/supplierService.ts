@@ -1,4 +1,5 @@
 // v9.0 供应商档案服务（v20 拆表：联系信息 / 地址 / 经营品类）
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { resolveSupplierRef } from './businessDefaults.js';
@@ -177,7 +178,7 @@ export async function listSupplierCandidates(query: Record<string, unknown>): Pr
     ];
   }
 
-  const allSuppliers = await prisma.supplier.findMany({
+  const allSuppliers = await repositories.partnerRepository.supplier.findMany({
     where: baseWhere,
     orderBy: { name: 'asc' },
     select: { id: true, name: true },
@@ -203,7 +204,7 @@ export async function listSupplierCandidates(query: Record<string, unknown>): Pr
   if (unitId) purchaseWhere.unitId = unitId;
 
   const provenGroups = brandId != null
-    ? await prisma.purchase_price.groupBy({
+    ? await repositories.pricingRepository.purchase_price.groupBy({
         by: ['supplierId'],
         where: purchaseWhere,
       })
@@ -219,7 +220,7 @@ export async function listSupplierCandidates(query: Record<string, unknown>): Pr
   }
 
   const scopedSuppliers = scopedOr.length
-    ? await prisma.supplier.findMany({
+    ? await repositories.partnerRepository.supplier.findMany({
         where: { status: 1, OR: scopedOr },
         select: { id: true },
       })
@@ -324,7 +325,7 @@ export async function searchSuppliers(
     };
   }
 
-  const list = await prisma.supplier.findMany({
+  const list = await repositories.partnerRepository.supplier.findMany({
     where,
     include: {
       contacts: { orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }] },
@@ -392,8 +393,8 @@ export async function listSuppliers(query: Record<string, unknown>) {
   const where = buildSupplierWhere(query, queryTrim(query.keyword));
 
   const [total, list] = await Promise.all([
-    prisma.supplier.count({ where }),
-    prisma.supplier.findMany({
+    repositories.partnerRepository.supplier.count({ where }),
+    repositories.partnerRepository.supplier.findMany({
       where,
       orderBy: { id: 'desc' },
       skip,
@@ -404,7 +405,7 @@ export async function listSuppliers(query: Record<string, unknown>) {
 
   const ids = list.map((s) => s.id);
   const counts = ids.length
-    ? await prisma.purchase_price.groupBy({
+    ? await repositories.pricingRepository.purchase_price.groupBy({
         by: ['supplierId'],
         where: { supplierId: { in: ids } },
         _count: { _all: true },
@@ -444,7 +445,7 @@ export async function listSupplierFacets(query: Record<string, unknown>) {
   if (!headerKw && !constrained) return [];
 
   if (field === 'name') {
-    const rows = await prisma.supplier.findMany({
+    const rows = await repositories.partnerRepository.supplier.findMany({
       where: headerKw ? { AND: [where, { name: { contains: headerKw } }] } : where,
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
@@ -454,7 +455,7 @@ export async function listSupplierFacets(query: Record<string, unknown>) {
   }
 
   if (field === 'category') {
-    const rows = await prisma.supplier_business_category.findMany({
+    const rows = await repositories.partnerRepository.supplier_business_category.findMany({
       where: {
         supplier: where,
         ...(headerKw ? { category: { name: { contains: headerKw } } } : {}),
@@ -469,7 +470,7 @@ export async function listSupplierFacets(query: Record<string, unknown>) {
 
   if (field === 'scope') {
     const [catRows, brandRows] = await Promise.all([
-      prisma.supplier_business_category.findMany({
+      repositories.partnerRepository.supplier_business_category.findMany({
         where: {
           supplier: where,
           ...(headerKw ? { category: { name: { contains: headerKw } } } : {}),
@@ -479,7 +480,7 @@ export async function listSupplierFacets(query: Record<string, unknown>) {
         orderBy: { categoryId: 'asc' },
         select: { categoryId: true, category: { select: { name: true } } },
       }),
-      prisma.supplier_business_brand.findMany({
+      repositories.partnerRepository.supplier_business_brand.findMany({
         where: {
           supplier: where,
           ...(headerKw ? { brand: { name: { contains: headerKw } } } : {}),
@@ -499,7 +500,7 @@ export async function listSupplierFacets(query: Record<string, unknown>) {
     return toArchiveFacetOptions(merged.slice(0, SUPPLIER_FACET_LIMIT));
   }
 
-  const rows = await prisma.supplier_business_brand.findMany({
+  const rows = await repositories.partnerRepository.supplier_business_brand.findMany({
     where: {
       supplier: where,
       ...(headerKw ? { brand: { name: { contains: headerKw } } } : {}),
@@ -546,7 +547,7 @@ export async function createSupplier(data: CreateSupplierInput) {
     extra: { remark: data.remark },
   });
   if (data.remark !== undefined) {
-    await prisma.supplier.update({
+    await repositories.partnerRepository.supplier.update({
       where: { id: resolved.id },
       data: { remark: data.remark },
     });
@@ -568,7 +569,7 @@ export async function updateSupplier(
   id: bigint,
   data: Partial<CreateSupplierInput> & { status?: number },
 ) {
-  const existing = await prisma.supplier.findUnique({ where: { id } });
+  const existing = await repositories.partnerRepository.supplier.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('供应商不存在');
   const update: Prisma.supplierUpdateInput = {};
   if (data.name !== undefined) update.name = data.name;
@@ -576,7 +577,7 @@ export async function updateSupplier(
   if (data.status !== undefined) update.status = data.status;
   try {
     if (Object.keys(update).length > 0) {
-      await prisma.supplier.update({ where: { id }, data: update });
+      await repositories.partnerRepository.supplier.update({ where: { id }, data: update });
     }
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -591,10 +592,10 @@ export async function updateSupplier(
 }
 
 export async function setSupplierStatus(id: bigint, status: number) {
-  const existing = await prisma.supplier.findUnique({ where: { id } });
+  const existing = await repositories.partnerRepository.supplier.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('供应商不存在');
   if (status !== 0 && status !== 1) throw Errors.unprocessable('状态值必须为 0 或 1');
-  await prisma.supplier.update({ where: { id }, data: { status } });
+  await repositories.partnerRepository.supplier.update({ where: { id }, data: { status } });
   const record = await loadSupplierWithRelations(id);
   if (!record) throw Errors.notFound('供应商不存在');
   return formatSupplierView(record);
@@ -604,20 +605,20 @@ export async function batchSetSupplierStatus(ids: bigint[], status: number) {
   if (status !== 0 && status !== 1) throw Errors.unprocessable('状态值必须为 0 或 1');
   const unique = [...new Set(ids.map((id) => id.toString()))].map((s) => BigInt(s));
   if (unique.length === 0) return { count: 0, status };
-  const found = await prisma.supplier.count({ where: { id: { in: unique } } });
+  const found = await repositories.partnerRepository.supplier.count({ where: { id: { in: unique } } });
   if (found !== unique.length) throw Errors.notFound('部分供应商不存在');
-  await prisma.supplier.updateMany({ where: { id: { in: unique } }, data: { status } });
+  await repositories.partnerRepository.supplier.updateMany({ where: { id: { in: unique } }, data: { status } });
   return { count: unique.length, status };
 }
 
 export async function getSupplierRefCounts(id: bigint) {
-  const existing = await prisma.supplier.findUnique({ where: { id }, select: { id: true } });
+  const existing = await repositories.partnerRepository.supplier.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw Errors.notFound('供应商不存在');
 
   const [purchasePriceCount, allocationCount, costCount] = await Promise.all([
-    prisma.purchase_price.count({ where: { supplierId: id } }),
-    prisma.allocation_lines.count({ where: { source_id: id } }),
-    prisma.cost_lines.count({ where: { source_id: id } }),
+    repositories.pricingRepository.purchase_price.count({ where: { supplierId: id } }),
+    repositories.documentRepository.allocation_lines.count({ where: { source_id: id } }),
+    repositories.orderRepository.cost_lines.count({ where: { source_id: id } }),
   ]);
 
   return {
@@ -630,16 +631,16 @@ export async function getSupplierRefCounts(id: bigint) {
 }
 
 export async function deleteSupplier(id: bigint) {
-  const existing = await prisma.supplier.findUnique({ where: { id } });
+  const existing = await repositories.partnerRepository.supplier.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('供应商不存在');
 
   const [purchasePriceCount, allocationCount, costCount] = await Promise.all([
-    prisma.purchase_price.count({ where: { supplierId: id } }),
-    prisma.allocation_lines.count({ where: { source_id: id } }),
-    prisma.cost_lines.count({ where: { source_id: id } }),
+    repositories.pricingRepository.purchase_price.count({ where: { supplierId: id } }),
+    repositories.documentRepository.allocation_lines.count({ where: { source_id: id } }),
+    repositories.orderRepository.cost_lines.count({ where: { source_id: id } }),
   ]);
 
-  await prisma.supplier.delete({ where: { id } });
+  await repositories.partnerRepository.supplier.delete({ where: { id } });
 
   return {
     supplierId: String(id),
@@ -670,15 +671,15 @@ export interface ContactMethodUpdateInput {
 }
 
 export async function listContactMethods() {
-  return prisma.contact_method.findMany({
+  return repositories.customerRepository.contact_method.findMany({
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
   });
 }
 
 export async function createContactMethod(data: ContactMethodCreateInput) {
-  const existing = await prisma.contact_method.findUnique({ where: { name: data.name } });
+  const existing = await repositories.customerRepository.contact_method.findUnique({ where: { name: data.name } });
   if (existing) throw Errors.unprocessable(`方式「${data.name}」已存在`);
-  return prisma.contact_method.create({
+  return repositories.customerRepository.contact_method.create({
     data: {
       name: data.name,
       sortOrder: data.sortOrder ?? 0,
@@ -688,27 +689,27 @@ export async function createContactMethod(data: ContactMethodCreateInput) {
 }
 
 export async function updateContactMethod(id: bigint, data: ContactMethodUpdateInput) {
-  const existing = await prisma.contact_method.findUnique({ where: { id } });
+  const existing = await repositories.customerRepository.contact_method.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('方式不存在');
   const update: Prisma.contact_methodUpdateInput = {};
   if (data.name !== undefined) {
-    const dup = await prisma.contact_method.findUnique({ where: { name: data.name } });
+    const dup = await repositories.customerRepository.contact_method.findUnique({ where: { name: data.name } });
     if (dup && dup.id !== id) throw Errors.unprocessable(`方式「${data.name}」已存在`);
     update.name = data.name;
   }
   if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
   if (data.status !== undefined) update.status = data.status;
-  return prisma.contact_method.update({ where: { id }, data: update });
+  return repositories.customerRepository.contact_method.update({ where: { id }, data: update });
 }
 
 export async function deleteContactMethod(id: bigint) {
-  const existing = await prisma.contact_method.findUnique({ where: { id } });
+  const existing = await repositories.customerRepository.contact_method.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('方式不存在');
-  return prisma.contact_method.delete({ where: { id } });
+  return repositories.customerRepository.contact_method.delete({ where: { id } });
 }
 
 export async function listAddressTypes() {
-  return prisma.address_type.findMany({
+  return repositories.partnerRepository.address_type.findMany({
     where: { status: 1 },
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
   });
@@ -716,7 +717,7 @@ export async function listAddressTypes() {
 
 /** 地址类型引用计数（被多少供应商地址引用）。 */
 export async function addressTypeRefCount(id: bigint) {
-  const suppliers = await prisma.supplier_address.count({ where: { addressTypeId: id } });
+  const suppliers = await repositories.partnerRepository.supplier_address.count({ where: { addressTypeId: id } });
   return { suppliers };
 }
 
@@ -724,10 +725,10 @@ export async function addressTypeRefCount(id: bigint) {
 export async function quickAddAddressType(name: string, status = 1) {
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable('地址类型名不能为空');
-  const existing = await prisma.address_type.findUnique({ where: { name: trimmed } });
+  const existing = await repositories.partnerRepository.address_type.findUnique({ where: { name: trimmed } });
   if (existing) {
     if (status === 1 && existing.status === 0) {
-      const restored = await prisma.address_type.update({
+      const restored = await repositories.partnerRepository.address_type.update({
         where: { id: existing.id },
         data: { status: 1 },
       });
@@ -735,12 +736,12 @@ export async function quickAddAddressType(name: string, status = 1) {
     }
     return { ...existing, reused: true };
   }
-  const created = await prisma.address_type.create({ data: { name: trimmed, status } });
+  const created = await repositories.partnerRepository.address_type.create({ data: { name: trimmed, status } });
   return { ...created, reused: false };
 }
 
 export async function updateAddressType(id: bigint, data: { name?: string; sortOrder?: number; status?: number }) {
-  return prisma.address_type.update({ where: { id }, data });
+  return repositories.partnerRepository.address_type.update({ where: { id }, data });
 }
 
 export async function deleteAddressType(id: bigint) {
@@ -748,6 +749,6 @@ export async function deleteAddressType(id: bigint) {
   if (ref.suppliers > 0) {
     throw Errors.unprocessable(`该地址类型被 ${ref.suppliers} 条供应商地址引用，无法删除`);
   }
-  await prisma.address_type.delete({ where: { id } });
+  await repositories.partnerRepository.address_type.delete({ where: { id } });
   return { id };
 }

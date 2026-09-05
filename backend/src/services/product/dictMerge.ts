@@ -1,6 +1,7 @@
 // 选品「改全局」：目标名不存在 → 改字典名；已有同名且不是自己 → 把引用并到那个 ID。
 // 已开单据行是快照，不跟着改。确认修改（当前）不走这里。
 
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
@@ -85,48 +86,48 @@ function summarize(
 
 async function loadSource(kind: DictChangeKind, id: bigint | number) {
   if (kind === 'brand') {
-    const row = await prisma.brand.findUnique({ where: { id: id as bigint } });
+    const row = await repositories.catalogRepository.brand.findUnique({ where: { id: id as bigint } });
     if (!row) throw Errors.notFound('品牌不存在');
     return { name: row.name };
   }
   if (kind === 'unit') {
-    const row = await prisma.unit.findUnique({ where: { id: id as bigint } });
+    const row = await repositories.catalogRepository.unit.findUnique({ where: { id: id as bigint } });
     if (!row) throw Errors.notFound('单位不存在');
     return { name: row.unitName };
   }
   if (kind === 'category') {
-    const row = await prisma.category.findUnique({ where: { id: id as number } });
+    const row = await repositories.catalogRepository.category.findUnique({ where: { id: id as number } });
     if (!row) throw Errors.notFound('分类不存在');
     return { name: row.name };
   }
   if (kind === 'priceType') {
-    const row = await prisma.price_type.findUnique({ where: { id: id as bigint } });
+    const row = await repositories.pricingRepository.price_type.findUnique({ where: { id: id as bigint } });
     if (!row) throw Errors.notFound('售价类型不存在');
     return { name: row.name };
   }
-  const row = await prisma.supplier.findUnique({ where: { id: id as bigint } });
+  const row = await repositories.partnerRepository.supplier.findUnique({ where: { id: id as bigint } });
   if (!row) throw Errors.notFound('供应商不存在');
   return { name: row.name };
 }
 
 async function findTarget(kind: DictChangeKind, toName: string) {
   if (kind === 'brand') {
-    const row = await prisma.brand.findUnique({ where: { name: toName } });
+    const row = await repositories.catalogRepository.brand.findUnique({ where: { name: toName } });
     return row ? { id: row.id, name: row.name } : null;
   }
   if (kind === 'unit') {
-    const row = await prisma.unit.findUnique({ where: { unitName: toName } });
+    const row = await repositories.catalogRepository.unit.findUnique({ where: { unitName: toName } });
     return row ? { id: row.id, name: row.unitName } : null;
   }
   if (kind === 'category') {
-    const row = await prisma.category.findUnique({ where: { name: toName } });
+    const row = await repositories.catalogRepository.category.findUnique({ where: { name: toName } });
     return row ? { id: row.id, name: row.name } : null;
   }
   if (kind === 'priceType') {
-    const row = await prisma.price_type.findUnique({ where: { name: toName } });
+    const row = await repositories.pricingRepository.price_type.findUnique({ where: { name: toName } });
     return row ? { id: row.id, name: row.name } : null;
   }
-  const row = await prisma.supplier.findUnique({ where: { name: toName } });
+  const row = await repositories.partnerRepository.supplier.findUnique({ where: { name: toName } });
   return row ? { id: row.id, name: row.name } : null;
 }
 
@@ -138,8 +139,8 @@ async function collectImpact(kind: DictChangeKind, fromId: bigint | number): Pro
 }> {
   if (kind === 'brand') {
     const where = { brandId: fromId as bigint };
-    const total = await prisma.spec.count({ where });
-    const rows = await prisma.spec.findMany({
+    const total = await repositories.catalogRepository.spec.count({ where });
+    const rows = await repositories.catalogRepository.spec.findMany({
       where,
       take: SAMPLE,
       orderBy: { id: 'asc' },
@@ -154,8 +155,8 @@ async function collectImpact(kind: DictChangeKind, fromId: bigint | number): Pro
   }
   if (kind === 'unit') {
     const where = { unitId: fromId as bigint };
-    const total = await prisma.spec_unit.count({ where });
-    const rows = await prisma.spec_unit.findMany({
+    const total = await repositories.catalogRepository.spec_unit.count({ where });
+    const rows = await repositories.catalogRepository.spec_unit.findMany({
       where,
       take: SAMPLE,
       orderBy: { id: 'asc' },
@@ -170,8 +171,8 @@ async function collectImpact(kind: DictChangeKind, fromId: bigint | number): Pro
   }
   if (kind === 'category') {
     const where = { categoryId: fromId as number };
-    const total = await prisma.product.count({ where });
-    const rows = await prisma.product.findMany({
+    const total = await repositories.catalogRepository.product.count({ where });
+    const rows = await repositories.catalogRepository.product.findMany({
       where,
       take: SAMPLE,
       orderBy: { id: 'asc' },
@@ -184,8 +185,8 @@ async function collectImpact(kind: DictChangeKind, fromId: bigint | number): Pro
   }
   if (kind === 'priceType') {
     const where = { priceTypeId: fromId as bigint };
-    const total = await prisma.sale_price.count({ where });
-    const rows = await prisma.sale_price.findMany({
+    const total = await repositories.pricingRepository.sale_price.count({ where });
+    const rows = await repositories.pricingRepository.sale_price.findMany({
       where,
       take: SAMPLE,
       orderBy: { id: 'asc' },
@@ -203,8 +204,8 @@ async function collectImpact(kind: DictChangeKind, fromId: bigint | number): Pro
     };
   }
   const where = { supplierId: fromId as bigint };
-  const total = await prisma.purchase_price.count({ where });
-  const rows = await prisma.purchase_price.findMany({
+  const total = await repositories.pricingRepository.purchase_price.count({ where });
+  const rows = await repositories.pricingRepository.purchase_price.findMany({
     where,
     take: SAMPLE,
     orderBy: { id: 'asc' },
@@ -224,8 +225,8 @@ async function collectImpact(kind: DictChangeKind, fromId: bigint | number): Pro
 
 async function categoryNameClash(fromId: number, toId: number): Promise<string[]> {
   const [fromRows, toRows] = await Promise.all([
-    prisma.product.findMany({ where: { categoryId: fromId }, select: { name: true } }),
-    prisma.product.findMany({ where: { categoryId: toId }, select: { name: true } }),
+    repositories.catalogRepository.product.findMany({ where: { categoryId: fromId }, select: { name: true } }),
+    repositories.catalogRepository.product.findMany({ where: { categoryId: toId }, select: { name: true } }),
   ]);
   const taken = new Set(toRows.map((r) => r.name));
   return fromRows.filter((r) => taken.has(r.name)).map((r) => r.name);
@@ -465,7 +466,7 @@ async function absorbSpecBrand(tx: Tx, fromSbId: bigint, toSbId: bigint) {
 }
 
 async function mergeBrand(fromId: bigint, toId: bigint, fromName: string, toName: string) {
-  const links = await prisma.spec.findMany({
+  const links = await repositories.catalogRepository.spec.findMany({
     where: { brandId: fromId },
     select: { id: true, productId: true, specModel: true },
     orderBy: { id: 'asc' },
@@ -583,7 +584,7 @@ async function absorbSpecUnit(tx: Tx, specId: bigint, fromUnitId: bigint, toUnit
 }
 
 async function mergeUnit(fromId: bigint, toId: bigint) {
-  const links = await prisma.spec_unit.findMany({
+  const links = await repositories.catalogRepository.spec_unit.findMany({
     where: { unitId: fromId },
     orderBy: { id: 'asc' },
   });
@@ -723,7 +724,7 @@ async function mergePriceType(fromId: bigint, toId: bigint) {
 }
 
 async function mergeSupplier(fromId: bigint, toId: bigint, toName: string) {
-  const payableCount = await prisma.supplier_payable_lines.count({ where: { supplier_id: fromId } });
+  const payableCount = await repositories.documentRepository.supplier_payable_lines.count({ where: { supplier_id: fromId } });
   await prisma.$transaction(async (tx) => {
     const buys = await tx.purchase_price.findMany({ where: { supplierId: fromId } });
     for (const row of buys) {
@@ -808,11 +809,11 @@ export async function applyDictChange(input: DictChangeInput): Promise<DictChang
       await updatePriceType(fromId as bigint, { name: toName });
     } else {
       await updateSupplier(fromId as bigint, { name: toName });
-      await prisma.purchase_price.updateMany({
+      await repositories.pricingRepository.purchase_price.updateMany({
         where: { supplierId: fromId as bigint },
         data: { supplierName: toName },
       });
-      await prisma.supplier_point_rule.updateMany({
+      await repositories.partnerRepository.supplier_point_rule.updateMany({
         where: { supplierId: fromId as bigint },
         data: { supplierName: toName },
       });

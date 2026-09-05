@@ -22,6 +22,7 @@
  * 阶段 2 只做召回层对拍（compare-recall.ts），宽表仍是线上数据源；
  * 对拍一致后才进入阶段 3（切读路径）与阶段 4（删宽表）。
  */
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { tokenizeKeyword, segmentizeKeyword } from '../search-scoring.js';
 import { buildKeywords } from './skuSearch.js';
@@ -542,33 +543,33 @@ export async function buildSkuRows(specIds: bigint[]): Promise<
   const ids = [...new Set(specIds.map((x) => String(x)))].map(BigInt);
 
   const [specs, specUnits, images, salePrices, purchasePrices, pointRules] = await Promise.all([
-    prisma.spec.findMany({
+    repositories.catalogRepository.spec.findMany({
       where: { id: { in: ids } },
       include: { product: { include: { category: true } }, brand: true },
     }),
-    prisma.spec_unit.findMany({
+    repositories.catalogRepository.spec_unit.findMany({
       where: { specId: { in: ids }, unit: { status: 1 } },
       include: { unit: true },
       orderBy: { id: 'asc' },
     }),
-    prisma.product_image.findMany({
+    repositories.catalogRepository.product_image.findMany({
       where: { specId: { in: ids } },
       orderBy: [{ isMain: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }],
     }),
-    prisma.sale_price.findMany({
+    repositories.pricingRepository.sale_price.findMany({
       where: { specId: { in: ids }, status: 1 },
       select: { specId: true, unitId: true, price: true, isDefault: true },
     }),
-    prisma.purchase_price.findMany({
+    repositories.pricingRepository.purchase_price.findMany({
       where: { specId: { in: ids }, status: 1 },
       select: { specId: true, unitId: true, price: true, isDefault: true, supplierId: true },
     }),
-    prisma.supplier_point_rule.findMany({
+    repositories.partnerRepository.supplier_point_rule.findMany({
       select: { supplierId: true, brandName: true, categoryName: true, point: true },
     }),
   ]);
   // product_brand 依赖 specs 的 productId，需在其后查询（避免 TDZ）
-  const productBrands = await prisma.product_brand.findMany({
+  const productBrands = await repositories.catalogRepository.product_brand.findMany({
     where: { productId: { in: specs.map((s) => s.productId) } },
     select: { productId: true, brandId: true, status: true },
   });

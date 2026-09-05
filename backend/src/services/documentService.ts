@@ -7,6 +7,7 @@
  *  3. 状态流转：transitionStatus 调用 document-state-machine.applyTransition
  *  4. 客户端价格可见性：getByIdForCustomer 在 purchase_quote_status !== confirmed 时剥离售价
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination, parseSort } from '../utils/validation.js';
@@ -43,7 +44,7 @@ function formatDate(d: Date): string {
 async function generateDocumentNo(): Promise<string> {
   const dateStr = formatDate(new Date());
   const prefix = dateStr;
-  const last = await prisma.documents.findFirst({
+  const last = await repositories.documentRepository.documents.findFirst({
     where: { document_no: { startsWith: prefix } },
     orderBy: { document_no: 'desc' },
     select: { document_no: true },
@@ -152,8 +153,8 @@ export async function listDocuments(query: Record<string, unknown>) {
   const recallLimit = hasKeyword ? 200 : undefined;
 
   const [total, rawList] = await Promise.all([
-    prisma.documents.count({ where }),
-    prisma.documents.findMany({
+    repositories.documentRepository.documents.count({ where }),
+    repositories.documentRepository.documents.findMany({
       where,
       orderBy: sort,
       ...(recallLimit ? { take: recallLimit as number } : { skip, take }),
@@ -197,7 +198,7 @@ export async function listDocuments(query: Record<string, unknown>) {
   }
   if (!preview || list.length === 0) return paginate(list, total, page, pageSize);
   const ids = list.map((d) => d.id);
-  const lines = await prisma.document_lines.findMany({
+  const lines = await repositories.documentRepository.document_lines.findMany({
     where: { documentId: { in: ids } },
     select: {
       documentId: true,
@@ -268,7 +269,7 @@ const detailInclude = {
 } as const;
 
 export async function getDocumentById(id: bigint) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id },
     include: detailInclude,
   });
@@ -277,9 +278,9 @@ export async function getDocumentById(id: bigint) {
   const lineIds = doc.document_lines.map((l) => l.id);
   const [allocationLinesCount, costLinesCount, refundLinesCount] = lineIds.length
     ? await Promise.all([
-        prisma.allocation_lines.count({ where: { line_id: { in: lineIds } } }),
-        prisma.cost_lines.count({ where: { line_id: { in: lineIds } } }),
-        prisma.refund_lines.count({ where: { line_id: { in: lineIds } } }),
+        repositories.documentRepository.allocation_lines.count({ where: { line_id: { in: lineIds } } }),
+        repositories.orderRepository.cost_lines.count({ where: { line_id: { in: lineIds } } }),
+        repositories.orderRepository.refund_lines.count({ where: { line_id: { in: lineIds } } }),
       ])
     : [0, 0, 0];
 
@@ -318,7 +319,7 @@ function stripLinePrices<T extends { unitPrice: unknown; amount: unknown; lineDi
  * 价格可见性：仅 purchase_quote_status === confirmed 时返回售价。
  */
 export async function getDocumentForCustomer(id: bigint, customerId: bigint) {
-  const doc = await prisma.documents.findFirst({
+  const doc = await repositories.documentRepository.documents.findFirst({
     where: { id, customer_id: customerId },
     include: {
       document_lines: {
@@ -345,7 +346,7 @@ export async function getDocumentForCustomer(id: bigint, customerId: bigint) {
  * 客户端获取当前活动单据（未归档，按 updated_at desc 取最新一张）。
  */
 export async function getActiveDocumentForCustomer(customerId: bigint) {
-  const doc = await prisma.documents.findFirst({
+  const doc = await repositories.documentRepository.documents.findFirst({
     where: {
       customer_id: customerId,
       status: { not: 'archived' },
@@ -376,7 +377,7 @@ export async function getActiveDocumentForCustomer(customerId: bigint) {
  * 客户端列出本人全部清单（含已归档，不含行明细以减轻负载）。
  */
 export async function listDocumentsForCustomer(customerId: bigint) {
-  const list = await prisma.documents.findMany({
+  const list = await repositories.documentRepository.documents.findMany({
     where: { customer_id: customerId },
     orderBy: { updated_at: 'desc' },
     select: {
@@ -412,11 +413,11 @@ export async function updateDocumentForCustomer(
   customerId: bigint,
   data: { title?: string; note?: string },
 ) {
-  const existing = await prisma.documents.findFirst({
+  const existing = await repositories.documentRepository.documents.findFirst({
     where: { id: documentId, customer_id: customerId },
   });
   if (!existing) throw Errors.notFound('单据不存在');
-  return prisma.documents.update({
+  return repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: {
       ...(data.title !== undefined ? { title: data.title } : {}),
@@ -429,11 +430,11 @@ export async function updateDocumentForCustomer(
  * 客户归档本人清单（软删除入口）。
  */
 export async function archiveDocumentForCustomer(documentId: bigint, customerId: bigint) {
-  const existing = await prisma.documents.findFirst({
+  const existing = await repositories.documentRepository.documents.findFirst({
     where: { id: documentId, customer_id: customerId },
   });
   if (!existing) throw Errors.notFound('单据不存在');
-  return prisma.documents.update({
+  return repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { status: 'archived' },
   });
@@ -479,26 +480,26 @@ export async function createDocument(input: CreateDocumentInput) {
       // v11.0 解耦：主动查询客户/员工档案填充快照字段
       const [customerRow, creatorRow, salespersonRow] = await Promise.all([
         input.customerId
-          ? prisma.customers.findUnique({
+          ? repositories.customerRepository.customers.findUnique({
               where: { id: input.customerId },
               select: { name: true, phone: true, company: true },
             })
           : Promise.resolve(null),
         input.createdBy
-          ? prisma.users.findUnique({
+          ? repositories.identityRepository.users.findUnique({
               where: { id: input.createdBy },
               select: { real_name: true },
             })
           : Promise.resolve(null),
         input.salespersonId
-          ? prisma.users.findUnique({
+          ? repositories.identityRepository.users.findUnique({
               where: { id: input.salespersonId },
               select: { real_name: true },
             })
           : Promise.resolve(null),
       ]);
 
-      const created = await prisma.documents.create({
+      const created = await repositories.documentRepository.documents.create({
         data: {
           document_no,
           // v2.6 customer_id 可空：未关联客户时为 null
@@ -560,7 +561,7 @@ export async function updateDocument(
   data: { title?: string; note?: string; needInvoice?: boolean; createdAt?: string },
   lockVersion?: number,
 ) {
-  const existing = await prisma.documents.findUnique({ where: { id } });
+  const existing = await repositories.documentRepository.documents.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('单据不存在');
 
   if (lockVersion !== undefined && lockVersion !== existing.lock_version) {
@@ -587,7 +588,7 @@ export async function updateDocument(
     update.created_at = next;
   }
 
-  return prisma.documents.update({
+  return repositories.documentRepository.documents.update({
     where: { id },
     data: update,
   });
@@ -617,7 +618,7 @@ export interface DocumentBusinessUpdateInput {
  * v11.0 解耦：customerId / salespersonId 变更时同步刷新快照字段
  */
 export async function updateDocumentBusiness(id: bigint, input: DocumentBusinessUpdateInput) {
-  const existing = await prisma.documents.findUnique({ where: { id } });
+  const existing = await repositories.documentRepository.documents.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('单据不存在');
 
   const update: Record<string, unknown> = {};
@@ -647,13 +648,13 @@ export async function updateDocumentBusiness(id: bigint, input: DocumentBusiness
   if (customerChanged || salespersonChanged) {
     const [customerRow, salespersonRow] = await Promise.all([
       customerChanged && newCustomerId
-        ? prisma.customers.findUnique({
+        ? repositories.customerRepository.customers.findUnique({
             where: { id: newCustomerId },
             select: { name: true, phone: true, company: true },
           })
         : Promise.resolve(null),
       salespersonChanged && newSalespersonId
-        ? prisma.users.findUnique({
+        ? repositories.identityRepository.users.findUnique({
             where: { id: newSalespersonId },
             select: { real_name: true },
           })
@@ -673,7 +674,7 @@ export async function updateDocumentBusiness(id: bigint, input: DocumentBusiness
     }
   }
 
-  return prisma.documents.update({ where: { id }, data: update });
+  return repositories.documentRepository.documents.update({ where: { id }, data: update });
 }
 
 export async function transitionStatus(
@@ -704,9 +705,9 @@ export async function transitionStatus(
 }
 
 export async function archiveDocument(id: bigint) {
-  const existing = await prisma.documents.findUnique({ where: { id } });
+  const existing = await repositories.documentRepository.documents.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('单据不存在');
-  return prisma.documents.update({
+  return repositories.documentRepository.documents.update({
     where: { id },
     data: { status: 'archived' },
   });
@@ -728,7 +729,7 @@ export function broadcastLinesUpdated(documentId: bigint) {
  * 仅 pending 阶段允许。
  */
 export async function submitDemandForCustomer(documentId: bigint, customerId: bigint) {
-  const doc = await prisma.documents.findFirst({
+  const doc = await repositories.documentRepository.documents.findFirst({
     where: { id: documentId, customer_id: customerId },
     include: { document_lines: { select: { id: true } } },
   });
@@ -745,7 +746,7 @@ export async function submitDemandForCustomer(documentId: bigint, customerId: bi
   const prevNote = (doc.note ?? '').replace(/\[客户已提交需求[^\]]*]\s*/g, '').trim();
   const note = prevNote ? `${marker}\n${prevNote}` : marker;
 
-  const updated = await prisma.documents.update({
+  const updated = await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { note },
   });

@@ -1,6 +1,7 @@
 // v16.5 全局单位字典：unit.unitName 全局唯一；规格引用 + isBase/isDisplay 走 spec_unit。
 // 解除规格引用只删 spec_unit，不删全局字典行。前端 UnitView 仍带 specId/isBase/isDisplay（按当前规格展平）。
 
+import { repositories } from '../../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../../config/prisma.js';
 import { Errors } from '../../utils/errors.js';
 import { assertInventoryNotReferenced } from '../dictInventoryGuard.js';
@@ -47,10 +48,10 @@ export async function ensureGlobalUnit(db: Db, unitName: string, status = 1) {
 export async function quickAddGlobalUnit(unitName: string, status = 1) {
   const name = unitName.trim();
   if (!name) throw Errors.unprocessable('单位名不能为空');
-  const existing = await prisma.unit.findUnique({ where: { unitName: name } });
+  const existing = await repositories.catalogRepository.unit.findUnique({ where: { unitName: name } });
   if (existing) {
     if (status === 1 && existing.status === 0) {
-      const restored = await prisma.unit.update({
+      const restored = await repositories.catalogRepository.unit.update({
         where: { id: existing.id },
         data: { status: 1 },
       });
@@ -58,7 +59,7 @@ export async function quickAddGlobalUnit(unitName: string, status = 1) {
     }
     return { ...existing, reused: true };
   }
-  const created = await prisma.unit.create({ data: { unitName: name, status } });
+  const created = await repositories.catalogRepository.unit.create({ data: { unitName: name, status } });
   return { ...created, reused: false };
 }
 
@@ -67,13 +68,13 @@ export async function quickAddGlobalUnit(unitName: string, status = 1) {
  * 被 spec_unit 引用时拒绝（引导先在产品编辑里解绑）。
  */
 export async function deleteGlobalUnit(id: bigint) {
-  const existing = await prisma.unit.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.unit.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('单位不存在');
-  const linkCount = await prisma.spec_unit.count({ where: { unitId: id } });
+  const linkCount = await repositories.catalogRepository.spec_unit.count({ where: { unitId: id } });
   if (linkCount > 0) {
     throw Errors.unprocessable(`该单位被 ${linkCount} 个规格引用，请先在产品编辑里解绑`);
   }
-  await prisma.unit.delete({ where: { id } });
+  await repositories.catalogRepository.unit.delete({ where: { id } });
   return { id };
 }
 
@@ -114,13 +115,13 @@ export async function unitBelongsToSpec(db: Db, specId: bigint, unitId: bigint) 
 
 async function resolveSpecUnitLink(unitId: bigint, specId?: bigint) {
   if (specId) {
-    const link = await prisma.spec_unit.findUnique({
+    const link = await repositories.catalogRepository.spec_unit.findUnique({
       where: { specId_unitId: { specId, unitId } },
     });
     if (!link) throw Errors.unprocessable('该规格未引用此单位');
     return link;
   }
-  const links = await prisma.spec_unit.findMany({ where: { unitId } });
+  const links = await repositories.catalogRepository.spec_unit.findMany({ where: { unitId } });
   if (links.length === 0) throw Errors.unprocessable('该单位未被任何规格引用');
   if (links.length > 1) throw Errors.unprocessable('单位被多个规格引用，请指定规格');
   return links[0];
@@ -152,8 +153,8 @@ export async function listUnits(query: Record<string, unknown>) {
     const where: Prisma.spec_unitWhereInput = { specId };
     if (unitName) where.unit = { unitName: { contains: unitName } };
     const [total, list] = await Promise.all([
-      prisma.spec_unit.count({ where }),
-      prisma.spec_unit.findMany({
+      repositories.catalogRepository.spec_unit.count({ where }),
+      repositories.catalogRepository.spec_unit.findMany({
         where,
         orderBy: [{ isBase: 'desc' }, { id: 'asc' }],
         skip,
@@ -180,8 +181,8 @@ export async function listUnits(query: Record<string, unknown>) {
   const where: Prisma.unitWhereInput = {};
   if (unitName) where.unitName = { contains: unitName };
   const [total, list] = await Promise.all([
-    prisma.unit.count({ where }),
-    prisma.unit.findMany({
+    repositories.catalogRepository.unit.count({ where }),
+    repositories.catalogRepository.unit.findMany({
       where,
       orderBy: [{ unitName: 'asc' }],
       skip,
@@ -199,7 +200,7 @@ export async function listUnits(query: Record<string, unknown>) {
 }
 
 export async function getUnit(id: bigint) {
-  const u = await prisma.unit.findUnique({
+  const u = await repositories.catalogRepository.unit.findUnique({
     where: { id },
     include: {
       specUnits: {
@@ -221,7 +222,7 @@ export async function getUnit(id: bigint) {
 }
 
 export async function createUnit(data: UnitCreateInput) {
-  const spec = await prisma.spec.findUnique({ where: { id: data.specId } });
+  const spec = await repositories.catalogRepository.spec.findUnique({ where: { id: data.specId } });
   if (!spec) throw Errors.unprocessable('规格不存在');
 
   const created = await prisma.$transaction(async (tx) => {
@@ -271,10 +272,10 @@ export async function rebindSpecUnit(specId: bigint, fromUnitId: bigint, unitNam
   const name = unitName.trim();
   if (!name) throw Errors.unprocessable('单位名称不能为空');
 
-  const spec = await prisma.spec.findUnique({ where: { id: specId } });
+  const spec = await repositories.catalogRepository.spec.findUnique({ where: { id: specId } });
   if (!spec) throw Errors.notFound('规格不存在');
 
-  const fromLink = await prisma.spec_unit.findUnique({
+  const fromLink = await repositories.catalogRepository.spec_unit.findUnique({
     where: { specId_unitId: { specId, unitId: fromUnitId } },
   });
   if (!fromLink) throw Errors.unprocessable('该规格未引用此单位');
@@ -344,11 +345,11 @@ export async function rebindSpecUnit(specId: bigint, fromUnitId: bigint, unitNam
 }
 
 export async function updateUnit(id: bigint, data: UnitUpdateInput) {
-  const existing = await prisma.unit.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.unit.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('单位不存在');
 
   if (data.unitName !== undefined && data.unitName !== existing.unitName) {
-    const conflict = await prisma.unit.findUnique({ where: { unitName: data.unitName } });
+    const conflict = await repositories.catalogRepository.unit.findUnique({ where: { unitName: data.unitName } });
     if (conflict && conflict.id !== id) throw Errors.unprocessable('已存在同名单位');
   }
 
@@ -422,16 +423,16 @@ export async function upsertSpecBrandConversion(
   if (!Number.isFinite(conversionRate) || conversionRate <= 0) {
     throw Errors.unprocessable('换算率必须是正数');
   }
-  const specRow = await prisma.spec.findUnique({ where: { id: specId } });
+  const specRow = await repositories.catalogRepository.spec.findUnique({ where: { id: specId } });
   if (!specRow) throw Errors.notFound('规格不存在');
-  const link = await prisma.spec_unit.findUnique({
+  const link = await repositories.catalogRepository.spec_unit.findUnique({
     where: { specId_unitId: { specId, unitId } },
   });
   if (!link) throw Errors.unprocessable('该规格未引用此单位');
   if (link.isBase && conversionRate !== 1) {
     throw Errors.unprocessable('基准单位换算率固定为 1');
   }
-  const row = await prisma.brand_unit_conversion.upsert({
+  const row = await repositories.catalogRepository.brand_unit_conversion.upsert({
     where: { specId_unitId: { specId, unitId } },
     create: { specId, unitId, conversionRate },
     update: { conversionRate },
@@ -445,7 +446,7 @@ export async function upsertSpecBrandConversion(
 }
 
 export async function setUnitBase(unitId: bigint, specId?: bigint) {
-  const unit = await prisma.unit.findUnique({ where: { id: unitId } });
+  const unit = await repositories.catalogRepository.unit.findUnique({ where: { id: unitId } });
   if (!unit) throw Errors.notFound('单位不存在');
   const link = await resolveSpecUnitLink(unitId, specId);
 
@@ -465,7 +466,7 @@ export async function setUnitBase(unitId: bigint, specId?: bigint) {
 }
 
 export async function setUnitDisplay(unitId: bigint, isDisplay: boolean, specId?: bigint) {
-  const unit = await prisma.unit.findUnique({ where: { id: unitId } });
+  const unit = await repositories.catalogRepository.unit.findUnique({ where: { id: unitId } });
   if (!unit) throw Errors.notFound('单位不存在');
   const link = await resolveSpecUnitLink(unitId, specId);
 
@@ -478,7 +479,7 @@ export async function setUnitDisplay(unitId: bigint, isDisplay: boolean, specId?
       });
     });
   } else {
-    await prisma.spec_unit.update({
+    await repositories.catalogRepository.spec_unit.update({
       where: { specId_unitId: { specId: link.specId, unitId } },
       data: { isDisplay: false },
     });
@@ -488,27 +489,27 @@ export async function setUnitDisplay(unitId: bigint, isDisplay: boolean, specId?
 }
 
 export async function deleteUnit(id: bigint, specId?: bigint) {
-  const existing = await prisma.unit.findUnique({ where: { id } });
+  const existing = await repositories.catalogRepository.unit.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('单位不存在');
 
-  const docLineCount = await prisma.document_lines.count({ where: { unitId: id } });
+  const docLineCount = await repositories.documentRepository.document_lines.count({ where: { unitId: id } });
 
   // 无 specId：按全局字典删除（A 类槽管理面板），仅当无 spec_unit 引用。
   if (!specId) {
-    const linkCount = await prisma.spec_unit.count({ where: { unitId: id } });
+    const linkCount = await repositories.catalogRepository.spec_unit.count({ where: { unitId: id } });
     if (linkCount > 0) {
       throw Errors.unprocessable(`该单位被 ${linkCount} 个规格引用，请先在产品编辑里解绑`);
     }
     // v28：校验实时库存引用（inventory 无物理外键，被库存引用即禁止删除）
     await assertInventoryNotReferenced('unit', id);
-    await prisma.unit.delete({ where: { id } });
+    await repositories.catalogRepository.unit.delete({ where: { id } });
     return { id, deletedDocLineRefs: docLineCount };
   }
 
   const link = await resolveSpecUnitLink(id, specId);
 
   if (link.isBase) {
-    const otherCount = await prisma.spec_unit.count({
+    const otherCount = await repositories.catalogRepository.spec_unit.count({
       where: { specId: link.specId, unitId: { not: id } },
     });
     if (otherCount > 0) {
@@ -526,17 +527,17 @@ export async function deleteUnit(id: bigint, specId?: bigint) {
 export async function resolveDefaultUnit(
   specId: bigint,
 ): Promise<{ unitId: bigint | null; unitName: string | null }> {
-  const display = await prisma.spec_unit.findFirst({
+  const display = await repositories.catalogRepository.spec_unit.findFirst({
     where: { specId, isDisplay: true, unit: { status: 1 } },
     include: { unit: true },
   });
   if (display) return { unitId: display.unit.id, unitName: display.unit.unitName };
-  const base = await prisma.spec_unit.findFirst({
+  const base = await repositories.catalogRepository.spec_unit.findFirst({
     where: { specId, isBase: true, unit: { status: 1 } },
     include: { unit: true },
   });
   if (base) return { unitId: base.unit.id, unitName: base.unit.unitName };
-  const any = await prisma.spec_unit.findFirst({
+  const any = await repositories.catalogRepository.spec_unit.findFirst({
     where: { specId, unit: { status: 1 } },
     orderBy: [{ id: 'asc' }],
     include: { unit: true },

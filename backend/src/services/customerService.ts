@@ -1,3 +1,4 @@
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { parsePagination } from '../utils/validation.js';
@@ -80,11 +81,11 @@ const CUSTOMER_FACET_LIMIT = 80;
  * 当 phone 为空或对应多个客户时行为未定义。
  */
 export async function getOrCreateByPhone(phone: string) {
-  let c = await prisma.customers.findUnique({ where: { phone } });
+  let c = await repositories.customerRepository.customers.findUnique({ where: { phone } });
   if (!c) {
     // v2.7 自动生成不可变客户编码
     const customer_code = await generateCustomerCode();
-    c = await prisma.customers.create({ data: { customer_code, phone } });
+    c = await repositories.customerRepository.customers.create({ data: { customer_code, phone } });
   }
   return c;
 }
@@ -122,7 +123,7 @@ export async function quickAddCustomer(data: {
   if (def?.value?.trim()) await assertLoginValueAvailable(def.value);
 
   const customer_code = await generateCustomerCode();
-  const created = await prisma.customers.create({
+  const created = await repositories.customerRepository.customers.create({
     data: {
       customer_code,
       name: nameVal,
@@ -133,7 +134,7 @@ export async function quickAddCustomer(data: {
   });
   if (seedContacts.length) await syncCustomerContacts(created.id, seedContacts);
   if (data.invoices?.length) await syncCustomerInvoices(created.id, data.invoices);
-  return prisma.customers.findUniqueOrThrow({
+  return repositories.customerRepository.customers.findUniqueOrThrow({
     where: { id: created.id },
     include: customerInclude,
   });
@@ -167,7 +168,7 @@ export async function searchCustomers(
       { district: { contains: n } },
       { province: { contains: n } },
     ]);
-    const addrs = await prisma.customer_addresses.findMany({
+    const addrs = await repositories.customerRepository.customer_addresses.findMany({
       where: { OR: addrOr, customer: { status: 'active' } },
       include: { customer: { include: customerInclude } },
       take: recallCap,
@@ -204,7 +205,7 @@ export async function searchCustomers(
       { name: { contains: n } },
       { method: { contains: n } },
     ]);
-    const rows = await prisma.customer_contact.findMany({
+    const rows = await repositories.customerRepository.customer_contact.findMany({
       where: { OR: contactOr, customer: { status: 'active' } },
       include: { customer: { include: customerInclude } },
       take: recallCap,
@@ -239,7 +240,7 @@ export async function searchCustomers(
       { address: { contains: n } },
       { phone: { contains: n } },
     ]);
-    const rows = await prisma.customer_invoice.findMany({
+    const rows = await repositories.customerRepository.customer_invoice.findMany({
       where: { OR: invOr, customer: { status: 'active' } },
       include: { customer: { include: customerInclude } },
       take: recallCap,
@@ -293,7 +294,7 @@ export async function searchCustomers(
     }
     return parts;
   });
-  const list = await prisma.customers.findMany({
+  const list = await repositories.customerRepository.customers.findMany({
     where: { status: 'active', OR: nameOr },
     include: customerInclude,
     take: recallCap,
@@ -323,8 +324,8 @@ export async function listCustomers(query: Record<string, unknown>) {
   const where = buildCustomerWhere(query, queryTrim(query.keyword));
 
   const [total, list] = await Promise.all([
-    prisma.customers.count({ where }),
-    prisma.customers.findMany({
+    repositories.customerRepository.customers.count({ where }),
+    repositories.customerRepository.customers.findMany({
       where,
       orderBy: { created_at: 'desc' },
       skip,
@@ -348,7 +349,7 @@ export async function listCustomerFacets(query: Record<string, unknown>) {
   if (!headerKw && !haystack && !otherLocked) return [];
 
   if (field === 'name') {
-    const rows = await prisma.customers.findMany({
+    const rows = await repositories.customerRepository.customers.findMany({
       where: headerKw ? { AND: [where, { name: { contains: headerKw } }] } : where,
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
@@ -364,7 +365,7 @@ export async function listCustomerFacets(query: Record<string, unknown>) {
       }));
   }
 
-  const rows = await prisma.customers.findMany({
+  const rows = await repositories.customerRepository.customers.findMany({
     where: headerKw ? { AND: [where, { phone: { contains: headerKw } }] } : where,
     select: { id: true, phone: true },
     orderBy: { phone: 'asc' },
@@ -381,7 +382,7 @@ export async function listCustomerFacets(query: Record<string, unknown>) {
 }
 
 export async function getCustomer(id: bigint) {
-  const c = await prisma.customers.findUnique({
+  const c = await repositories.customerRepository.customers.findUnique({
     where: { id },
     include: customerInclude,
   });
@@ -397,7 +398,7 @@ export async function getCustomer(id: bigint) {
  * customer_code 不可变，不在可更新列表中。
  */
 export async function updateCustomer(id: bigint, data: Record<string, unknown>) {
-  const existing = await prisma.customers.findUnique({ where: { id } });
+  const existing = await repositories.customerRepository.customers.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('客户不存在');
   const update: Record<string, unknown> = {};
   // camelCase 入参 → snake_case Prisma 列名映射
@@ -424,7 +425,7 @@ export async function updateCustomer(id: bigint, data: Record<string, unknown>) 
     if (phoneVal !== existingPhone) {
       if (phoneVal) {
         // 有值：校验 unique
-        const conflict = await prisma.customers.findUnique({ where: { phone: phoneVal } });
+        const conflict = await repositories.customerRepository.customers.findUnique({ where: { phone: phoneVal } });
         if (conflict && conflict.id !== id) {
           const displayName = conflict.name || conflict.phone || '未命名';
           throw Errors.badRequest(`该手机号已属于客户「${displayName}」，请直接搜索该客户关联，或修改为其他号码`);
@@ -433,14 +434,14 @@ export async function updateCustomer(id: bigint, data: Record<string, unknown>) 
       update.phone = phoneVal;
     }
   }
-  await prisma.customers.update({ where: { id }, data: update });
+  await repositories.customerRepository.customers.update({ where: { id }, data: update });
   if (Array.isArray(data.contacts)) {
     await syncCustomerContacts(id, data.contacts as CustomerContactInput[]);
   }
   if (Array.isArray(data.invoices)) {
     await syncCustomerInvoices(id, data.invoices as CustomerInvoiceInput[]);
   }
-  return prisma.customers.findUniqueOrThrow({ where: { id }, include: customerInclude });
+  return repositories.customerRepository.customers.findUniqueOrThrow({ where: { id }, include: customerInclude });
 }
 
 // ===== 地址 =====
@@ -451,9 +452,9 @@ export async function updateCustomer(id: bigint, data: Record<string, unknown>) 
  * 已存在的单据/审计日志不受影响（使用快照字段）
  */
 export async function setCustomerStatus(id: bigint, status: customer_status) {
-  const existing = await prisma.customers.findUnique({ where: { id } });
+  const existing = await repositories.customerRepository.customers.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('客户不存在');
-  return prisma.customers.update({ where: { id }, data: { status } });
+  return repositories.customerRepository.customers.update({ where: { id }, data: { status } });
 }
 
 /**
@@ -461,12 +462,12 @@ export async function setCustomerStatus(id: bigint, status: customer_status) {
  * 解耦后通过 customer_id 字段直接 count，不依赖 @relation
  */
 export async function getCustomerRefCounts(id: bigint) {
-  const existing = await prisma.customers.findUnique({ where: { id }, select: { id: true } });
+  const existing = await repositories.customerRepository.customers.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw Errors.notFound('客户不存在');
 
   const [documentCount, auditLogCount] = await Promise.all([
-    prisma.documents.count({ where: { customer_id: id } }),
-    prisma.audit_logs.count({ where: { customer_id: id } }),
+    repositories.documentRepository.documents.count({ where: { customer_id: id } }),
+    repositories.auditRepository.audit_logs.count({ where: { customer_id: id } }),
   ]);
 
   return {
@@ -489,7 +490,7 @@ export async function getCustomerRefCounts(id: bigint) {
  *   - authorization_codes：保留（授权码历史记录，有 creatorName 快照）
  */
 export async function deleteCustomer(id: bigint) {
-  const existing = await prisma.customers.findUnique({
+  const existing = await repositories.customerRepository.customers.findUnique({
     where: { id },
     select: { id: true, name: true, phone: true },
   });
@@ -497,14 +498,14 @@ export async function deleteCustomer(id: bigint) {
 
   // 物理删除前收集引用计数（用于返回给前端展示）
   const [documentCount, auditLogCount] = await Promise.all([
-    prisma.documents.count({ where: { customer_id: id } }),
-    prisma.audit_logs.count({ where: { customer_id: id } }),
+    repositories.documentRepository.documents.count({ where: { customer_id: id } }),
+    repositories.auditRepository.audit_logs.count({ where: { customer_id: id } }),
   ]);
 
   // 清理客户地址（customer_sessions 通过 CASCADE 自动清理）
-  await prisma.customer_addresses.deleteMany({ where: { customerId: id } });
+  await repositories.customerRepository.customer_addresses.deleteMany({ where: { customerId: id } });
 
-  await prisma.customers.delete({ where: { id } });
+  await repositories.customerRepository.customers.delete({ where: { id } });
 
   return {
     customerId: String(id),
@@ -520,36 +521,36 @@ export async function deleteCustomer(id: bigint) {
 
 export async function addAddress(customerId: bigint, data: Record<string, unknown>) {
   if (data.isDefault) {
-    await prisma.customer_addresses.updateMany({
+    await repositories.customerRepository.customer_addresses.updateMany({
       where: { customerId },
       data: { isDefault: false },
     });
   }
-  return prisma.customer_addresses.create({
+  return repositories.customerRepository.customer_addresses.create({
     data: { ...(data as unknown as Prisma.customer_addressesUncheckedCreateInput), customerId },
   });
 }
 
 export async function updateAddress(id: bigint, customerId: bigint, data: Record<string, unknown>) {
-  const addr = await prisma.customer_addresses.findFirst({ where: { id, customerId } });
+  const addr = await repositories.customerRepository.customer_addresses.findFirst({ where: { id, customerId } });
   if (!addr) throw Errors.notFound('地址不存在');
   if (data.isDefault) {
-    await prisma.customer_addresses.updateMany({
+    await repositories.customerRepository.customer_addresses.updateMany({
       where: { customerId },
       data: { isDefault: false },
     });
   }
-  return prisma.customer_addresses.update({ where: { id }, data });
+  return repositories.customerRepository.customer_addresses.update({ where: { id }, data });
 }
 
 export async function deleteAddress(id: bigint, customerId: bigint) {
-  const addr = await prisma.customer_addresses.findFirst({ where: { id, customerId } });
+  const addr = await repositories.customerRepository.customer_addresses.findFirst({ where: { id, customerId } });
   if (!addr) throw Errors.notFound('地址不存在');
-  return prisma.customer_addresses.delete({ where: { id } });
+  return repositories.customerRepository.customer_addresses.delete({ where: { id } });
 }
 
 export async function listCustomerTypes() {
-  return prisma.customer_type.findMany({
+  return repositories.customerRepository.customer_type.findMany({
     orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
   });
 }
@@ -557,28 +558,28 @@ export async function listCustomerTypes() {
 export async function createCustomerType(data: { name: string }) {
   const name = data.name.trim();
   if (!name) throw Errors.badRequest('类型名称不能为空');
-  const existing = await prisma.customer_type.findUnique({ where: { name } });
+  const existing = await repositories.customerRepository.customer_type.findUnique({ where: { name } });
   if (existing) return existing;
-  return prisma.customer_type.create({ data: { name, sortOrder: 0, status: 1 } });
+  return repositories.customerRepository.customer_type.create({ data: { name, sortOrder: 0, status: 1 } });
 }
 
 export async function updateCustomerType(id: bigint, data: { name?: string; status?: number }) {
-  const existing = await prisma.customer_type.findUnique({ where: { id } });
+  const existing = await repositories.customerRepository.customer_type.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('客户类型不存在');
   const update: Prisma.customer_typeUpdateInput = {};
   if (data.name !== undefined) {
     const name = data.name.trim();
     if (!name) throw Errors.badRequest('类型名称不能为空');
-    const dup = await prisma.customer_type.findUnique({ where: { name } });
+    const dup = await repositories.customerRepository.customer_type.findUnique({ where: { name } });
     if (dup && dup.id !== id) throw Errors.badRequest('该类型已存在');
     update.name = name;
   }
   if (data.status !== undefined) update.status = data.status;
-  return prisma.customer_type.update({ where: { id }, data: update });
+  return repositories.customerRepository.customer_type.update({ where: { id }, data: update });
 }
 
 export async function deleteCustomerType(id: bigint) {
-  const existing = await prisma.customer_type.findUnique({ where: { id } });
+  const existing = await repositories.customerRepository.customer_type.findUnique({ where: { id } });
   if (!existing) throw Errors.notFound('客户类型不存在');
-  return prisma.customer_type.delete({ where: { id } });
+  return repositories.customerRepository.customer_type.delete({ where: { id } });
 }

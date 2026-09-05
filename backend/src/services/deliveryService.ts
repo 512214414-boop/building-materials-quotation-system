@@ -12,6 +12,7 @@
  *  - 签收确认后自动检查是否全部签收，全部签收才推进单据状态
  *  - 交付状态变更触发 WS 广播
  */
+import { repositories } from '../infrastructure/persistence/prisma/repositories.js';
 import { prisma } from '../config/prisma.js';
 import { Errors } from '../utils/errors.js';
 import { wsManager } from '../ws/index.js';
@@ -51,10 +52,10 @@ function broadcastDeliveryChanged(documentId: bigint) {
  * 查询单据的所有交付记录。
  */
 export async function listByDocument(documentId: bigint) {
-  const doc = await prisma.documents.findUnique({ where: { id: documentId }, select: { id: true } });
+  const doc = await repositories.documentRepository.documents.findUnique({ where: { id: documentId }, select: { id: true } });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const records = await prisma.delivery_records.findMany({
+  const records = await repositories.orderRepository.delivery_records.findMany({
     where: { document_id: documentId },
     orderBy: { created_at: 'asc' },
   });
@@ -85,13 +86,13 @@ export async function createDelivery(
   input: DeliveryCreateInput,
   actor: { id: bigint; name: string },
 ) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { id: true, status: true, lock_version: true },
   });
   if (!doc) throw Errors.notFound('单据不存在');
 
-  const created = await prisma.delivery_records.create({
+  const created = await repositories.orderRepository.delivery_records.create({
     data: {
       document_id: documentId,
       delivery_method: input.deliveryMethod,
@@ -140,7 +141,7 @@ export async function updateDelivery(
   input: DeliveryUpdateInput,
   actor: { id: bigint; name: string },
 ) {
-  const existing = await prisma.delivery_records.findUnique({
+  const existing = await repositories.orderRepository.delivery_records.findUnique({
     where: { id: deliveryId },
     select: { id: true, document_id: true, status: true, shipped_at: true },
   });
@@ -172,7 +173,7 @@ export async function updateDelivery(
     }
   }
 
-  const updated = await prisma.delivery_records.update({
+  const updated = await repositories.orderRepository.delivery_records.update({
     where: { id: deliveryId },
     data,
   });
@@ -214,7 +215,7 @@ export async function signDelivery(
   deliveryId: bigint,
   actor: { id: bigint; name: string },
 ) {
-  const existing = await prisma.delivery_records.findUnique({
+  const existing = await repositories.orderRepository.delivery_records.findUnique({
     where: { id: deliveryId },
     select: { id: true, document_id: true, status: true },
   });
@@ -317,7 +318,7 @@ const VIEW_LOCK_KEY = 'delivery';
  * 在 documents.view_locks JSON 中设置 delivery=true。
  */
 export async function lockView(documentId: bigint, actor: { id: bigint; name: string }) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { view_locks: true },
   });
@@ -326,7 +327,7 @@ export async function lockView(documentId: bigint, actor: { id: bigint; name: st
   const locks = (doc.view_locks ?? {}) as Record<string, boolean>;
   locks[VIEW_LOCK_KEY] = true;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { view_locks: locks },
   });
@@ -343,7 +344,7 @@ export async function lockView(documentId: bigint, actor: { id: bigint; name: st
  * 解锁交付履约视图。
  */
 export async function unlockView(documentId: bigint, actor: { id: bigint; name: string }) {
-  const doc = await prisma.documents.findUnique({
+  const doc = await repositories.documentRepository.documents.findUnique({
     where: { id: documentId },
     select: { view_locks: true },
   });
@@ -352,7 +353,7 @@ export async function unlockView(documentId: bigint, actor: { id: bigint; name: 
   const locks = (doc.view_locks ?? {}) as Record<string, boolean>;
   locks[VIEW_LOCK_KEY] = false;
 
-  await prisma.documents.update({
+  await repositories.documentRepository.documents.update({
     where: { id: documentId },
     data: { view_locks: locks },
   });

@@ -18,6 +18,7 @@ import {
   searchNeedlesOrRaw,
   keywordContainsFullName,
   skuMatchesProductQuery,
+  groupSkuRowsToProducts,
   type ScoreRow,
 } from '../src/services/search-scoring.js';
 
@@ -49,6 +50,83 @@ const DN25_WANT = { productName: 'ppr DN25×90度弯头', specModel: '通用', b
 const DN25_NEISI = { productName: 'ppr DN25内丝弯头', specModel: '1/2丝（4分）', brandName: '伟星', remark: '' };
 const DN25_UXING = { productName: 'ppr DN25U型内丝弯头', specModel: '1/2丝（4分）', brandName: '日丰', remark: '' };
 const CI_XIN_25 = { productName: 'ppr DN25给水管', specModel: 'en4.2', brandName: '日丰瓷芯', remark: '' };
+
+// ============================================================
+// v2.0 产品级分组聚合（groupSkuRowsToProducts，纯函数，无 DB）
+// ============================================================
+
+function skuRow(over: Record<string, unknown>): any {
+  return {
+    type: 'sku',
+    id: BigInt(1),
+    productId: BigInt(1),
+    productName: 'p',
+    specId: BigInt(1),
+    specModel: 's',
+    categoryId: BigInt(1),
+    categoryName: 'c',
+    specBrandId: BigInt(1),
+    brandId: BigInt(1),
+    brandName: 'b',
+    remark: '',
+    productRemark: '',
+    hitSupplierId: null,
+    hitSupplierName: null,
+    hitChannelTier: null,
+    defaultUnitId: null,
+    defaultUnitName: null,
+    retailPrice: null,
+    purchasePriceDefault: null,
+    mainImageUrl: null,
+    mainImageThumbUrl: null,
+    status: 1,
+    updateTime: new Date('2026-01-01'),
+    ...over,
+  };
+}
+
+test('groupSkuRowsToProducts：同 productId 多 SKU → 一行带 skuCount / brandCount', () => {
+  const rows = [
+    skuRow({ id: BigInt(1), productId: BigInt(100), brandId: BigInt(1) }),
+    skuRow({ id: BigInt(2), productId: BigInt(100), brandId: BigInt(1) }),
+    skuRow({ id: BigInt(3), productId: BigInt(100), brandId: BigInt(2) }),
+  ];
+  const products = groupSkuRowsToProducts(rows);
+  assert.equal(products.length, 1);
+  assert.equal(products[0].productId, BigInt(100));
+  assert.equal(products[0].skuCount, 3);
+  assert.equal(products[0].brandCount, 2);
+});
+
+test('groupSkuRowsToProducts：不同 productId → 多行', () => {
+  const rows = [
+    skuRow({ productId: BigInt(100) }),
+    skuRow({ productId: BigInt(200) }),
+  ];
+  const products = groupSkuRowsToProducts(rows);
+  assert.equal(products.length, 2);
+});
+
+test('groupSkuRowsToProducts：brandCount 只计不同 brandId', () => {
+  const rows = [
+    skuRow({ productId: BigInt(100), brandId: BigInt(1) }),
+    skuRow({ productId: BigInt(100), brandId: BigInt(1) }),
+    skuRow({ productId: BigInt(100), brandId: BigInt(5) }),
+  ];
+  const products = groupSkuRowsToProducts(rows);
+  assert.equal(products[0].skuCount, 3);
+  assert.equal(products[0].brandCount, 2);
+});
+
+test('groupSkuRowsToProducts：按 updateTime 降序', () => {
+  const rows = [
+    skuRow({ productId: BigInt(100), updateTime: new Date('2026-01-01') }),
+    skuRow({ productId: BigInt(200), updateTime: new Date('2026-03-01') }),
+    skuRow({ productId: BigInt(300), updateTime: new Date('2026-02-01') }),
+  ];
+  const products = groupSkuRowsToProducts(rows);
+  assert.deepEqual(products.map((p) => Number(p.productId)), [200, 300, 100]);
+});
 
 // ============================================================
 // tokenizeKeyword（ngram 2字符滑窗）
