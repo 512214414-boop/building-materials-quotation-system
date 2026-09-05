@@ -79,19 +79,6 @@ export const entityMeta: Record<string, EntityMeta> = {
       { key: "status", label: "状态", dataType: "int", required: false, unique: undefined, defaults: 1, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
     ],
   },
-  product_name: {
-    key: "product_name",
-    label: "产品名",
-    table: "product_name",
-    layer: "globalDict",
-    behavior: {"quickCreate":true,"deleteGuard":"被引用不能删，只能停用"},
-    fields: [
-      { key: "id", label: "产品名ID", dataType: "int", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
-      { key: "name", label: "产品名称", dataType: "string", required: true, unique: "global", defaults: {"sortOrder":0,"status":1}, confirmStrategy: "dialog", searchLayer: "name", gate: undefined, snapshotFrom: undefined },
-      { key: "sortOrder", label: "排序", dataType: "int", required: false, unique: undefined, defaults: 0, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
-      { key: "status", label: "状态", dataType: "int", required: false, unique: undefined, defaults: 1, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
-    ],
-  },
   product: {
     key: "product",
     label: "产品",
@@ -409,7 +396,6 @@ export const resources: Record<string, ResourceMeta> = {
   brand: { key: "brand", label: "品牌档案", table: "brand", model: "brand", primaryKey: "id", primaryKeyType: "bigint", permission: "brand_manage", softDelete: {"field":"status","off":0}, writable: ["name","status"], include: [], audit: ["brand_create","brand_update","brand_delete","brand_quick_add"], search: {"fields":["name"],"mode":"normalized","dictUnique":"global"}, refTargets: [{"label":"产品","table":"product","field":"brandId"},{"label":"供应商经营范围","table":"business_brands","field":"brandId"}], readOnly: undefined },
   unit: { key: "unit", label: "单位档案", table: "unit", model: "unit", primaryKey: "id", primaryKeyType: "bigint", permission: "unit_manage", softDelete: {"field":"status","off":0}, writable: ["unitName","status"], include: [], audit: ["unit_create","unit_update","unit_delete","unit_quick_add"], search: {"fields":["unitName"],"mode":"normalized","dictUnique":"global"}, refTargets: [{"label":"规格单位","table":"spec_unit","field":"unitId"}], readOnly: undefined },
   price_type: { key: "price_type", label: "价格类型档案", table: "price_type", model: "price_type", primaryKey: "id", primaryKeyType: "bigint", permission: "price_type_manage", softDelete: {"field":"status","off":0}, writable: ["name","sortOrder","status"], include: [], audit: ["price_type_create","price_type_update","price_type_delete","price_type_quick_add"], search: {"fields":["name"],"mode":"normalized","dictUnique":"global"}, refTargets: [{"label":"规格价格类型","table":"spec_price_unit","field":"priceTypeId"}], readOnly: undefined },
-  product_name: { key: "product_name", label: "产品名档案", table: "product_name", model: "product_name", primaryKey: "id", primaryKeyType: "int", permission: "product_manage", softDelete: {"field":"status","off":0}, writable: ["name","sortOrder","status"], include: [], audit: [], search: {"fields":["name"],"mode":"normalized","dictUnique":"global"}, refTargets: [{"label":"产品","table":"product","field":"productNameId"}], readOnly: undefined },
   product: { key: "product", label: "产品档案", table: "product", model: "product", primaryKey: "id", primaryKeyType: "bigint", permission: "product_manage", softDelete: {"field":"status","off":0}, writable: ["name","categoryId","remark","status"], include: [], audit: ["product_create","product_update","product_delete"], search: {"fields":["name"],"mode":"normalized","dictUnique":"parent"}, refTargets: [{"label":"单据行","table":"document_lines","field":"productId"},{"label":"库存","table":"inventory","field":"productId"}], readOnly: undefined },
   customer: { key: "customer", label: "客户档案", table: "customers", model: "customer", primaryKey: "id", primaryKeyType: "bigint", permission: "customer_manage", softDelete: undefined, writable: ["name","phone","wechat","company","note","customer_type","status"], include: [], audit: ["customer_update","customer_delete","customer_status_change"], search: {"fields":["name","phone"],"mode":"normalized"}, refTargets: [{"label":"单据","table":"documents","field":"customerId"},{"label":"客户地址","table":"customer_addresses","field":"customerId"}], readOnly: undefined },
   inventory: { key: "inventory", label: "库存", table: "inventory", model: "inventory", primaryKey: "id", primaryKeyType: "bigint", permission: "inventory", softDelete: undefined, writable: [], include: [], audit: [], search: undefined, refTargets: [], readOnly: true },

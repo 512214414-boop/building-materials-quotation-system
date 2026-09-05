@@ -343,11 +343,11 @@ export async function createProduct(data: {
   const { id: categoryId } = await resolveCategoryRef(prisma, { id: data.categoryId ?? null });
   // v1.5.6.3：规格空值补默认「通用」（产品下首个规格变体）
   const specModel = (data.specModel ?? '').trim() || DEFAULT_SPEC_MODEL;
-  // v14.0：同分类下产品名唯一（规格变体拆至 spec 表）
+  // 2026-09-05 收口：产品名全局唯一（原 v14 为同分类下唯一；撤产品名字典后收紧为全局）
   const existing = await prisma.product.findUnique({
-    where: { categoryId_name: { categoryId, name: data.name } },
+    where: { name: data.name },
   });
-  if (existing) throw Errors.unprocessable(`该分类下已存在产品「${data.name}」`);
+  if (existing) throw Errors.unprocessable(`已存在同名产品「${data.name}」，产品名全局唯一`);
 
   // v11.0.1：产品ID 应用层生成（epochMs × 10^6 + RND），全局永久唯一，删除后不复用
   const id = generateProductId();
@@ -398,16 +398,13 @@ export async function updateProduct(
     update.category = { connect: { id: resolvedCategoryId } };
   }
 
-  // v14.0 唯一性校验：(categoryId, name)
-  if ((data.name !== undefined && data.name !== existing.name) ||
-      (data.categoryId !== undefined && data.categoryId !== existing.categoryId)) {
-    const finalCategoryId = resolvedCategoryId ?? existing.categoryId;
-    const finalName = data.name ?? existing.name;
+  // 2026-09-05 收口：产品名全局唯一（改名冲突才校验；改分类不影响唯一性）
+  if (data.name !== undefined && data.name !== existing.name) {
     const conflict = await prisma.product.findUnique({
-      where: { categoryId_name: { categoryId: finalCategoryId, name: finalName } },
+      where: { name: data.name },
     });
     if (conflict && conflict.id !== id) {
-      throw Errors.unprocessable(`该分类下已存在产品「${finalName}」`);
+      throw Errors.unprocessable(`已存在同名产品「${data.name}」，产品名全局唯一`);
     }
   }
 

@@ -153,38 +153,6 @@ async function ensureGlobalBrand(
 }
 
 /**
- * v23：解析全局产品名档案（name 全局唯一，无则快捷新增，走 registry.ensureByName）
- * —— 与 ensureGlobalBrand 同构：改名只改 product_name 一行，全站引用方（product.productNameId）自动跟随
- */
-async function ensureGlobalProductName(
-  tx: Prisma.TransactionClient,
-  name: string,
-): Promise<number> {
-  const resolved = await registry.ensureByName(tx, registry.PRODUCT_NAME_REGISTRY, name);
-  return Number(resolved.id);
-}
-
-/**
- * v23：维护 product × category 关系表（多对多，isPrimary 标记主分类）
- * - 旧主分类降级（isPrimary=false），新主分类 upsert 为 isPrimary=true
- */
-async function syncProductCategory(
-  tx: Prisma.TransactionClient,
-  productId: bigint,
-  categoryId: number,
-): Promise<void> {
-  await tx.product_category.updateMany({
-    where: { productId, isPrimary: true, NOT: { categoryId } },
-    data: { isPrimary: false },
-  });
-  await tx.product_category.upsert({
-    where: { productId_categoryId: { productId, categoryId } },
-    create: { productId, categoryId, isPrimary: true, sortOrder: 0, status: 1 },
-    update: { isPrimary: true, status: 1 },
-  });
-}
-
-/**
  * 产品建档/编辑事务入口
  * v14.0：产品 → 规格变体 → 品牌/单位 三级
  * - input.id + input.specId 均不为空 → 编辑既有规格
@@ -239,50 +207,44 @@ export async function saveProduct(input: SaveProductInput) {
     // v15.3 分类统一引用类语义：空/0 → ensure 系统默认「未分类」（按名称唯一复用/建档）；
     //   明确指定 id → 校验真实存在。与品牌/供应商/价格类型同构，不再有 0 魔数路径
     const { id: categoryId } = await resolveCategoryRef(tx, { id: input.categoryId ?? null });
-    // v23：产品名升全局字典，先按名 ensure 出 productNameId（全局唯一；改名不影响引用方）
-    const productNameId = await ensureGlobalProductName(tx, input.name);
 
     if (input.id) {
-      // 编辑（categoryId + name 唯一，v14.0）
-      // v23：唯一键升为 productNameId 全局唯一（P4 迁移后 productNameId 非空；回填前仍兼容）
-      const editConflict = await tx.product.findFirst({
-        where: { productNameId, NOT: input.id ? { id: input.id } : undefined },
+      // 编辑（产品名全局唯一，2026-09-05 收口）
+      const editConflict = await tx.product.findUnique({
+        where: { name: input.name },
       });
-      if (editConflict) {
+      if (editConflict && editConflict.id !== input.id) {
         throw Errors.unprocessable(
-          `已存在同名产品「${input.name}」（产品名全局唯一），请修改产品名`,
+          `已存在同名产品「${input.name}」，产品名全局唯一，请在原产品下追加规格/品牌`,
         );
       }
       product = await tx.product.update({
         where: { id: input.id },
         data: {
           name: input.name,
-          productNameId,
           categoryId,
           status: input.status ?? 1,
           ...(input.remark !== undefined ? { remark: input.remark } : {}),
         },
       });
     } else {
-      // v23：新建（productNameId 全局唯一；P4 迁移后 productNameId 非空，回填前全为 null 属过渡态）
-      const existing = await tx.product.findFirst({ where: { productNameId } });
-      if (existing) throw Errors.unprocessable(`已存在同名产品「${input.name}」（产品名全局唯一）`);
+      // 新建（产品名全局唯一，2026-09-05 收口）
+      const existing = await tx.product.findUnique({
+        where: { name: input.name },
+      });
+      if (existing) throw Errors.unprocessable(`已存在同名产品「${input.name}」，产品名全局唯一`);
       // v11.0.1：产品ID 应用层生成（epochMs × 10^6 + RND），全局永久唯一，删除后不复用
       const newId = generateProductId();
       product = await tx.product.create({
         data: {
           id: newId,
           name: input.name,
-          productNameId,
           categoryId,
           remark: input.remark ?? '',
           status: input.status ?? 1,
         },
       });
     }
-
-    // v23：维护 product × category 关系表（isPrimary 主分类）
-    await syncProductCategory(tx, product.id, categoryId);
 
     // 2. 定位/创建当前编辑的 specModel + 品牌维度
     let anchorSpecId: bigint;
@@ -935,8 +897,6 @@ export async function quickCreateProduct(
     // v15.3 分类统一引用类语义：空/0 → ensure 系统默认「未分类」（按名称唯一复用/建档）；
     //   明确指定 id → 校验真实存在。与品牌 ensureGlobalBrand 同构，不再有 0 魔数路径
     const { id: categoryId } = await resolveCategoryRef(tx, { id: input.categoryId ?? null });
-    // v23：产品名升全局字典，先按名 ensure 出 productNameId
-    const productNameId = await ensureGlobalProductName(tx, input.productName);
 
     // ============================================================
     // v11.6 宽表组合去重（核心）：
@@ -1042,8 +1002,11 @@ export async function quickCreateProduct(
       }
     }
 
-    // 1. 查找或创建 product（v23：productNameId 全局唯一，P4 迁移后非空）
-    let product = await tx.product.findFirst({ where: { productNameId } });
+    // 1. 查找或创建 product（纯产品名；分类已在事务头按 name ensure「未分类」解析为有效 id）
+    //    产品名全局唯一（2026-09-05 收口）：跨分类同名即复用同一产品
+    let product = await tx.product.findUnique({
+      where: { name: input.productName },
+    });
     if (!product) {
       // v11.0.1：产品ID 应用层生成（epochMs × 10^6 + RND），全局永久唯一，删除后不复用
       const newId = generateProductId();
@@ -1051,16 +1014,12 @@ export async function quickCreateProduct(
         data: {
           id: newId,
           name: input.productName,
-          productNameId,
           categoryId,
           remark: input.remark ?? '',
           status: 1,
         },
       });
     }
-
-    // v23：维护 product × category 关系表（isPrimary 主分类）
-    await syncProductCategory(tx, product.id, categoryId);
 
     // 2. 查找或创建 spec（规格变体，同产品下规格唯一——B 类父级去重，走 registry.ensureByParent；
     //    v15.4 收敛：不同产品的同名规格是独立记录，必须携带 productId 父级上下文，不能纯名称去重）

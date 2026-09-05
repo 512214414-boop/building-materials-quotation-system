@@ -268,8 +268,6 @@ const registryFrom = (model: string): RegistryDef => {
 export const CATEGORY_REGISTRY = registryFrom('category');
 export const BRAND_REGISTRY = registryFrom('brand');
 export const PRICE_TYPE_REGISTRY = registryFrom('price_type');
-/** v23：产品名升全局字典（name 全局唯一；PRODUCT_NAME_REGISTRY 由 entity-meta.yml 的 product_name 资源经 gen-entity-meta 自动产出） */
-export const PRODUCT_NAME_REGISTRY = registryFrom('product_name');
 
 /** 规格（B 类父级从属：productId + brandId + specModel 唯一；v22 已含品牌维度） */
 export const SPEC_REGISTRY: RegistryDef = {
