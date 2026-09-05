@@ -25,6 +25,11 @@
  *      - 文件指纹（git HEAD + 工作区改动清单哈希）：同一工作区状态下，第二次运行直接读
  *        verify-report.json 复用结果，跳过重复执行。仅当上次全绿才复用；上次红则必重跑
  *        （保证修复 / 偶发抖动能被重新检出，绝不拿缓存假装绿）。
+ *      - **复用只认「已跑集合 ⊇ 本次所需集合」**（超集覆盖，2026-09-05 假绿修复）：
+ *        报告必须记录本次真实跑过的 stage 清单（ranIds）；只有 ranIds 覆盖本次所需全部
+ *        stage、且全绿、且 fingerprint 一致，才允许复用。--skip-smoke / --only / 智能子集
+ *        跑出的 partial 报告永远顶不了全量 verify（曾把静态 9 项当 full 复用、静默跳过 S6——
+ *        scope 按「本次自己的 STAGES」算 full 是根因，弃用该字段做复用判据）。
  *   ③ 变更感知子集（默认开启，--full 关闭）：按 git 改动范围只跑相关 stage——
  *      只动前端就跳过后端测试/冒烟，只动 yml 就只跑对拍。被跳过的 stage 在报告里显式列出，
  *      不静默吞掉（对应「门禁用提示不用静默」）。拿不准（git 不可用 / 无改动判定失败）
@@ -58,7 +63,8 @@ if (help) {
   npm run verify -- --help      本帮助
 
 默认行为：智能子集（按 git 改动范围只跑相关 stage）+ 并行扇出 + 跨会话去重。
-  --full / --only / --skip-smoke 任一出现时关闭智能子集对应的推断，但并行与去重始终生效。`);
+  --full / --only / --skip-smoke 任一出现时关闭智能子集对应的推断，但并行与去重始终生效。
+  去重复用只认「上次报告已跑集合 ⊇ 本次所需集合」且全绿（partial 绝不顶 full）。`);
   process.exit(0);
 }
 
@@ -94,6 +100,23 @@ if (!skipSmoke) {
     requires: 'e2e_browser/smoke-pages.js',
   });
 }
+
+// ── 复用判据（2026-09-05 假绿修复）：只认「已跑集合 ⊇ 本次所需集合」的超集覆盖 ──
+// partial（--skip-smoke / --only / 智能子集）报告绝不允许顶替 full，反之 full 可以满足
+// 更小的静态/指定请求（结果严格包含，语义安全）。
+function ranStageIds(rep) {
+  if (!rep) return [];
+  if (Array.isArray(rep.ranIds)) return rep.ranIds;
+  if (Array.isArray(rep.stages)) return rep.stages.filter((s) => s.status && s.status !== 'SKIP').map((s) => s.id);
+  return [];
+}
+function covers(rep, needIds) {
+  if (!rep || rep.ok !== true) return false; // 红必重跑，绝不拿缓存假装绿
+  const got = new Set(ranStageIds(rep));
+  return needIds.length > 0 && needIds.every((id) => got.has(id));
+}
+// 本次所需：--only 只认被点名 stage；否则要求当前 STAGES（含/不含 S6 由 skipSmoke 决定）全跑
+const needIds = only ? STAGES.filter((s) => only.includes(s.id)).map((s) => s.id) : STAGES.map((s) => s.id);
 
 // ── 改动范围探测（变更感知子集用）──────────────────────────────────────────
 function detectChanges() {
@@ -188,36 +211,39 @@ function runStage(s) {
 const det = detectChanges();
 const fingerprint = det.fingerprint;
 
-// 1) 另一 verify 在跑 → 等它结束并复用其报告
+// 1) 另一 verify 在跑 → 等它结束；只有它「真的跑过本次所需 stage」才复用其结果
 const existing = readLock();
 if (existing && isAlive(existing.pid)) {
   console.log(`\n=== G1 门禁 · ${new Date().toISOString()} ===`);
-  console.log(`⏳ 检测到另一 verify(PID ${existing.pid}) 正在执行，等待其完成并复用结果…\n`);
+  console.log(`⏳ 检测到另一 verify(PID ${existing.pid}) 正在执行，等待其完成…\n`);
   await waitForLockRelease();
   const rep = readReport();
-  if (rep && rep.fingerprint === fingerprint) {
-    console.log(`♻️ 复用 PID ${existing.pid} 的结果（fingerprint ${fingerprint} 匹配）`);
-    console.log(`总判定：${rep.ok ? 'PASS — 可以交付' : 'FAIL — 不许标记已交付，修到绿再来'}`);
-    process.exit(rep.ok ? 0 : 1);
+  if (covers(rep, needIds) && rep.fingerprint === fingerprint) {
+    console.log(`♻️ 复用 PID ${existing.pid} 的结果（fingerprint 匹配且已覆盖本次所需 ${needIds.length} 项 stage）`);
+    console.log(`总判定：PASS — 可以交付`);
+    process.exit(0);
   }
-  // fingerprint 不匹配（对方跑的是旧状态）→ 本进程重新跑
+  // 对方报告未覆盖本次所需（如对方是静态、本次要含 S6）或状态/指纹不符 → 本进程自己跑
+  console.log('对方结果未覆盖本次所需 stage（partial 顶不了 full），本进程重新执行…\n');
 }
 writeLock();
 process.on('exit', releaseLock);
 
-// 2) 同状态全绿缓存复用（仅 ok===true 才复用；红必重跑）。
-//    必须是「全量」缓存才复用——局部（--only）跑出的 partial 报告不能假装全绿，
-//    否则会静默跳过其余 stage（对应「门禁用提示不用静默」红线）。
+// 2) 同状态全绿缓存复用：只认「已跑集合 ⊇ 本次所需集合」的超集覆盖（2026-09-05 假绿修复）。
+//    红必重跑；--skip-smoke / --only / 智能子集的 partial 报告绝不顶替 full。
 const cached = readReport();
-if (!only && !full && !skipSmoke && cached && cached.scope === 'full' && cached.fingerprint === fingerprint && cached.ok === true) {
+if (covers(cached, needIds) && cached.fingerprint === fingerprint) {
   console.log(`\n=== G1 门禁 · ${new Date().toISOString()} ===`);
-  console.log(`♻️ 复用上次结果（fingerprint ${fingerprint} 匹配且全绿），跳过重复执行\n`);
-  for (const r of cached.stages) {
+  console.log(`♻️ 复用上次结果（fingerprint ${fingerprint} 匹配、全绿、已覆盖本次所需 ${needIds.length} 项 stage），跳过重复执行\n`);
+  const shown = (cached.stages || []).filter((r) => needIds.includes(r.id));
+  for (const r of shown) {
     console.log(`[${r.id}] ${r.name.padEnd(18)} ${ICON[r.status] || '?'} ${r.status.padEnd(5)} ${fmtMs(r.ms).padStart(7)}   ${r.why}`);
   }
-  const passed = cached.stages.filter((r) => r.status === 'PASS').length;
+  const extra = (cached.stages || []).length - shown.length;
+  if (extra > 0) console.log(`（缓存另含 ${extra} 项超集 stage，本次无需重复展示）`);
+  const passed = shown.filter((r) => r.status === 'PASS').length;
   console.log('━━━ SUMMARY ━━━');
-  console.log(`  通过 ${passed} / ${cached.stages.length} · 复用缓存 · 墙钟 0ms`);
+  console.log(`  通过 ${passed} / ${shown.length} · 复用缓存 · 墙钟 0ms`);
   console.log('\n总判定：PASS — 可以交付');
   process.exit(0);
 }
@@ -290,11 +316,16 @@ if (skipped.length) console.log(`  – 跳过：${skipped.map((s) => s.id).join(
 console.log(ok ? '\n总判定：PASS — 可以交付' : '\n总判定：FAIL — 不许标记已交付，修到绿再来');
 
 // 报告落盘供掌控台消费（掌控台是生成物，靠读这份报告展示门禁结果，不重新实现一套判定）
+// scope 仅作展示/溯源；复用判据一律用 ranIds 超集覆盖（2026-09-05 假绿修复），不信任 scope。
+const ranIds = results.filter((r) => r.status !== 'SKIP').map((r) => r.id);
+const isCanonicalFull = !skipSmoke && !only && skipped.length === 0;
 const report = {
   generatedAt: new Date().toISOString(),
   ok,
   fingerprint,
-  scope: skipped.length ? 'partial' : 'full',
+  scope: isCanonicalFull ? 'full' : skipped.length ? 'partial' : only ? 'only' : skipSmoke ? 'static' : 'subset',
+  ranIds,
+  wantedIds: needIds,
   wallMs,
   durationMs: totalMs,
   summary: { total: results.length, passed: passed.length, failed: failed.length, skipped: skipped.length },
