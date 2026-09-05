@@ -1,83 +1,37 @@
--- DropForeignKey
-ALTER TABLE `access_requests` DROP FOREIGN KEY `access_requests_reviewedBy_fkey`;
+-- ===========================================================================
+-- P2-d（实际应用修正版 · 2026-09-06 · 安全子集）
+-- 剔除 19 个被 prisma migrate diff 误判为“漂移”、实为 schema.prisma 真实关系的
+-- 外键 DROP；保留 ft_* 全文索引（P4 搜索用）与被外键占用的 sale_price 索引。
+-- 仅做：索引改名 / inventory_ledger 补 3 列 / 补 2 个新 FK / 加 2 索引 / 去 DEFAULT。
+-- ===========================================================================
 
--- DropForeignKey
-ALTER TABLE `allocation_lines` DROP FOREIGN KEY `allocation_lines_created_by_fkey`;
 
--- DropForeignKey
-ALTER TABLE `allocation_lines` DROP FOREIGN KEY `allocation_lines_source_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `audit_logs` DROP FOREIGN KEY `audit_logs_customer_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `audit_logs` DROP FOREIGN KEY `audit_logs_user_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `authorization_codes` DROP FOREIGN KEY `authorization_codes_createdBy_fkey`;
 
--- DropForeignKey
-ALTER TABLE `cost_lines` DROP FOREIGN KEY `cost_lines_source_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `cost_lines` DROP FOREIGN KEY `cost_lines_verified_by_fkey`;
 
--- DropForeignKey
-ALTER TABLE `document_lines` DROP FOREIGN KEY `document_lines_brandId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `document_lines` DROP FOREIGN KEY `document_lines_productId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `document_lines` DROP FOREIGN KEY `document_lines_unitId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `documents` DROP FOREIGN KEY `documents_created_by_fkey`;
 
--- DropForeignKey
-ALTER TABLE `documents` DROP FOREIGN KEY `documents_customer_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `documents` DROP FOREIGN KEY `documents_salesperson_id_fkey`;
 
--- DropForeignKey
-ALTER TABLE `payment_records` DROP FOREIGN KEY `payment_records_created_by_fkey`;
 
--- DropForeignKey
-ALTER TABLE `purchase_price` DROP FOREIGN KEY `purchase_price_supplierId_fkey`;
 
--- DropForeignKey
-ALTER TABLE `refund_lines` DROP FOREIGN KEY `refund_lines_created_by_fkey`;
 
--- DropForeignKey
-ALTER TABLE `reimbursement_bills` DROP FOREIGN KEY `reimbursement_bills_created_by_fkey`;
 
--- DropForeignKey
-ALTER TABLE `spec_unit` DROP FOREIGN KEY `spec_unit_unit_fk`;
 
--- DropIndex
-DROP INDEX `ft_brand_name` ON `brand`;
 
 -- DropIndex
 DROP INDEX `brand_unit_conversion_specId_idx` ON `brand_unit_conversion`;
 
--- DropIndex
-DROP INDEX `ft_category_name` ON `category`;
 
--- DropIndex
-DROP INDEX `ft_product_name` ON `product`;
 
--- DropIndex
-DROP INDEX `ft_product_remark` ON `product`;
 
--- DropIndex
-DROP INDEX `sale_price_brandId_unitId_priceTypeId_idx` ON `sale_price`;
 
--- DropIndex
-DROP INDEX `ft_spec_model` ON `spec`;
 
--- DropIndex
-DROP INDEX `ft_spec_remark` ON `spec`;
 
 -- AlterTable
 ALTER TABLE `brand_unit_conversion` ALTER COLUMN `updatedAt` DROP DEFAULT;
@@ -90,9 +44,6 @@ ALTER TABLE `inventory_ledger` ADD COLUMN `brandName` VARCHAR(100) NULL,
     ADD COLUMN `specModel` VARCHAR(200) NULL,
     ADD COLUMN `unitName` VARCHAR(50) NULL;
 
--- AlterTable
-ALTER TABLE `spec` MODIFY `id` BIGINT NOT NULL AUTO_INCREMENT,
-    MODIFY `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3);
 
 -- AlterTable
 ALTER TABLE `supplier` ALTER COLUMN `updatedAt` DROP DEFAULT;
@@ -107,6 +58,7 @@ CREATE INDEX `brand_unit_conversion_specId_idx` ON `brand_unit_conversion`(`spec
 CREATE INDEX `unit_status_idx` ON `unit`(`status`);
 
 -- AddForeignKey
+ALTER TABLE `spec_unit` DROP FOREIGN KEY `spec_unit_unit_fk`;
 ALTER TABLE `spec_unit` ADD CONSTRAINT `spec_unit_unitId_fkey` FOREIGN KEY (`unitId`) REFERENCES `unit`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
