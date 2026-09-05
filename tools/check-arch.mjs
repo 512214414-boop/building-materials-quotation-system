@@ -3,7 +3,7 @@
  * check-arch.mjs — 架构合规检查
  *
  * 存在理由（先说清楚，否则又是"写在文档里的门禁"）：
- *   《架构蓝图.md》若只是一篇 md，就没有任何约束力 —— 没人自动读、没人自动查。
+ *   《文档可视化/项目文档/架构蓝图.md》若只是一篇 md，就没有任何约束力 —— 没人自动读、没人自动查。
  *   本脚本把蓝图中**可机器判定**的红线抽出来自动执行，
  *   让蓝图对每一次改动都有实际约束力，而不是仅供人阅读。
  *
@@ -72,6 +72,33 @@ if (r.status !== 0) {
   });
 }
 
+// ---- A3：派生宽表不得作为结构真相被依赖（根因预防 C）----
+// 宽表（如已删的 product_sku_search）只允许作读缓存，且须 @escape 登记；
+// 任何源码把它当结构真相引用 = 层边界穿越。用禁用名清单拦截其重新引入。
+// 仅扫「非注释」代码（文档注释里的历史说明不算违规），避免误报阻断。
+const BANNED_DERIVED_TABLES = ['product_sku_search'];
+{
+  const banned = new Set(BANNED_DERIVED_TABLES);
+  const stripComments = (text) =>
+    text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1');
+  const srcDirs = [path.join(root, 'frontend', 'src'), path.join(root, 'backend', 'src')];
+  for (const dir of srcDirs) {
+    for (const f of walk(dir)) {
+      const code = stripComments(fs.readFileSync(f, 'utf8'));
+      for (const name of banned) {
+        if (new RegExp(`\\b${name}\\b`).test(code)) {
+          violations.push({
+            rule: 'A3 派生宽表不得作为结构真相被依赖',
+            file: path.relative(root, f),
+            line: 0,
+            detail: `非注释代码引用了已废止的派生宽表「${name}」—— 宽表只作读缓存且须 @escape 登记，禁止作为结构真相引用（见《根因分析与预防措施》§4-C）`,
+          });
+        }
+      }
+    }
+  }
+}
+
 // ---- 汇总 ----
 const rel = (v) => `${v.file}${v.line ? `:${v.line}` : ''}`;
 if (violations.length) {
@@ -81,7 +108,7 @@ if (violations.length) {
     console.error(`    ${rel(v)}`);
     console.error(`    ${v.detail}\n`);
   }
-  console.error('依据见《架构蓝图.md》§3 平台内核边界 / §7 红线。');
+  console.error('依据见《文档可视化/项目文档/架构蓝图.md》§3 平台内核边界 / §7 红线。');
   process.exit(1);
 }
 

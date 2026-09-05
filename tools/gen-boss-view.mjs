@@ -492,7 +492,7 @@ const gateHtml = gate
 // 架构蓝图区：把"东西该放哪"摊到台面上，否则蓝图只是一篇没人读的 md
 const archHtml = `<section class="zone arch">
   <h2>架构蓝图（动手前先看：这东西该放哪）</h2>
-  <p class="why">完整版见 <code>架构蓝图.md</code>。下面是最容易踩的四条，其中可机器判定的部分已在门禁 <code>S0b</code> 自动检查。</p>
+  <p class="why">完整版见 <code>文档可视化/项目文档/架构蓝图.md</code>。下面是最容易踩的四条，其中可机器判定的部分已在门禁 <code>S0b</code> 自动检查。</p>
   <div class="box"><ul class="plist">
     <li><div class="txt"><div class="name">L1/L2 真相源唯一</div><div class="note">路由只改 <code>menu.config.ts</code>（跑 <code>gen-routes</code>）；实体只改 <code>data-source/entity-meta.yml</code>（跑 <code>gen-entity-meta</code>）。<b>generated.* 禁止手改</b>。</div></div></li>
     <li><div class="txt"><div class="name">L3 平台层只此一份</div><div class="note">通用件只在 <code>shared/</code> 实现一份。业务页不得复制平台代码改副本，也不得为单页写 if 绕过。<b>依赖只能 apps → shared，反向即违规</b>。</div></div></li>
@@ -748,7 +748,7 @@ ${gate.stages.map((s) => `- ${s.status === 'PASS' ? '✅' : '❌'} **${plain(s.i
 
 ## 架构蓝图（动手前先看：这东西该放哪）
 
-完整版见 \`架构蓝图.md\`。四条最容易踩的红线（可机器判定的部分由门禁 S0b 自动检查）：
+完整版见 \`文档可视化/项目文档/架构蓝图.md\`。四条最容易踩的红线（可机器判定的部分由门禁 S0b 自动检查）：
 
 1. **L1/L2 真相源唯一**：路由只改 \`menu.config.ts\`（跑 \`gen-routes\`）；实体只改 \`data-source/entity-meta.yml\`（跑 \`gen-entity-meta\`）。**generated.* 禁止手改**。
 2. **L3 平台层只此一份**：通用件只在 \`shared/\` 实现一份；业务页不得复制平台代码改副本，也不得为单页写 if 绕过。**依赖只能 apps → shared，反向即违规**。
