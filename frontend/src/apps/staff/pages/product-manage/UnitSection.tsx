@@ -25,11 +25,8 @@ import { smartPopupContainer } from '../../../../shared/utils/smartPopupContaine
 import { isPointerOnFloatPanel } from '../../../../shared/components/PanelTree.js';
 import { calcEffectivePrice } from '../../../../shared/utils/format.js';
 import { resolveUnitPriceDisplay } from '../../../../shared/engines/pricing-engine.js';
-import {
-  PickerNameCell,
-  PickerNumCell,
-  ArchiveEmptyFieldCell,
-} from '../../../../shared/components/product-picker/PickerInlineCells.js';
+import { PickerNumCell } from '../../../../shared/components/product-picker/PickerInlineCells.js';
+import { FieldCell } from '../../../../shared/components/cells/FieldCell.js';
 import type { UnitItem } from './productEditTypes.js';
 
 /** 常用单位列表（快速选择 chips） */
@@ -446,7 +443,7 @@ export function UnitSection({
       rowKey: u.rowKey,
       selectKey: u.rowKey,
       nameCell: (
-        <PickerNameCell
+        <FieldCell
           value={u.unitName}
           kind="unit"
           fromId={u.rowKey}
@@ -531,7 +528,7 @@ export function UnitSection({
         showAddButton={false}
         template="minmax(120px,1fr) 64px 72px 72px 40px 40px 24px"
         addNameCell={
-          <ArchiveEmptyFieldCell
+          <FieldCell
             placeholder="新增单位…"
             title="新增单位（查全局字典，没有则新建）"
             onApply={(name) => {

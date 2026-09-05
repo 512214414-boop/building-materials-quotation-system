@@ -30,6 +30,7 @@ async function login(page) {
   await sleep(2500);
 }
 
+
 (async () => {
   if (!fs.existsSync(ROUTES_FILE)) {
     console.error('✗ 缺少 routes.generated.json，请先运行：node tools/gen-routes.mjs');
@@ -78,7 +79,7 @@ async function login(page) {
   }
 
   const results = [];
-  console.log(`=== 全页面冒烟（${routes.length} 页，base=${BASE}）===`);
+  console.log(`=== 全页面冒烟（${routes.length} 菜单页 + 1 工作台深链，base=${BASE}）===`);
   for (const r of routes) {
     let res = await checkRoute(r);
     // 只对「会话过期被踢回登录页」重试一次；其它失败一律不重试，
@@ -90,6 +91,48 @@ async function login(page) {
     results.push({ route: r, ok: res.ok, detail: res.detail });
     console.log(`${res.ok ? '✓' : '✗'} ${r}${res.detail ? ` — ${res.detail}` : ''}`);
   }
+
+  // ----------------------------------------------------------
+  // 深链补验：工作台·采购报价视图
+  //   该视图是「单据详情 → ?view=PurchaseQuote」，不在 menu.config.ts 派生清单，
+  //   旧 G3 因此漏覆盖（本次迁移的实际改动页）。导航 /staff/workbench 会自动跳
+  //   转到最近单据的 ?view=PurchaseQuote，断言表格挂载 / 有行 / 无 JS·console 错误。
+  // ----------------------------------------------------------
+  try {
+    errors = [];
+    await page.goto(`${BASE}/staff/workbench`, { waitUntil: 'networkidle', timeout: 20000 });
+    await sleep(2200);
+    const pqTab = page.locator('nav button:has-text("采购报价"), [role="tab"]:has-text("采购报价")').first();
+    if ((await pqTab.count()) > 0) {
+      await pqTab.click();
+      await sleep(1800);
+    }
+    const info = await page.evaluate(() => {
+      const root = document.querySelector('#root');
+      return {
+        len: document.body ? document.body.innerText.trim().length : 0,
+        mounted: !!root && !!root.firstElementChild,
+        tables: document.querySelectorAll('table').length,
+        rows: document.querySelectorAll('tbody tr').length,
+      };
+    });
+    const onQuote = /\/staff\/workbench\/\d+/.test(page.url());
+    let ok = true;
+    let detail = '';
+    if (!onQuote) { ok = false; detail = `未进入工作台视图（落地 ${page.url()}）`; }
+    else if (!info.mounted) { ok = false; detail = '外壳未挂载（疑似白屏）'; }
+    else if (info.len < 100) { ok = false; detail = `内容过少 body=${info.len}`; }
+    else if (info.tables === 0) { ok = false; detail = '采购报价表格未渲染'; }
+    else if (info.rows === 0) { ok = false; detail = '采购报价表格 0 行'; }
+    else if (errors.length) { ok = false; detail = errors.slice(0, 3).join(' | '); }
+    else detail = `rows=${info.rows}`;
+    results.push({ route: '/staff/workbench → 采购报价（深链）', ok, detail });
+    console.log(`${ok ? '✓' : '✗'} /staff/workbench → 采购报价（深链）${detail ? ` — ${detail}` : ''}`);
+  } catch (e) {
+    results.push({ route: '/staff/workbench → 采购报价（深链）', ok: false, detail: `异常：${String(e.message).slice(0, 140)}` });
+    console.log(`✗ /staff/workbench → 采购报价（深链） — 异常：${String(e.message).slice(0, 140)}`);
+  }
+
   await browser.close();
 
   const failed = results.filter((x) => !x.ok);

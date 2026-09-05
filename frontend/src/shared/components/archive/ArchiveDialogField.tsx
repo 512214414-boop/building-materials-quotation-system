@@ -1,6 +1,6 @@
 // 编辑弹窗标量字段：标签 + 点值确认层（与矩阵格同一套 PickerEditGate）
 import type { CSSProperties, ReactNode } from 'react';
-import { ArchiveFieldCell } from '../product-picker/PickerInlineCells.js';
+import { FieldCell } from '../cells/FieldCell.js';
 import type { DictRecordConfig } from '../DictRefField.js';
 import type { DictChangeKind, SuggestField } from '../../services/api/baseDataApi.js';
 
@@ -61,7 +61,7 @@ export function ArchiveDialogField({
       className={`ds-dialog-field-point${className ? ` ${className}` : ''}`}
       style={bodyStyle}
     >
-      <ArchiveFieldCell
+      <FieldCell
         value={value}
         placeholder={placeholder ?? '—'}
         title={title}

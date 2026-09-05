@@ -26,11 +26,8 @@ import { Checkbox } from 'antd';
 import DsButton from './DsButton.js';
 import EntityPanel from './EntityPanel.js';
 import QuickOptionsBar from './QuickOptionsBar.js';
-import {
-  PickerEmptyName,
-  PickerNameCell,
-  PickerNumCell,
-} from './product-picker/PickerInlineCells.js';
+import { PickerNumCell } from './product-picker/PickerInlineCells.js';
+import { FieldCell } from './cells/FieldCell.js';
 import { buildRateChainText, sortUnitsByRate } from '../utils/unitRateText.js';
 
 // ============================================================
@@ -219,7 +216,7 @@ export function UnitManagePanel({
                   }}
                 />
               </span>
-              <PickerNameCell
+              <FieldCell
                 value={u.unitName}
                 kind="unit"
                 fromId={u.key}
@@ -293,7 +290,7 @@ export function UnitManagePanel({
       })}
       addRow={
         <>
-          <PickerEmptyName
+          <FieldCell
             placeholder="输入单位名"
             kind="addUnit"
             leadCheck

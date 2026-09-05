@@ -3,7 +3,8 @@
     "verify": "node tools/verify.mjs",
     "verify:static": "node tools/verify.mjs --skip-smoke",
     "smoke": "node e2e_browser/smoke-pages.js",
-    "routes": "node tools/gen-routes.mjs"
+    "routes": "node tools/gen-routes.mjs",
+    "signal-scan": "node tools/scan-signals.mjs"
   },
   "dependencies": {
     "playwright": "^1.48.0"

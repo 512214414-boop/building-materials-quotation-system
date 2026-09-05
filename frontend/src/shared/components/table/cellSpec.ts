@@ -22,7 +22,7 @@
 //   规格层与渲染层分离，才能让登记表、页面、渲染器三方共用同一份参数。
 
 import type { ReactNode } from 'react';
-import type { WorkbenchGatePickerRender } from '../workbench/WorkbenchFieldCell.js';
+import type { WorkbenchGatePickerRender } from '../cells/FieldCell.js';
 import type { DictRecordConfig } from '../DictRefField.js';
 import type { SuggestField } from '../../services/api/baseDataApi.js';
 import type { PickerCatalogEditReq } from '../product-picker/PickerEditGate.js';

@@ -3,9 +3,11 @@
  * verify.mjs — G1 门禁串联器（架构蓝图 §4.1）
  *
  * 用法：
- *   npm run verify              # 完整门禁 S0–S6：含浏览器冒烟，需 8080 / 3000 在线
- *   npm run verify:static       # 静态门禁 S0–S5：服务不在线时用这个
- *   npm run verify -- --only=S0 # 只跑指定阶段（逗号分隔，如 --only=S0,S4）
+ *   npm run verify                 # 完整门禁 S0–S6：含浏览器冒烟，需 8080 / 3000 在线
+ *   npm run verify:static          # 静态门禁 S0–S5：服务不在线时用这个
+ *   npm run verify -- --only=S0    # 只跑指定阶段（逗号分隔，如 --only=S0,S4）
+ *   npm run verify -- --full       # 关闭变更感知子集，强制全跑（默认是智能子集）
+ *   npm run verify -- --help       # 看完整参数
  *
  * 为什么必须有这个串联器：
  *   门禁写在文档里 = 没有门禁。本项目的教训是 verify_pages_8080.js——
@@ -13,108 +15,259 @@
  *   只有「一条命令 + 会失败的退出码」才拦得住「AI 声称做完了」。
  *   另见架构蓝图 §7 红线 6：不询问 AI 是否完成，只看退出码。
  *
- * 阶段顺序即依赖顺序：
- *   S0 先确认生成物与 yml 一致，后面 S4 的单测才是在测「当前真相源」，
- *   而不是在测一份过期的 generated.ts。
+ * 2026-09-05 提速改造（方向 3：并行 + 去重 + 变更感知子集）：
+ *   ① 并行扇出：10 个 stage 互相独立（各自是独立子进程、检查不同维度，无硬数据依赖），
+ *      原来用 spawnSync 串行阻塞（233s = 各阶段相加），改为并发 spawn + Promise.all，
+ *      墙钟 ≈ max(各阶段) ≈ 90s。仍「跑完全部再汇总、不 fail-fast」，退出码语义不变。
+ *   ② 跨会话去重：
+ *      - 锁文件 .verify.lock（存 PID）：另一 verify 在跑时，本进程等待它结束并直接复用其报告，
+ *        不再两个对话各烧一份 90s、还互相覆盖 verify-report.json。
+ *      - 文件指纹（git HEAD + 工作区改动清单哈希）：同一工作区状态下，第二次运行直接读
+ *        verify-report.json 复用结果，跳过重复执行。仅当上次全绿才复用；上次红则必重跑
+ *        （保证修复 / 偶发抖动能被重新检出，绝不拿缓存假装绿）。
+ *   ③ 变更感知子集（默认开启，--full 关闭）：按 git 改动范围只跑相关 stage——
+ *      只动前端就跳过后端测试/冒烟，只动 yml 就只跑对拍。被跳过的 stage 在报告里显式列出，
+ *      不静默吞掉（对应「门禁用提示不用静默」）。拿不准（git 不可用 / 无改动判定失败）
+ *      一律回退全跑。
  *
- * 硬纪律：不依赖任何增量缓存。设了 tsBuildInfoFile 就等于开了增量，
- *   tsc 结果曾在 0/2/4/5/20 之间跳变，既假绿也假错。
- *
- * 失败策略：跑完全部阶段再汇总，不 fail-fast。
- *   一次看到全部红项，比修一个跑一次快得多。
+ * 硬纪律（不变）：不依赖任何增量缓存；跑完全部阶段再汇总；退出码 0 才许标记已交付。
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// 默认含 S6 浏览器冒烟。跳过用 --skip-smoke（与 package.json 的 verify / verify:static 约定对齐：
-// verify = 完整门禁，verify:static = 不依赖服务的静态门禁）。
-// 注意：这个脚本早在提交 3b14ff9 就写进了 package.json，但 tools/verify.mjs 一直不存在——
-// 悬空了整个项目周期。这正是「门禁写在文档/配置里 = 没有门禁」的实证。
+// 默认含 S6 浏览器冒烟。跳过用 --skip-smoke（与 package.json 的 verify / verify:static 约定对齐）。
 const skipSmoke = process.argv.includes('--skip-smoke');
+const full = process.argv.includes('--full');
+const help = process.argv.includes('--help') || process.argv.includes('-h');
 const onlyArg = (process.argv.find((a) => a.startsWith('--only=')) || '').split('=')[1] || '';
 const only = onlyArg ? onlyArg.split(',').map((s) => s.trim().toUpperCase()) : null;
+
+if (help) {
+  console.log(`G1 门禁串联器
+
+用法：
+  npm run verify                完整门禁 S0–S6（含浏览器冒烟，需 8080/3000 在线）
+  npm run verify:static         静态门禁 S0–S5（服务不在线时用）
+  npm run verify -- --only=S0   只跑指定阶段（逗号分隔）
+  npm run verify -- --full      关闭变更感知子集，强制全跑
+  npm run verify -- --skip-smoke 不跑浏览器冒烟
+  npm run verify -- --help      本帮助
+
+默认行为：智能子集（按 git 改动范围只跑相关 stage）+ 并行扇出 + 跨会话去重。
+  --full / --only / --skip-smoke 任一出现时关闭智能子集对应的推断，但并行与去重始终生效。`);
+  process.exit(0);
+}
 
 const fe = path.join(root, 'frontend');
 const be = path.join(root, 'backend');
 
-/** @type {Array<{id:string,name:string,cwd:string,cmd:string,args:string[],why:string,requires?:string}>} */
+/** @type {Array<{id:string,name:string,cwd:string,cmd:string,args:string[],why:string,requires?:string,area:string}>} */
 const STAGES = [
   {
-    id: 'S0',
-    name: 'meta-consistency',
-    cwd: root,
-    cmd: 'node',
-    args: ['tools/gen-entity-meta.mjs', '--check'],
+    id: 'S0', name: 'meta-consistency', area: 'meta',
+    cwd: root, cmd: 'node', args: ['tools/gen-entity-meta.mjs', '--check'],
     why: 'yml ↔ generated 对拍（改了 yml 忘跑生成器 / 手改了生成物，都在这里红）',
   },
-  { id: 'S1', name: 'fe-typecheck', cwd: fe, cmd: 'npm', args: ['run', 'typecheck'], why: '前端全量类型检查（无增量）' },
-  { id: 'S2', name: 'fe-lint', cwd: fe, cmd: 'npm', args: ['run', 'lint'], why: '前端 lint' },
-  { id: 'S3', name: 'fe-dupe', cwd: fe, cmd: 'npm', args: ['run', 'check:dupe'], why: '前端 js 重复检查' },
-  { id: 'S4', name: 'be-test', cwd: be, cmd: 'npm', args: ['test'], why: '后端单测（含生成物业务契约）' },
-  { id: 'S5', name: 'be-lint', cwd: be, cmd: 'npm', args: ['run', 'lint'], why: '后端类型检查' },
+  {
+    id: 'S0b', name: 'arch-lint', area: 'meta',
+    cwd: root, cmd: 'node', args: ['tools/check-arch.mjs'],
+    why: '架构合规（平台依赖方向 / 路由生成物与真相源一致）—— 让《架构蓝图》有约束力',
+  },
+  { id: 'S1', name: 'fe-typecheck', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'typecheck'], why: '前端全量类型检查（无增量）' },
+  { id: 'S2', name: 'fe-lint', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'lint'], why: '前端 lint' },
+  { id: 'S3', name: 'fe-dupe', area: 'frontend', cwd: fe, cmd: 'npm', args: ['run', 'check:dupe'], why: '前端 js 重复检查' },
+  { id: 'S3b', name: 'fe-test', area: 'frontend', cwd: fe, cmd: 'npm', args: ['test'], why: '前端单测（平台层纯逻辑，Vitest）' },
+  { id: 'S3c', name: 'cell-layer', area: 'frontend', cwd: root, cmd: 'node', args: ['tools/check-cell-layer.mjs'], why: '单元格层唯一出口守卫（禁止层内多元复活）' },
+  { id: 'S4', name: 'be-test', area: 'backend', cwd: be, cmd: 'npm', args: ['test'], why: '后端单测（含生成物业务契约）' },
+  { id: 'S5', name: 'be-lint', area: 'backend', cwd: be, cmd: 'npm', args: ['run', 'lint'], why: '后端类型检查' },
 ];
 
 if (!skipSmoke) {
   STAGES.push({
-    id: 'S6',
-    name: 'e2e-smoke',
-    cwd: root,
-    cmd: 'node',
-    args: ['e2e_browser/smoke-pages.js'],
+    id: 'S6', name: 'e2e-smoke', area: 'e2e',
+    cwd: root, cmd: 'node', args: ['e2e_browser/smoke-pages.js'],
     why: '浏览器冒烟（需 8080 / 3000 在线；不在线改跑 npm run verify:static）',
     requires: 'e2e_browser/smoke-pages.js',
   });
 }
 
-const TARGETS = only ? STAGES.filter((s) => only.includes(s.id)) : STAGES;
-if (TARGETS.length === 0) {
-  console.error(`✗ --only=${onlyArg} 没有匹配到任何阶段。可选：${STAGES.map((s) => s.id).join(', ')}`);
-  process.exit(2);
+// ── 改动范围探测（变更感知子集用）──────────────────────────────────────────
+function detectChanges() {
+  try {
+    const head = execSync('git rev-parse HEAD', { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+    const status = execSync('git status --porcelain --untracked-files=all', { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+    const fingerprint = crypto.createHash('sha256').update(head + '\n' + status).digest('hex').slice(0, 16);
+    const changed = { frontend: false, backend: false, meta: false, methodology: false, e2e: false, tools: false };
+    for (const line of status.split('\n')) {
+      const f = line.slice(3);
+      if (!f) continue;
+      if (f.startsWith('frontend/')) changed.frontend = true;
+      else if (f.startsWith('backend/')) changed.backend = true;
+      else if (f.startsWith('e2e_browser/')) changed.e2e = true;
+      else if (f.startsWith('data-source/') || f.startsWith('文档可视化/data-source/')) changed.meta = true;
+      else if (f.startsWith('文档可视化/')) changed.methodology = true;
+      else if (f.startsWith('tools/')) changed.tools = true;
+    }
+    return { available: true, fingerprint, changed };
+  } catch {
+    return { available: false, fingerprint: null, changed: null };
+  }
+}
+
+// 智能子集：按改动范围挑 stage；无任何改动 → 全跑（跑基线而非什么都不跑）
+function selectStages(all, det) {
+  if (!det.available || !det.changed) return all; // 拿不准 → 全跑
+  const c = det.changed;
+  const anyChange = c.frontend || c.backend || c.meta || c.methodology || c.e2e || c.tools;
+  if (!anyChange) return all; // 干净工作区 → 全跑基线
+  const needFrontend = c.frontend;
+  const needBackend = c.backend;
+  const needMeta = c.meta || c.methodology || c.tools;
+  const needE2E = c.e2e || c.frontend || c.backend || c.meta;
+  return all.filter((s) => {
+    switch (s.area) {
+      case 'meta': return needMeta || needFrontend || needBackend; // 任一源码变 → 对拍有意义
+      case 'frontend': return needFrontend;
+      case 'backend': return needBackend;
+      case 'e2e': return needE2E;
+      default: return true;
+    }
+  });
+}
+
+// ── 跨会话锁 ───────────────────────────────────────────────────────────────
+const LOCK = path.join(root, '.verify.lock');
+function readLock() { try { return JSON.parse(fs.readFileSync(LOCK, 'utf8')); } catch { return null; } }
+function isAlive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
+function writeLock() { fs.writeFileSync(LOCK, JSON.stringify({ pid: process.pid, startedAt: Date.now() })); }
+function releaseLock() { try { fs.unlinkSync(LOCK); } catch { /* noop */ } }
+async function waitForLockRelease(timeoutMs = 10 * 60 * 1000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const l = readLock();
+    if (!l || !isAlive(l.pid)) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
+
+// ── 报告读写 ───────────────────────────────────────────────────────────────
+function readReport() {
+  try { return JSON.parse(fs.readFileSync(path.join(root, 'verify-report.json'), 'utf8')); } catch { return null; }
 }
 
 const fmtMs = (ms) => (ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
 const ICON = { PASS: '✓', FAIL: '✗', SKIP: '–', ERROR: '✗' };
 
+// ── 阶段执行（并发）────────────────────────────────────────────────────────
 function runStage(s) {
-  if (s.requires && !fs.existsSync(path.join(root, s.requires))) {
-    return { ...s, status: 'SKIP', exitCode: null, ms: 0, output: `缺少 ${s.requires}，跳过` };
-  }
-  const t0 = Date.now();
-  let r;
-  try {
-    r = spawnSync(s.cmd, s.args, {
+  return new Promise((resolve) => {
+    if (s.requires && !fs.existsSync(path.join(root, s.requires))) {
+      resolve({ ...s, status: 'SKIP', exitCode: null, ms: 0, output: `缺少 ${s.requires}，跳过` });
+      return;
+    }
+    const t0 = Date.now();
+    const cp = spawn(s.cmd, s.args, {
       cwd: s.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
       env: { ...process.env, FORCE_COLOR: '0' },
     });
-  } catch (e) {
-    return { ...s, status: 'ERROR', exitCode: null, ms: Date.now() - t0, output: String(e && e.message) };
-  }
-  const output = `${r.stdout || ''}${r.stderr || ''}`;
-  if (r.error) return { ...s, status: 'ERROR', exitCode: null, ms: Date.now() - t0, output: String(r.error.message) };
-  return {
-    ...s,
-    status: r.status === 0 ? 'PASS' : 'FAIL',
-    exitCode: r.status,
-    ms: Date.now() - t0,
-    output,
-  };
+    let out = '';
+    cp.stdout.on('data', (d) => (out += d));
+    cp.stderr.on('data', (d) => (out += d));
+    cp.on('error', (e) => resolve({ ...s, status: 'ERROR', exitCode: null, ms: Date.now() - t0, output: String(e && e.message) }));
+    cp.on('close', (code) => resolve({ ...s, status: code === 0 ? 'PASS' : 'FAIL', exitCode: code, ms: Date.now() - t0, output: out }));
+  });
 }
 
-console.log(`\n=== G1 门禁 · ${new Date().toISOString()} ===`);
-console.log(`阶段 ${TARGETS.length} 项${skipSmoke ? '（静态门禁，已跳过浏览器冒烟）' : '（完整门禁，含浏览器冒烟 · 需 8080/3000 在线）'}\n`);
+// ═══════════════════════════════════════════════════════════════════════════
+const det = detectChanges();
+const fingerprint = det.fingerprint;
 
-const results = [];
-for (const s of TARGETS) {
-  const r = runStage(s);
-  results.push(r);
+// 1) 另一 verify 在跑 → 等它结束并复用其报告
+const existing = readLock();
+if (existing && isAlive(existing.pid)) {
+  console.log(`\n=== G1 门禁 · ${new Date().toISOString()} ===`);
+  console.log(`⏳ 检测到另一 verify(PID ${existing.pid}) 正在执行，等待其完成并复用结果…\n`);
+  await waitForLockRelease();
+  const rep = readReport();
+  if (rep && rep.fingerprint === fingerprint) {
+    console.log(`♻️ 复用 PID ${existing.pid} 的结果（fingerprint ${fingerprint} 匹配）`);
+    console.log(`总判定：${rep.ok ? 'PASS — 可以交付' : 'FAIL — 不许标记已交付，修到绿再来'}`);
+    process.exit(rep.ok ? 0 : 1);
+  }
+  // fingerprint 不匹配（对方跑的是旧状态）→ 本进程重新跑
+}
+writeLock();
+process.on('exit', releaseLock);
+
+// 2) 同状态全绿缓存复用（仅 ok===true 才复用；红必重跑）。
+//    必须是「全量」缓存才复用——局部（--only）跑出的 partial 报告不能假装全绿，
+//    否则会静默跳过其余 stage（对应「门禁用提示不用静默」红线）。
+const cached = readReport();
+if (!only && !full && !skipSmoke && cached && cached.scope === 'full' && cached.fingerprint === fingerprint && cached.ok === true) {
+  console.log(`\n=== G1 门禁 · ${new Date().toISOString()} ===`);
+  console.log(`♻️ 复用上次结果（fingerprint ${fingerprint} 匹配且全绿），跳过重复执行\n`);
+  for (const r of cached.stages) {
+    console.log(`[${r.id}] ${r.name.padEnd(18)} ${ICON[r.status] || '?'} ${r.status.padEnd(5)} ${fmtMs(r.ms).padStart(7)}   ${r.why}`);
+  }
+  const passed = cached.stages.filter((r) => r.status === 'PASS').length;
+  console.log('━━━ SUMMARY ━━━');
+  console.log(`  通过 ${passed} / ${cached.stages.length} · 复用缓存 · 墙钟 0ms`);
+  console.log('\n总判定：PASS — 可以交付');
+  process.exit(0);
+}
+
+// 3) 选定要跑的 stage
+let TARGETS;
+if (only) TARGETS = STAGES.filter((s) => only.includes(s.id));
+else if (full) TARGETS = STAGES;
+else TARGETS = selectStages(STAGES, det);
+
+if (TARGETS.length === 0) {
+  console.error(`✗ --only=${onlyArg} 没有匹配到任何阶段。可选：${STAGES.map((s) => s.id).join(', ')}`);
+  process.exit(2);
+}
+
+const smartOn = !only && !full;
+const skipped = STAGES.filter((s) => !TARGETS.includes(s));
+const skipReason = only ? '未选中（--only）' : '变更范围外';
+const wall0 = Date.now();
+
+const modeTag = only
+  ? '（指定阶段）'
+  : skipSmoke
+    ? '（静态门禁，已跳过浏览器冒烟）'
+    : '（完整门禁，含浏览器冒烟 · 需 8080/3000 在线）';
+const smartTag = smartOn ? '（智能子集 · 并行扇出）' : full ? '（强制全跑 · 并行扇出）' : '（并行扇出）';
+
+console.log(`\n=== G1 门禁 · ${new Date().toISOString()} ===`);
+console.log(`阶段 ${TARGETS.length} 项${modeTag}${smartTag}`);
+if (det.available && smartOn) {
+  const c = det.changed;
+  const tags = [];
+  if (c.frontend) tags.push('frontend');
+  if (c.backend) tags.push('backend');
+  if (c.meta) tags.push('yml/生成物');
+  if (c.methodology) tags.push('文档可视化');
+  if (c.e2e) tags.push('e2e');
+  if (c.tools) tags.push('tools');
+  console.log(`改动范围：${tags.length ? tags.join(' / ') : '（干净工作区 → 全跑基线）'} · fingerprint ${fingerprint}`);
+}
+if (skipped.length) {
+  console.log(`跳过（${skipReason}）：${skipped.map((s) => s.id).join(', ')} —— 报告末尾列出，非静默丢弃\n`);
+}
+
+// 4) 并发执行全部选定 stage，跑完再汇总（不 fail-fast）
+const results = await Promise.all(TARGETS.map(runStage));
+
+for (const r of results) {
   console.log(`[${r.id}] ${r.name.padEnd(18)} ${ICON[r.status]} ${r.status.padEnd(5)} ${fmtMs(r.ms).padStart(7)}   ${r.why}`);
   if (r.status === 'FAIL' || r.status === 'ERROR') {
-    // 只打尾部：全量输出在终端里是噪声，人要的是「哪错了」，完整日志在子命令里已可复现
     const tail = r.output.trim().split('\n').slice(-25).join('\n');
     console.log('┌─ 输出尾部 ─────────────────────────────');
     for (const line of tail.split('\n')) console.log('│ ' + line);
@@ -124,23 +277,31 @@ for (const s of TARGETS) {
 
 const passed = results.filter((r) => r.status === 'PASS');
 const failed = results.filter((r) => r.status === 'FAIL' || r.status === 'ERROR');
-const skipped = results.filter((r) => r.status === 'SKIP');
+const skippedResults = skipped.map((s) => ({ ...s, status: 'SKIP', exitCode: null, ms: 0, output: '变更范围外，未执行' }));
 const totalMs = results.reduce((a, r) => a + r.ms, 0);
+const wallMs = Date.now() - wall0;
 const ok = failed.length === 0;
 
+const allStagesForReport = [...results, ...skippedResults];
 console.log('━━━ SUMMARY ━━━');
-console.log(`  通过 ${passed.length} / ${results.length}${skipped.length ? ` · 跳过 ${skipped.length}` : ''} · 耗时 ${fmtMs(totalMs)}`);
+console.log(`  通过 ${passed.length} / ${results.length}${skipped.length ? ` · 跳过 ${skipped.length}` : ''} · 计算耗时 ${fmtMs(totalMs)} · 墙钟 ${fmtMs(wallMs)}`);
 for (const r of failed) console.log(`  ✗ ${r.id} ${r.name}${r.exitCode != null ? `（退出码 ${r.exitCode}）` : ''}`);
+if (skipped.length) console.log(`  – 跳过：${skipped.map((s) => s.id).join(', ')}（变更范围外）`);
 console.log(ok ? '\n总判定：PASS — 可以交付' : '\n总判定：FAIL — 不许标记已交付，修到绿再来');
 
 // 报告落盘供掌控台消费（掌控台是生成物，靠读这份报告展示门禁结果，不重新实现一套判定）
 const report = {
   generatedAt: new Date().toISOString(),
   ok,
+  fingerprint,
+  scope: skipped.length ? 'partial' : 'full',
+  wallMs,
   durationMs: totalMs,
-  stages: results.map(({ id, name, status, exitCode, ms, why }) => ({ id, name, status, exitCode, ms, why })),
+  summary: { total: results.length, passed: passed.length, failed: failed.length, skipped: skipped.length },
+  stages: allStagesForReport.map(({ id, name, status, exitCode, ms, why }) => ({ id, name, status, exitCode, ms, why })),
 };
 fs.writeFileSync(path.join(root, 'verify-report.json'), JSON.stringify(report, null, 2) + '\n', 'utf8');
 console.log(`\n报告：verify-report.json`);
 
+releaseLock();
 process.exit(ok ? 0 : 1);

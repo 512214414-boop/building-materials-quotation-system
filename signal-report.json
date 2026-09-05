@@ -1,0 +1,171 @@
+{
+  "generatedAt": "2026-09-05T06:29:24.829Z",
+  "root": "",
+  "liveCustom": 66,
+  "claimedCustom": "135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom",
+  "frozenCount": 0,
+  "summary": {
+    "total": 13,
+    "byBucket": {
+      "待补": 13
+    }
+  },
+  "signals": [
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/AccessRequests.tsx 仍有 1 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/AccessRequests.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/BackorderManage.tsx 仍有 2 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/BackorderManage.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/DocumentList.tsx 仍有 2 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/DocumentList.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/InboundManage.tsx 仍有 2 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/InboundManage.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/InventoryManage.tsx 仍有 3 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/InventoryManage.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/OpsReports.tsx 仍有 2 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/OpsReports.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/SupplierPayableManage.tsx 仍有 2 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/SupplierPayableManage.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/apps/staff/pages/workbench/views/PurchaseQuote.tsx 仍有 1 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/apps/staff/pages/workbench/views/PurchaseQuote.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/shared/components/archive/ArchiveSlotHost.tsx 仍有 4 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/shared/components/archive/ArchiveSlotHost.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/shared/components/cells/RecordFieldColumn.tsx 仍有 1 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/shared/components/cells/RecordFieldColumn.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/shared/components/cells/SkuPriceColumns.tsx 仍有 1 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/shared/components/cells/SkuPriceColumns.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/shared/components/table/editorRegistry.tsx 仍有 1 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/shared/components/table/editorRegistry.tsx"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    },
+    {
+      "bucket": "待补",
+      "severity": "MED",
+      "rule": "待补信号：列逃进 custom = 认输，必须归类",
+      "title": "frontend/src/shared/config/entityRelations.generated.ts 仍有 44 处 custom 列",
+      "detail": "ui-layer-model.yml 声称：135 处列 / 7 处 custom / 128 处列 / 7 处 custom / 7 处 custom / 135 处 custom / 135 处 custom；本次实测 live=66",
+      "files": [
+        "frontend/src/shared/config/entityRelations.generated.ts"
+      ],
+      "suggestedAction": "改写为 L4 三维参数（display×editEntry×valueState），接入唯一链路",
+      "targetState": "页面不得在 custom 内手写单元格交互"
+    }
+  ]
+}

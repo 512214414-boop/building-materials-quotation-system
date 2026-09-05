@@ -298,23 +298,32 @@ function watermarkNote(text) {
 // 不做这层，改了模板但用户本地早有 index.html，新功能永远不会出现——已踩过一次。
 const UI_VERSION = '2026-09-05-wizard';
 
-function ensureUI() {
+// 挂在工具台下时（basePath='/meta'）前端 API 路径不同，生成的 HTML 也就不同。
+// 版本号必须带上前缀，否则两种用法会互相覆盖、来回重写文件。
+function uiVersion(basePath = '') {
+  return UI_VERSION + (basePath || '');
+}
+
+function ensureUI(basePath = '') {
   if (!fs.existsSync(UI_DIR)) fs.mkdirSync(UI_DIR, { recursive: true });
   const indexPath = path.join(UI_DIR, 'index.html');
-  const html = renderUI();
+  const html = renderUI(basePath);
+  const ver = uiVersion(basePath);
   if (fs.existsSync(indexPath)) {
     const cur = fs.readFileSync(indexPath, 'utf8');
-    if (cur.includes(`data-ui-version="${UI_VERSION}"`)) return;
+    if (cur.includes(`data-ui-version="${ver}"`)) return;
     fs.copyFileSync(indexPath, indexPath + '.bak');
   }
   fs.writeFileSync(indexPath, html, 'utf8');
 }
 
 // 内联 UI（避免外部依赖；界面本身可在浏览器里继续改，但改模板会覆盖，故先备份）
-function renderUI() {
+// basePath：挂载前缀。独立运行时 ''，挂在工具台 /meta 下时 '/meta'——
+// 前端所有 API 请求都要带上它，否则浏览器会去请求根路径的 /api/*
+function renderUI(basePath = '') {
   // 注意：这里的 \${} 是「浏览器端 JS 的模板字符串」，服务端必须转义原样输出；
   // 但 UI_VERSION 是服务端常量，要在这里就求值进 HTML，故不转义。
-  return `<!doctype html><html lang="zh-CN" data-ui-version="${UI_VERSION}"><head>
+  return `<!doctype html><html lang="zh-CN" data-ui-version="${uiVersion(basePath)}"><head>
 <meta charset="utf-8">
 <title>Meta Studio · 元数据配置</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -492,6 +501,9 @@ pre.wz-yml{background:var(--code);border:1px solid var(--line);border-radius:8px
 </div>
 
 <script>
+// 挂载前缀：独立运行时是空串，挂在工具台 /meta 下是 '/meta'。
+// 所有 API 请求都得带上它，否则浏览器会去请求根路径的 /api/*。
+const API_BASE = '${basePath}';
 let RAW = '';
 
 function flash(kind, msg) {
@@ -524,10 +536,10 @@ function pickEntity(entities) {
 }
 
 async function load() {
-  const r = await api('/api/yml');
+  const r = await api(API_BASE + '/api/yml');
   RAW = r.data.text;
   document.getElementById('raw').value = RAW;
-  const list = await api('/api/entities');
+  const list = await api(API_BASE + '/api/entities');
   pickEntity(list.data.entities);
   wzKnown = list.data.entities || []; // 向导第 1 步的重名校验要用
   flash('ok', \`已读取：\${list.data.entities.length} 个实体 · yml \${RAW.length} 字符\`);
@@ -535,7 +547,7 @@ async function load() {
 
 async function loadEntity(key) {
   if (!key) return;
-  const r = await api('/api/entity/' + key);
+  const r = await api(API_BASE + '/api/entity/' + key);
   const e = r.data;
   document.getElementById('entMeta').textContent = \`layer=\${e.layer ?? '—'} table=\${e.table}\`;
   document.getElementById('entForm').innerHTML = \`
@@ -575,21 +587,21 @@ async function loadEntity(key) {
 
 document.getElementById('reload').onclick = load;
 document.getElementById('regen').onclick = async () => {
-  const r = await api('/api/regen', { method: 'POST' });
+  const r = await api(API_BASE + '/api/regen', { method: 'POST' });
   flash(r.status === 200 ? 'ok' : 'err', r.data.message || '');
 };
 document.getElementById('check').onclick = async () => {
-  const r = await api('/api/check', { method: 'POST' });
+  const r = await api(API_BASE + '/api/check', { method: 'POST' });
   flash(r.data.ok ? 'ok' : 'err', r.data.ok ? '✓ 校验通过' : ('✗ ' + (r.data.message || '失败')));
 };
 document.getElementById('save').onclick = async () => {
-  const check = await api('/api/check', { method: 'POST' });
+  const check = await api(API_BASE + '/api/check', { method: 'POST' });
   if (!check.data.ok) { flash('err', '校验未通过：' + (check.data.message || '')); return; }
   const newText = document.getElementById('raw').value;
-  const r = await api('/api/yml', { method: 'POST', body: { text: newText } });
+  const r = await api(API_BASE + '/api/yml', { method: 'POST', body: { text: newText } });
   if (r.status === 200) {
     flash('ok', '已保存（备份 .bak）。请手动跑生成器以应用。');
-    await api('/api/regen', { method: 'POST' });
+    await api(API_BASE + '/api/regen', { method: 'POST' });
   } else { flash('err', '保存失败：' + (r.data.message || '')); }
 };
 
@@ -708,7 +720,7 @@ function wzRender() {
 
 async function wzDoPreview() {
   wzEl('wzPreviewNote').textContent = '正在生成…';
-  const r = await api('/api/entity', { method: 'POST', body: wzCollect() });
+  const r = await api(API_BASE + '/api/entity', { method: 'POST', body: wzCollect() });
   if (!r.data.ok) {
     wzEl('wzPreviewNote').textContent = '✗ ' + (r.data.message || '生成失败');
     wzEl('wzYml').textContent = r.data.block || '';
@@ -793,7 +805,7 @@ wzEl('wzWrite').onclick = async function () {
   wzEl('wzWrite').textContent = '写入中…';
   const def = wzCollect();
   def.confirm = true;
-  const r = await api('/api/entity', { method: 'POST', body: def });
+  const r = await api(API_BASE + '/api/entity', { method: 'POST', body: def });
   wzBusy = false;
   wzEl('wzWrite').disabled = false;
   wzEl('wzWrite').textContent = '确认写入';
@@ -832,13 +844,26 @@ function yamlGetSection(text, name) {
   return m ? m[1] : null;
 }
 
-const server = http.createServer(async (req, res) => {
+/**
+ * 处理配置台的一个请求。
+ *
+ * 两种用法（用户裁决：工具台的目的是**整合**所有辅助开发的工具，不是转发到别处）：
+ *   ① 被工具台 import：不开端口。工具台剥离 /meta 前缀后直接调用本函数，进程内处理、不走网络。
+ *   ② 直接 `node tools/meta-studio.mjs`：仍是独立服务，开 8898（兼容既有习惯）。
+ *
+ * @param pathname 已剥离挂载前缀的路径（如 '/api/yml'）
+ * @param basePath 挂载前缀：''（独立运行）或 '/meta'（挂在工具台下）
+ */
+export async function handleMetaRequest(req, res, pathname, basePath = '') {
+  // 路由判断原本直接读 req.url。挂在工具台下时 req.url 带着 /meta 前缀，
+  // 这里统一改写成剥离后的路径，十几处路由判断就不必逐个改——改这一处即可。
+  req.url = pathname;
   const setJson = () => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
   };
   try {
     if (req.method === 'GET' && req.url === '/') {
-      ensureUI();
+      ensureUI(basePath);
       const html = fs.readFileSync(path.join(UI_DIR, 'index.html'));
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(html);
@@ -1068,6 +1093,13 @@ const server = http.createServer(async (req, res) => {
     res.statusCode = 500;
     res.end(JSON.stringify({ ok: false, message: String(e.stack || e.message).slice(0, 500) }));
   }
+}
+
+// 只有独立运行时才需要真正的 server：剥掉 query 后交给 handleMetaRequest。
+// 被工具台 import 时这个 server 不会 listen——它只是个包装，端口留给工具台。
+const server = http.createServer((req, res) => {
+  const [p] = req.url.split('?');
+  handleMetaRequest(req, res, p, '');
 });
 
 function readBody(req) {
@@ -1080,6 +1112,7 @@ function readBody(req) {
 }
 
 // 纯函数导出：被 import 时不启服务，便于脚本直接单测（序列化/插入/回读校验都能验，不必动磁盘上的 yml）
+// handleMetaRequest 已由 `export async function` 直接导出，此处不重复列出
 export { ensureUI, renderUI, UI_VERSION };
 export {
   serializeEntity,
@@ -1094,9 +1127,10 @@ export {
 
 // 主模块守卫：直接 `node tools/meta-studio.mjs` 才起服务
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  ensureUI();
+  ensureUI('');
   server.listen(PORT, () => {
-    console.log(`Meta Studio 已启动：http://localhost:${PORT}`);
+    console.log(`Meta Studio 已启动（独立模式）：http://localhost:${PORT}`);
     console.log(`真相源：${YML}`);
+    console.log(`提示：正常用法是走工具台 /meta/，独立模式仅用于单独调试。`);
   });
 }

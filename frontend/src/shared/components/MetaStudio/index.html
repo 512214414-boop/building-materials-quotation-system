@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN" data-ui-version="2026-09-05-wizard"><head>
+<!doctype html><html lang="zh-CN" data-ui-version="2026-09-05-wizard/meta"><head>
 <meta charset="utf-8">
 <title>Meta Studio · 元数据配置</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -176,6 +176,9 @@ pre.wz-yml{background:var(--code);border:1px solid var(--line);border-radius:8px
 </div>
 
 <script>
+// 挂载前缀：独立运行时是空串，挂在工具台 /meta 下是 '/meta'。
+// 所有 API 请求都得带上它，否则浏览器会去请求根路径的 /api/*。
+const API_BASE = '/meta';
 let RAW = '';
 
 function flash(kind, msg) {
@@ -208,10 +211,10 @@ function pickEntity(entities) {
 }
 
 async function load() {
-  const r = await api('/api/yml');
+  const r = await api(API_BASE + '/api/yml');
   RAW = r.data.text;
   document.getElementById('raw').value = RAW;
-  const list = await api('/api/entities');
+  const list = await api(API_BASE + '/api/entities');
   pickEntity(list.data.entities);
   wzKnown = list.data.entities || []; // 向导第 1 步的重名校验要用
   flash('ok', `已读取：${list.data.entities.length} 个实体 · yml ${RAW.length} 字符`);
@@ -219,7 +222,7 @@ async function load() {
 
 async function loadEntity(key) {
   if (!key) return;
-  const r = await api('/api/entity/' + key);
+  const r = await api(API_BASE + '/api/entity/' + key);
   const e = r.data;
   document.getElementById('entMeta').textContent = `layer=${e.layer ?? '—'} table=${e.table}`;
   document.getElementById('entForm').innerHTML = `
@@ -259,21 +262,21 @@ async function loadEntity(key) {
 
 document.getElementById('reload').onclick = load;
 document.getElementById('regen').onclick = async () => {
-  const r = await api('/api/regen', { method: 'POST' });
+  const r = await api(API_BASE + '/api/regen', { method: 'POST' });
   flash(r.status === 200 ? 'ok' : 'err', r.data.message || '');
 };
 document.getElementById('check').onclick = async () => {
-  const r = await api('/api/check', { method: 'POST' });
+  const r = await api(API_BASE + '/api/check', { method: 'POST' });
   flash(r.data.ok ? 'ok' : 'err', r.data.ok ? '✓ 校验通过' : ('✗ ' + (r.data.message || '失败')));
 };
 document.getElementById('save').onclick = async () => {
-  const check = await api('/api/check', { method: 'POST' });
+  const check = await api(API_BASE + '/api/check', { method: 'POST' });
   if (!check.data.ok) { flash('err', '校验未通过：' + (check.data.message || '')); return; }
   const newText = document.getElementById('raw').value;
-  const r = await api('/api/yml', { method: 'POST', body: { text: newText } });
+  const r = await api(API_BASE + '/api/yml', { method: 'POST', body: { text: newText } });
   if (r.status === 200) {
     flash('ok', '已保存（备份 .bak）。请手动跑生成器以应用。');
-    await api('/api/regen', { method: 'POST' });
+    await api(API_BASE + '/api/regen', { method: 'POST' });
   } else { flash('err', '保存失败：' + (r.data.message || '')); }
 };
 
@@ -393,7 +396,7 @@ function wzRender() {
 
 async function wzDoPreview() {
   wzEl('wzPreviewNote').textContent = '正在生成…';
-  const r = await api('/api/entity', { method: 'POST', body: wzCollect() });
+  const r = await api(API_BASE + '/api/entity', { method: 'POST', body: wzCollect() });
   if (!r.data.ok) {
     wzEl('wzPreviewNote').textContent = '✗ ' + (r.data.message || '生成失败');
     wzEl('wzYml').textContent = r.data.block || '';
@@ -478,7 +481,7 @@ wzEl('wzWrite').onclick = async function () {
   wzEl('wzWrite').textContent = '写入中…';
   const def = wzCollect();
   def.confirm = true;
-  const r = await api('/api/entity', { method: 'POST', body: def });
+  const r = await api(API_BASE + '/api/entity', { method: 'POST', body: def });
   wzBusy = false;
   wzEl('wzWrite').disabled = false;
   wzEl('wzWrite').textContent = '确认写入';

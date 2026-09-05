@@ -5,7 +5,7 @@
 // 这是「列三路合成：禁止页面手写第四路列来源」的落地——列声明归配置，页面只装配。
 //
 // 2026-09-05 统一：本文件不再产出 CellSpec，改为产出 GeneratedCellSpec + 每列 CellHandlers，
-// 由 editorRegistry 消费（与 14 个只读页同一套管线）。确认层统一走 WorkbenchFieldCell：
+// 由 editorRegistry 消费（与 14 个只读页同一套管线）。确认层统一走 FieldCell：
 // 产品名/品牌/规格/单位/单价 的 picker 检索、按行分支、数字输入、bullets、邻格快切、非标标记
 // 全部经统一门禁分支渲染，props 与旧 CellSpecRenderer 完全一致 —— 行为保真，零回归。
 
@@ -13,7 +13,7 @@ import { type ComponentProps } from 'react';
 import { COL_WIDTHS } from '../components/table/colWidths.js';
 import type { GeneratedCellSpec } from './entityRelations.generated.js';
 import type { CellHandlers } from '../components/table/editorRegistry.js';
-import type { WorkbenchGatePickerRender } from '../components/workbench/WorkbenchFieldCell.js';
+import type { WorkbenchGatePickerRender } from '../components/cells/FieldCell.js';
 import { HeaderCascadeFilter } from '../components/archive/HeaderCascadeFilter.js';
 import ProductPicker, { type SelectedPrice } from '../components/ProductPicker.js';
 import { unitDict } from './recordDicts.js';

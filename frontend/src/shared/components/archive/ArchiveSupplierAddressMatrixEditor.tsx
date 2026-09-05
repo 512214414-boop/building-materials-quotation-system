@@ -4,10 +4,7 @@
 import type { MatrixRowConfig } from '../MatrixTable.js';
 import { normalizeDefaultRecords } from '../../utils/defaultRecord.js';
 import { addressTypeDict } from '../../config/addressTypeDict.js';
-import {
-  ArchiveEmptyFieldCell,
-  ArchiveFieldCell,
-} from '../product-picker/PickerInlineCells.js';
+import { FieldCell } from '../cells/FieldCell.js';
 import ArchiveAddressMatrixShell, {
   type AddressMatrixApi,
   type AddressBlankApi,
@@ -71,7 +68,7 @@ function buildRows(
   return addresses.map((a, idx) => ({
     rowKey: `address_${idx}`,
     nameCell: (
-      <ArchiveFieldCell
+      <FieldCell
         value={a.addressTypeName ?? ''}
         placeholder="地址类型"
         disabled={!canWrite}
@@ -81,7 +78,7 @@ function buildRows(
       />
     ),
     midCells: [
-      <ArchiveFieldCell
+      <FieldCell
         key="addr"
         value={a.addressText}
         placeholder="详细地址"
@@ -93,7 +90,7 @@ function buildRows(
     price: '',
     onPriceChange: () => undefined,
     priceRender: (
-      <ArchiveFieldCell
+      <FieldCell
         value={formatSupplierCoord(a)}
         placeholder="经度,纬度"
         disabled={!canWrite}
@@ -130,7 +127,7 @@ const CFG: AddressMatrixConfig<ArchiveSupplierAddressRecord> = {
   normalize: normalizeSupplierAddresses,
   buildRows,
   addNameCell: (api: AddressBlankApi<ArchiveSupplierAddressRecord>) => (
-    <ArchiveEmptyFieldCell
+    <FieldCell
       placeholder="地址类型"
       title="新增地址类型"
       dictConfig={addressTypeDict}
@@ -138,7 +135,7 @@ const CFG: AddressMatrixConfig<ArchiveSupplierAddressRecord> = {
     />
   ),
   addMidCells: (api: AddressBlankApi<ArchiveSupplierAddressRecord>) => [
-    <ArchiveEmptyFieldCell
+    <FieldCell
       key="addr"
       placeholder="输入地址…"
       title="新增详细地址"
@@ -146,7 +143,7 @@ const CFG: AddressMatrixConfig<ArchiveSupplierAddressRecord> = {
     />,
   ],
   addPriceCell: (api: AddressBlankApi<ArchiveSupplierAddressRecord>) => (
-    <ArchiveEmptyFieldCell
+    <FieldCell
       placeholder="经度,纬度"
       title="新增坐标"
       onApply={(v) => {

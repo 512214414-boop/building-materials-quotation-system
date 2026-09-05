@@ -16,8 +16,8 @@ import { UnifiedTable, type UnifiedTableColumn } from '../../../../../shared/com
 import { DsButton } from '../../../../../shared/components/DsButton.js';
 import { DsInput } from '../../../../../shared/components/DsInput.js';
 import { DsSelect } from '../../../../../shared/components/DsSelect.js';
-import { DsTag } from '../../../../../shared/components/DsTag.js';
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { editableColumn } from '../../../../../shared/components/table/editorRegistry.js';
+import { tagColumn, timeColumn, labelColumn } from '../../../../../shared/components/table/compositeColumns.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
 import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
@@ -314,151 +314,88 @@ export default function Delivery({ documentId }: { documentId: string }) {
 
   const columns: UnifiedTableColumn<DeliveryView>[] = useMemo(
     () => [
-      {
-        title: '配送方式',
-        key: 'deliveryMethod',
-        dataIndex: 'deliveryMethod',
-        minWidth: COL_WIDTHS.TAG_L,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <span style={{ color: 'var(--text-default)', fontWeight: 500 }}>
-            {DELIVERY_METHOD_LABELS[record.deliveryMethod] ?? record.deliveryMethod}
-          </span>
-        ),
-      },
-      {
-        title: '物流单号',
-        key: 'trackingNo',
-        dataIndex: 'trackingNo',
-        minWidth: COL_WIDTHS.NAME_S,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <WorkbenchFieldCell
-            text={record.trackingNo || ''}
-            placeholder="运单号"
-            align="center"
-            allowEmpty
-            disabled={viewLocked}
-            title="物流单号"
-            onApply={(next) => void commitDeliveryFields(record, { trackingNo: next })}
-          />
-        ),
-      },
-      {
-        title: '收货人',
-        key: 'receiver',
-        dataIndex: 'receiver',
-        minWidth: COL_WIDTHS.TAG_L,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <WorkbenchFieldCell
-            text={record.receiver || ''}
-            placeholder="收货人"
-            align="center"
-            allowEmpty
-            disabled={viewLocked}
-            title="收货人"
-            onApply={(next) => void commitDeliveryFields(record, { receiver: next })}
-          />
-        ),
-      },
-      {
-        title: '联系电话',
-        key: 'receiverPhone',
-        dataIndex: 'receiverPhone',
-        minWidth: COL_WIDTHS.NAME_S,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <WorkbenchFieldCell
-            text={record.receiverPhone || ''}
-            placeholder="电话"
-            align="center"
-            allowEmpty
-            disabled={viewLocked}
-            title="联系电话"
-            onApply={(next) => void commitDeliveryFields(record, { receiverPhone: next })}
-          />
-        ),
-      },
-      {
-        title: '运费',
-        key: 'freight',
-        dataIndex: 'freight',
-        minWidth: COL_WIDTHS.AMOUNT,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: unknown, record: DeliveryView) => (
-          <WorkbenchFieldCell
-            text={String(record.freight ?? 0)}
-            placeholder="0"
-            align="center"
-            mono
-            input="number"
-            disabled={viewLocked}
-            title="运费"
-            onApply={(next) => void commitDeliveryFields(record, { freight: parseFloat(next) || 0 })}
-          />
-        ),
-      },
-      {
-        title: '状态',
-        key: 'status',
-        dataIndex: 'status',
-        minWidth: COL_WIDTHS.TAG_L,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <DsTag color={DELIVERY_STATUS_TAG_COLOR[record.status]}>{DELIVERY_STATUS_LABELS[record.status]}</DsTag>
-        ),
-      },
-      {
-        title: '发货时间',
-        key: 'shippedAt',
-        dataIndex: 'shippedAt',
-        minWidth: COL_WIDTHS.DATETIME,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <span style={{ color: record.shippedAt ? 'var(--text-secondary)' : 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--body-sm-font-size)' }}>
-            {formatDateTime(record.shippedAt)}
-          </span>
-        ),
-      },
-      {
-        title: '签收时间',
-        key: 'signedAt',
-        dataIndex: 'signedAt',
-        minWidth: COL_WIDTHS.DATETIME,
-        renderMode: 'custom',
-        render: (_v: any, record: DeliveryView) => (
-          <span style={{ color: record.signedAt ? 'var(--text-secondary)' : 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--body-sm-font-size)' }}>
-            {formatDateTime(record.signedAt)}
-          </span>
-        ),
-      },
-      {
-        title: '备注',
-        key: 'note',
-        dataIndex: 'note',
-        minWidth: COL_WIDTHS.NAME_S,
-        renderMode: 'custom',
-        align: 'center',
-        render: (_v: any, record: DeliveryView) => (
-          <WorkbenchFieldCell
-            text={record.note || ''}
-            placeholder="备注"
-            align="center"
-            allowEmpty
-            disabled={viewLocked}
-            title="备注"
-            onApply={(next) => void commitDeliveryFields(record, { note: next })}
-          />
-        ),
-      },
+      labelColumn<DeliveryView>(
+        { key: 'deliveryMethod', title: '配送方式', dataIndex: 'deliveryMethod', minWidth: COL_WIDTHS.TAG_L, align: 'center' },
+        (r) => DELIVERY_METHOD_LABELS[r.deliveryMethod] ?? r.deliveryMethod,
+      ),
+      editableColumn<DeliveryView>(
+        { key: 'trackingNo', title: '物流单号', display: 'text', editEntry: 'confirm', valueState: undefined, gate: { allowEmpty: true }, hidden: undefined },
+        {
+          value: (r) => r.trackingNo || '',
+          placeholder: '运单号',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '物流单号',
+          onApply: (r, next) => void commitDeliveryFields(r, { trackingNo: next }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: COL_WIDTHS.NAME_S, align: 'center' },
+      ),
+      editableColumn<DeliveryView>(
+        { key: 'receiver', title: '收货人', display: 'text', editEntry: 'confirm', valueState: undefined, gate: { allowEmpty: true }, hidden: undefined },
+        {
+          value: (r) => r.receiver || '',
+          placeholder: '收货人',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '收货人',
+          onApply: (r, next) => void commitDeliveryFields(r, { receiver: next }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: COL_WIDTHS.TAG_L, align: 'center' },
+      ),
+      editableColumn<DeliveryView>(
+        { key: 'receiverPhone', title: '联系电话', display: 'text', editEntry: 'confirm', valueState: undefined, gate: { allowEmpty: true }, hidden: undefined },
+        {
+          value: (r) => r.receiverPhone || '',
+          placeholder: '电话',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '联系电话',
+          onApply: (r, next) => void commitDeliveryFields(r, { receiverPhone: next }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: COL_WIDTHS.NAME_S, align: 'center' },
+      ),
+      editableColumn<DeliveryView>(
+        { key: 'freight', title: '运费', display: 'number', editEntry: 'confirm', valueState: undefined, gate: { input: 'number' }, hidden: undefined },
+        {
+          value: (r) => String(r.freight ?? 0),
+          placeholder: '0',
+          mono: () => true,
+          unifiedInput: () => 'number',
+          disabled: () => viewLocked,
+          title: '运费',
+          onApply: (r, next) => void commitDeliveryFields(r, { freight: parseFloat(next) || 0 }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: COL_WIDTHS.AMOUNT, align: 'center' },
+      ),
+      tagColumn<DeliveryView>(
+        { key: 'status', title: '状态', dataIndex: 'status', minWidth: COL_WIDTHS.TAG_L, align: 'center' },
+        (r) => ({ color: DELIVERY_STATUS_TAG_COLOR[r.status], text: DELIVERY_STATUS_LABELS[r.status] }),
+      ),
+      timeColumn<DeliveryView>(
+        { key: 'shippedAt', title: '发货时间', dataIndex: 'shippedAt', minWidth: COL_WIDTHS.DATETIME, align: 'center' },
+        (r) => formatDateTime(r.shippedAt),
+      ),
+      timeColumn<DeliveryView>(
+        { key: 'signedAt', title: '签收时间', dataIndex: 'signedAt', minWidth: COL_WIDTHS.DATETIME, align: 'center' },
+        (r) => formatDateTime(r.signedAt),
+      ),
+      editableColumn<DeliveryView>(
+        { key: 'note', title: '备注', display: 'text', editEntry: 'confirm', valueState: undefined, gate: { allowEmpty: true }, hidden: undefined },
+        {
+          value: (r) => r.note || '',
+          placeholder: '备注',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '备注',
+          onApply: (r, next) => void commitDeliveryFields(r, { note: next }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: COL_WIDTHS.NAME_S, align: 'center' },
+      ),
     ],
     [viewLocked, commitDeliveryFields],
   );

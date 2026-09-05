@@ -8,8 +8,8 @@ import DsButton from '../../../shared/components/DsButton.js';
 import DsInput from '../../../shared/components/DsInput.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
-import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { multiTagColumn } from '../../../shared/components/table/compositeColumns.js';
 import { useDebounce } from '../../../shared/hooks/useDebounce.js';
 import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
 import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
@@ -289,25 +289,10 @@ export default function AdminUsers() {
       specByKey.get('username')!,
       specByKey.get('realName')!,
       specByKey.get('phone')!,
-      {
-        title: '角色',
-        dataIndex: 'roles',
-        key: 'roles',
-        renderMode: 'custom',
-        render: (value: RoleCode[]) => (
-          <div style={{ display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', WebkitOverflowScrolling: 'touch', gap: 'var(--spacer-4)' }}>
-            {value && value.length > 0 ? (
-              value.map((r) => (
-                <DsTag key={r} color={roleTagColor(r)}>
-                  {roleLabelMap[r] || r}
-                </DsTag>
-              ))
-            ) : (
-              <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-            )}
-          </div>
-        ),
-      },
+      multiTagColumn<UserView>(
+        { key: 'roles', title: '角色', minWidth: 120 },
+        (r) => (r.roles || []).map((code) => ({ text: roleLabelMap[code] || code, color: roleTagColor(code) })),
+      ),
       specByKey.get('status')!,
       specByKey.get('createdAt')!,
     ];

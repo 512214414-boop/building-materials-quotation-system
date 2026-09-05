@@ -52,7 +52,8 @@ import {
   type PickerTreeGrain,
   type ProductPickerEntryView,
 } from '../config/pickerTree.js';
-import { ArchiveFieldCell, PickerEmptyName, PickerNameCell, PickerNumCell } from './product-picker/PickerInlineCells.js';
+import { PickerNumCell } from './product-picker/PickerInlineCells.js';
+import { FieldCell } from './cells/FieldCell.js';
 import { PickerEditGateProvider } from './product-picker/PickerEditGate.js';
 import { SupplierCandidateBrowse } from './product-picker/SupplierCandidateBrowse.js';
 import {
@@ -816,7 +817,7 @@ function renderSalePriceList(
                   transformOrigin: 'center',
                 }}
               />
-              <PickerNameCell
+              <FieldCell
                 value={sp.priceTypeName}
                 disabled={!canEdit}
                 kind="priceType"
@@ -881,7 +882,7 @@ function renderSalePriceList(
             padding: '4px 8px',
           }}
         >
-          <PickerEmptyName
+          <FieldCell
             placeholder="加售价类型…"
             kind="addSaleType"
             scope={edit.scope}
@@ -979,7 +980,7 @@ function renderPurchasePriceList(
                   transformOrigin: 'center',
                 }}
               />
-              <PickerNameCell
+              <FieldCell
                 value={p.supplierName}
                 disabled={!canEdit}
                 kind="supplier"
@@ -1048,7 +1049,7 @@ function renderPurchasePriceList(
             padding: '4px 8px',
           }}
         >
-          <PickerEmptyName
+          <FieldCell
             placeholder="加供应渠道…"
             kind="addChannel"
             scope={edit.scope}
@@ -2346,7 +2347,7 @@ export default function ProductPicker({
                 transformOrigin: 'center',
               }}
             />
-            <PickerNameCell
+            <FieldCell
               value={u.unitName}
               disabled={!canEdit}
               kind="unit"
@@ -2496,7 +2497,7 @@ export default function ProductPicker({
               padding: '4px 8px',
             }}
           >
-            <PickerEmptyName
+            <FieldCell
               placeholder="加单位…"
               kind="addUnit"
               scope={catalogScope([row.sku.productName, row.sku.brandName, row.sku.specModel])}
@@ -2549,7 +2550,7 @@ export default function ProductPicker({
     const leafLayout = opts?.identity ? pickerRowLayout(entryView) : null;
 
     const specNameCell = (
-      <PickerNameCell
+      <FieldCell
         value={displayName}
         disabled={!canEdit}
         kind="spec"
@@ -2578,7 +2579,7 @@ export default function ProductPicker({
       ? pickerTreeFront(entryView).map((col) => {
           if (col === 'remark') {
             return (
-              <ArchiveFieldCell
+              <FieldCell
                 key="remark"
                 value={row.sku.remark || ''}
                 disabled={!canEdit}
@@ -2636,7 +2637,7 @@ export default function ProductPicker({
           }
           if (col === 'product') {
             return (
-              <PickerNameCell
+              <FieldCell
                 key="product"
                 value={row.sku.productName}
                 disabled={!canEdit}
@@ -2663,7 +2664,7 @@ export default function ProductPicker({
           }
           if (col === 'brand') {
             return (
-              <PickerNameCell
+              <FieldCell
                 key="brand"
                 value={row.sku.brandName}
                 disabled={!canEdit}
@@ -2985,7 +2986,7 @@ export default function ProductPicker({
       {brand.rows.map((r) => renderRow(r))}
       {canEdit && (
         <div style={{ padding: '4px 8px' }}>
-          <PickerEmptyName
+          <FieldCell
             placeholder="加规格…"
             kind="addSpec"
             scope={catalogScope([brand.rows[0]?.sku.productName, brand.brandName])}
@@ -3023,7 +3024,7 @@ export default function ProductPicker({
       return (
         <span key={b.brandId} style={{ position: 'relative', display: 'inline-flex', flex: '0 0 auto', alignItems: 'center', border: '1px solid var(--border-neutral-l2)', borderRadius: 3, background: open ? 'var(--bg-overlay-l2)' : 'var(--bg-overlay-l1)', padding: '0 2px 0 4px' }}>
           <span style={{ maxWidth: 72 }}>
-            <PickerNameCell
+            <FieldCell
               value={b.brandName}
               disabled={!canEdit}
               kind="brand"
@@ -3109,7 +3110,7 @@ export default function ProductPicker({
         >
           {(() => {
             const catCell = (
-          <PickerNameCell
+          <FieldCell
             key="cat"
             value={group.categoryName || ''}
             disabled={!canEdit}
@@ -3153,7 +3154,7 @@ export default function ProductPicker({
           />
             );
             const nameCell = (
-          <PickerNameCell
+          <FieldCell
             key="name"
             value={group.productName}
             disabled={!canEdit}
@@ -3270,7 +3271,7 @@ export default function ProductPicker({
             )}
             {canEdit && (
               <span style={{ flex: '0 0 auto', minWidth: 56 }}>
-                <PickerEmptyName
+                <FieldCell
                   placeholder="加品牌…"
                   kind="addBrand"
                   scope={group.productName}

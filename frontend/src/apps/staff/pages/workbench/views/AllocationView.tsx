@@ -22,6 +22,7 @@ import { ClearOutlined, LockOutlined, TagsOutlined, UnlockOutlined } from '@ant-
 import DsButton from '../../../../../shared/components/DsButton.js';
 import DsShellRow from '../../../../../shared/components/DsShellRow.js';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
+import { panelColumn } from '../../../../../shared/components/table/compositeColumns.js';
 import FloatPanel from '../../../../../shared/components/FloatPanel.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
@@ -29,7 +30,7 @@ import { HeaderCascadeFilter } from '../../../../../shared/components/archive/He
 import { ArchiveFilterChip } from '../../../../../shared/components/archive/ArchiveListFilters.js';
 import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
 import AllocationSourcePicker from '../../../../../shared/components/AllocationSourcePicker.js';
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { FieldCell } from '../../../../../shared/components/cells/FieldCell.js';
 import {
   listAllocationSources,
   listAllocationLines,
@@ -804,63 +805,19 @@ export default function AllocationView({ documentId }: { documentId: string }) {
           );
         },
       },
-      // 10. 来源（custom：点击触发 FloatPanel 浮动面板编辑配货方案）
-      {
-        key: 'sources',
-        title: '来源',
-        minWidth: COL_WIDTHS.NAME_M,
-        align: 'center',
-        renderMode: 'custom',
-        render: (_v, r) => {
-          const handleClick = (e: React.MouseEvent) => {
-            if (viewLocked) return;
+      // 10. 来源（panelColumn：点击触发配货方案面板）
+      panelColumn<AllocationDocumentLineView>(
+        { key: 'sources', title: '来源', minWidth: COL_WIDTHS.NAME_M, align: 'center' },
+        {
+          disabled: () => viewLocked,
+          isEmpty: (r) => r.allocationLines.length === 0,
+          emptyText: '点击配货',
+          onClick: (r, e) => {
             allocAnchorRef.current = e.currentTarget as HTMLElement;
             openEditDialog(r);
-          };
-
-          if (r.allocationLines.length === 0)
-            return (
-              <span
-                onClick={handleClick}
-                style={{
-                  color: 'var(--text-tertiary)',
-                  fontSize: 11,
-                  cursor: viewLocked ? 'not-allowed' : 'pointer',
-                  padding: '2px 4px',
-                  borderRadius: 4,
-                  transition: 'background .15s',
-                }}
-                onMouseEnter={(e) => {
-                  if (!viewLocked) e.currentTarget.style.background = 'var(--bg-overlay-l2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                点击配货
-              </span>
-            );
-          return (
-            <div
-              onClick={handleClick}
-              style={{
-                display: 'flex',
-                flexWrap: 'nowrap',
-                overflowX: 'auto',
-                WebkitOverflowScrolling: 'touch',
-                gap: 4,
-                cursor: viewLocked ? 'not-allowed' : 'pointer',
-                padding: '2px 4px',
-                borderRadius: 4,
-                transition: 'background .15s',
-              }}
-              onMouseEnter={(e) => {
-                if (!viewLocked) e.currentTarget.style.background = 'var(--bg-overlay-l2)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
+          },
+          bodyOf: (r) => (
+            <>
               {r.allocationLines.map((a) => {
                 const isP = a.pendingStatus === 'pending';
                 if (isP)
@@ -904,10 +861,10 @@ export default function AllocationView({ documentId }: { documentId: string }) {
                   </span>
                 );
               })}
-            </div>
-          );
+            </>
+          ),
         },
-      },
+      ),
     ],
     [viewLocked, openEditDialog, lineFilter],
   );
@@ -1195,7 +1152,7 @@ export default function AllocationView({ documentId }: { documentId: string }) {
                       />
 
                       <span style={{ minWidth: COL_WIDTHS.AMOUNT, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <WorkbenchFieldCell
+                        <FieldCell scene="workbench"
                           embed="inline"
                           text={row.allocQty}
                           placeholder={isPendingRow ? '代配' : '数量'}

@@ -16,11 +16,8 @@ import MatrixTable, { type MatrixRowConfig } from './MatrixTable.js';
 import RecordExpandPanel from './RecordExpandPanel.js';
 import { SupplierCandidateBrowse } from './product-picker/SupplierCandidateBrowse.js';
 import type { SupplierCandidateContext } from '../utils/supplierCandidateFetcher.js';
-import {
-  PickerEmptyName,
-  PickerNameCell,
-  PickerNumCell,
-} from './product-picker/PickerInlineCells.js';
+import { PickerNumCell } from './product-picker/PickerInlineCells.js';
+import { FieldCell } from './cells/FieldCell.js';
 import { calcEffectivePrice, formatPoint } from '../utils/format.js';
 import { calcDerivedUnitPrice } from '../engines/pricing-engine.js';
 import { sortUnitsByRate } from '../utils/unitRateText.js';
@@ -650,7 +647,7 @@ export function UnitPriceExpandPanel({
       rowKey,
       selectKey: pt.id,
       nameCell: (
-        <PickerNameCell
+        <FieldCell
           value={pt.name}
           kind="priceType"
           fromId={pt.id}
@@ -741,7 +738,7 @@ export function UnitPriceExpandPanel({
       rowKey: pp.rowKey,
       selectKey: pp.supplierId,
       nameCell: (
-        <PickerNameCell
+        <FieldCell
           value={pp.supplierName}
           kind="supplier"
           fromId={pp.supplierId || undefined}
@@ -943,7 +940,7 @@ export function UnitPriceExpandPanel({
             onRowSelect={onSaleSelect}
             rowSelectDisabled={(rk) => !saleSelectableRowKeys.has(rk)}
             addNameCell={
-              <PickerEmptyName
+              <FieldCell
                 placeholder="输入新价格类型名称"
                 kind="addSaleType"
                 onApply={(name) => handleAddPriceTypeCommit(name)}
@@ -995,7 +992,7 @@ export function UnitPriceExpandPanel({
             onRowSelect={onPurchaseSelect}
             rowSelectDisabled={(rk) => !purchaseSelectableRowKeys.has(rk)}
             addNameCell={
-              <PickerEmptyName
+              <FieldCell
                 placeholder="供应商A"
                 kind="addChannel"
                 leadCheck

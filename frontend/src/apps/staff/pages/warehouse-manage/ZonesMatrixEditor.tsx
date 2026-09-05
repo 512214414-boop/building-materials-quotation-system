@@ -1,9 +1,6 @@
 import MatrixTable, { type MatrixRowConfig } from '../../../../shared/components/MatrixTable.js';
 import RecordExpandPanel from '../../../../shared/components/RecordExpandPanel.js';
-import {
-  ArchiveEmptyFieldCell,
-  ArchiveFieldCell,
-} from '../../../../shared/components/product-picker/PickerInlineCells.js';
+import { FieldCell } from '../../../../shared/components/cells/FieldCell.js';
 import useMatrixRecords from '../../../../shared/hooks/useMatrixRecords.js';
 import type { WarehouseZoneItem } from '../../../../shared/services/api/inventoryApi.js';
 
@@ -38,7 +35,7 @@ function buildZoneRows(
   return zones.map((z, idx) => ({
     rowKey: `zone_${idx}`,
     nameCell: (
-      <ArchiveFieldCell
+      <FieldCell
         value={z.name}
         placeholder="区位名"
         disabled={!canWrite}
@@ -91,7 +88,7 @@ export default function ZonesMatrixEditor({
           onRowSelect={onRowSelect}
           rowSelectDisabled={(rk: string) => !rk.startsWith('zone_')}
           addNameCell={
-            <ArchiveEmptyFieldCell
+            <FieldCell
               placeholder="输入区位…"
               title="新增区位"
               onApply={(v: string) => matrix.updateLastBlank({ name: v })}

@@ -53,7 +53,7 @@ import BatchStandardizeDialog from '../../../../../shared/components/BatchStanda
 import { deriveTableColumns, mergeColumns } from '../../../../../shared/config/deriveTableColumns.js';
 import { buildPurchaseQuoteColumns } from '../../../../../shared/config/purchaseQuoteColumns.js';
 // 注意：本页仍有不进表格列的独立格子（bizStrip 的「优惠」金额），故值导入要保留
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { FieldCell } from '../../../../../shared/components/cells/FieldCell.js';
 import { CellSwitchProvider } from '../../../../../shared/components/product-picker/cellSwitch.js';
 // L4 单元格层：列用「值形态 × 编辑入口 × 值状态」三维参数声明，由适配层转成表格列。
 // 页面不再手写 renderMode:'custom' 的 render（那正是 135 处治理盲区的来源）。
@@ -1150,7 +1150,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
                 优惠:
               </span>
               <span style={{ minWidth: 56, color: 'var(--status-danger-default)' }}>
-              <WorkbenchFieldCell
+              <FieldCell scene="workbench"
                 embed="inline"
                 text={bizDiscount}
                 placeholder="0"
@@ -1215,7 +1215,7 @@ export default function PurchaseQuote({ documentId }: { documentId: string }) {
                     <td style={{ padding: '4px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>税点</td>
                     <td style={{ padding: '4px 8px', textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        <WorkbenchFieldCell
+                        <FieldCell scene="workbench"
                           embed="inline"
                           text={bizTaxRate}
                           placeholder="0"

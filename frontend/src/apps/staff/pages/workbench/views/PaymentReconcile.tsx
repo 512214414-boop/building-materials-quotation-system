@@ -15,8 +15,9 @@ import DsButton from '../../../../../shared/components/DsButton.js';
 import DsNumberInput from '../../../../../shared/components/DsNumberInput.js';
 import DsSelect from '../../../../../shared/components/DsSelect.js';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
-import DsTag from '../../../../../shared/components/DsTag.js';
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { editableColumn } from '../../../../../shared/components/table/editorRegistry.js';
+import { tagColumn } from '../../../../../shared/components/table/compositeColumns.js';
+import type { WorkbenchGatePickerRender } from '../../../../../shared/components/cells/FieldCell.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
 import { COL_WIDTHS } from '../../../../../shared/components/table/colWidths.js';
@@ -258,179 +259,145 @@ export default function PaymentReconcile({ documentId }: { documentId: string })
   // ----------------------------------------------------------
   const columns: UnifiedTableColumn<PaymentView>[] = useMemo(
     () => [
-      {
-        title: '收款类型',
-        dataIndex: 'paymentType',
-        key: 'paymentType',
-        minWidth: COL_WIDTHS.TAG_L,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: PaymentType, record: PaymentView) => (
-          <WorkbenchFieldCell
-            text={PAYMENT_TYPE_MAP[v]?.label ?? ''}
-            placeholder="—"
-            align="center"
-            disabled={viewLocked}
-            title="收款类型"
-            bullets={['点选写入。', '取消不保存。']}
-            onApply={(next) => {
-              const hit = PAYMENT_TYPE_OPTIONS.find((o) => o.label === next || o.value === next);
-              if (!hit) return;
-              void commitPaymentFields(record, { paymentType: hit.value });
-            }}
-            pickerRender={(ctx) => (
-              <div>
-                {PAYMENT_TYPE_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => {
-                      void commitPaymentFields(record, { paymentType: o.value });
-                      ctx.close();
-                    }}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '6px 8px',
-                      border: 'none',
-                      borderBottom: '1px solid var(--border-neutral-l1)',
-                      background: v === o.value ? 'var(--bg-overlay-l1)' : 'transparent',
-                      cursor: 'pointer',
-                      color: 'var(--text-default)',
-                      fontSize: 'var(--body-xs-font-size)',
-                    }}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          />
-        ),
-      },
-      {
-        title: '收款方式',
-        dataIndex: 'method',
-        key: 'method',
-        minWidth: COL_WIDTHS.TAG_L,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: string, record: PaymentView) => (
-          <WorkbenchFieldCell
-            text={v || ''}
-            placeholder="—"
-            align="center"
-            disabled={viewLocked}
-            title="收款方式"
-            bullets={['点选写入。', '手输确认也可。', '取消不保存。']}
-            onApply={(next) => void commitPaymentFields(record, { method: next })}
-            pickerRender={(ctx) => (
-              <div>
-                {PAYMENT_METHOD_OPTIONS.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => {
-                      void commitPaymentFields(record, { method: o.value });
-                      ctx.close();
-                    }}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      textAlign: 'left',
-                      padding: '6px 8px',
-                      border: 'none',
-                      borderBottom: '1px solid var(--border-neutral-l1)',
-                      background:
-                        (v || '') === o.value ? 'var(--bg-overlay-l1)' : 'transparent',
-                      cursor: 'pointer',
-                      color: 'var(--text-default)',
-                      fontSize: 'var(--body-xs-font-size)',
-                    }}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          />
-        ),
-      },
-      {
-        title: '金额',
-        dataIndex: 'amount',
-        key: 'amount',
-        minWidth: COL_WIDTHS.AMOUNT,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: string, record: PaymentView) => (
-          <WorkbenchFieldCell
-            text={Number(v || 0).toFixed(2)}
-            placeholder="0.00"
-            align="center"
-            mono
-            input="number"
-            disabled={viewLocked}
-            title="收款金额"
-            bullets={['确认后写入。', '取消不保存。']}
-            onApply={(next) => {
-              const n = parseFloat(next);
-              if (!Number.isFinite(n) || n <= 0) return;
-              void commitPaymentFields(record, { amount: n });
-            }}
-          />
-        ),
-      },
-      {
-        title: '收款日期',
-        dataIndex: 'paidAt',
-        key: 'paidAt',
-        minWidth: COL_WIDTHS.DATETIME,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: string, record: PaymentView) => (
-          <WorkbenchFieldCell
-            text={v ? dayjs(v).format('YYYY-MM-DD HH:mm') : ''}
-            placeholder="—"
-            align="center"
-            disabled={viewLocked}
-            title="收款日期"
-            bullets={['点选日期写入。', '取消不保存。']}
-            onApply={(next) => {
-              const d = dayjs(next);
-              if (!d.isValid()) return;
-              void commitPaymentFields(record, { paidAt: d.toISOString() });
-            }}
-            pickerRender={(ctx) => (
-              <DatePicker
-                showTime
-                size="small"
-                style={{ width: '100%' }}
-                format="YYYY-MM-DD HH:mm"
-                value={v ? dayjs(v) : dayjs()}
-                onChange={(val) => {
-                  if (!val) return;
-                  void commitPaymentFields(record, { paidAt: val.toISOString() });
-                  ctx.close();
-                }}
-              />
-            )}
-          />
-        ),
-      },
-      {
-        title: '对账状态',
-        dataIndex: 'reconcileStatus',
-        key: 'reconcileStatus',
-        minWidth: COL_WIDTHS.TAG_M,
-        align: 'center',
-        renderMode: 'custom',
-        render: (v: ReconcileStatus) => {
-          const cfg = RECONCILE_STATUS_MAP[v];
-          return <DsTag color={cfg.color}>{cfg.label}</DsTag>;
+      editableColumn<PaymentView>(
+        { key: 'paymentType', title: '收款类型', display: 'text', editEntry: 'confirm', valueState: undefined, gate: {}, hidden: undefined },
+        {
+          value: (r) => PAYMENT_TYPE_MAP[r.paymentType]?.label ?? '',
+          placeholder: '—',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '收款类型',
+          bullets: () => ['点选写入。', '取消不保存。'],
+          onApply: (r, next) => {
+            const hit = PAYMENT_TYPE_OPTIONS.find((o) => o.label === next || o.value === next);
+            if (!hit) return;
+            void commitPaymentFields(r, { paymentType: hit.value });
+          },
+          pickerRender: (r): WorkbenchGatePickerRender => (ctx) => (
+            <div>
+              {PAYMENT_TYPE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => {
+                    void commitPaymentFields(r, { paymentType: o.value });
+                    ctx.close();
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    border: 'none',
+                    borderBottom: '1px solid var(--border-neutral-l1)',
+                    background: r.paymentType === o.value ? 'var(--bg-overlay-l1)' : 'transparent',
+                    cursor: 'pointer',
+                    color: 'var(--text-default)',
+                    fontSize: 'var(--body-xs-font-size)',
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ),
         },
-      },
+        { minWidth: COL_WIDTHS.TAG_L, align: 'center' },
+      ),
+      editableColumn<PaymentView>(
+        { key: 'method', title: '收款方式', display: 'text', editEntry: 'confirm', valueState: undefined, gate: {}, hidden: undefined },
+        {
+          value: (r) => r.method || '',
+          placeholder: '—',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '收款方式',
+          bullets: () => ['点选写入。', '手输确认也可。', '取消不保存。'],
+          onApply: (r, next) => void commitPaymentFields(r, { method: next }),
+          pickerRender: (r): WorkbenchGatePickerRender => (ctx) => (
+            <div>
+              {PAYMENT_METHOD_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => {
+                    void commitPaymentFields(r, { method: o.value });
+                    ctx.close();
+                  }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '6px 8px',
+                    border: 'none',
+                    borderBottom: '1px solid var(--border-neutral-l1)',
+                    background: (r.method || '') === o.value ? 'var(--bg-overlay-l1)' : 'transparent',
+                    cursor: 'pointer',
+                    color: 'var(--text-default)',
+                    fontSize: 'var(--body-xs-font-size)',
+                  }}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          ),
+        },
+        { minWidth: COL_WIDTHS.TAG_L, align: 'center' },
+      ),
+      editableColumn<PaymentView>(
+        { key: 'amount', title: '金额', display: 'number', editEntry: 'confirm', valueState: undefined, gate: { input: 'number' }, hidden: undefined },
+        {
+          value: (r) => Number(r.amount || 0).toFixed(2),
+          placeholder: '0.00',
+          mono: () => true,
+          unifiedInput: () => 'number',
+          disabled: () => viewLocked,
+          title: '收款金额',
+          bullets: () => ['确认后写入。', '取消不保存。'],
+          onApply: (r, next) => {
+            const n = parseFloat(next);
+            if (!Number.isFinite(n) || n <= 0) return;
+            void commitPaymentFields(r, { amount: n });
+          },
+        },
+        { minWidth: COL_WIDTHS.AMOUNT, align: 'center' },
+      ),
+      editableColumn<PaymentView>(
+        { key: 'paidAt', title: '收款日期', display: 'text', editEntry: 'confirm', valueState: undefined, gate: {}, hidden: undefined },
+        {
+          value: (r) => r.paidAt ? dayjs(r.paidAt).format('YYYY-MM-DD HH:mm') : '',
+          placeholder: '—',
+          unifiedInput: () => 'text',
+          disabled: () => viewLocked,
+          title: '收款日期',
+          bullets: () => ['点选日期写入。', '取消不保存。'],
+          onApply: (r, next) => {
+            const d = dayjs(next);
+            if (!d.isValid()) return;
+            void commitPaymentFields(r, { paidAt: d.toISOString() });
+          },
+          pickerRender: (r): WorkbenchGatePickerRender => (ctx) => (
+            <DatePicker
+              showTime
+              size="small"
+              style={{ width: '100%' }}
+              format="YYYY-MM-DD HH:mm"
+              value={r.paidAt ? dayjs(r.paidAt) : dayjs()}
+              onChange={(val) => {
+                if (!val) return;
+                void commitPaymentFields(r, { paidAt: val.toISOString() });
+                ctx.close();
+              }}
+            />
+          ),
+        },
+        { minWidth: COL_WIDTHS.DATETIME, align: 'center' },
+      ),
+      tagColumn<PaymentView>(
+        { key: 'reconcileStatus', title: '对账状态', dataIndex: 'reconcileStatus', minWidth: COL_WIDTHS.TAG_M, align: 'center' },
+        (r) => ({ color: RECONCILE_STATUS_MAP[r.reconcileStatus].color, text: RECONCILE_STATUS_MAP[r.reconcileStatus].label }),
+      ),
     ],
     [viewLocked, commitPaymentFields, handleReconcile, handleRemove],
   );

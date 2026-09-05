@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import DsButton from '../../../../shared/components/DsButton.js';
-import { ArchiveFieldCell } from '../../../../shared/components/product-picker/PickerInlineCells.js';
+import { FieldCell } from '../../../../shared/components/cells/FieldCell.js';
 import type { CustomerInvoiceInfo } from '../../../../shared/services/api/baseDataApi.js';
 
 export default function InvoiceInfoPicker({
@@ -64,7 +64,7 @@ export default function InvoiceInfoPicker({
           ] as const
         ).map(([key, placeholder, title]) => (
           <div key={key} className="ds-dialog-field-point">
-            <ArchiveFieldCell
+            <FieldCell
               value={form[key] ?? ''}
               placeholder={placeholder}
               title={title}

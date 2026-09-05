@@ -1,7 +1,8 @@
 /** 进货管货 3 页新章节渲染验证：node e2e_browser/verify_doc_inbound.js */
 const { chromium } = require('playwright');
 const fs = require('fs');
-const BASE = 'http://localhost:8899';
+// 文档站已并入工具台：8124/doc/ 就是原来的文档站根目录（原 8899/8123 两个端口都退役了）
+const BASE = process.env.DOC_BASE ?? 'http://localhost:8124/doc';
 const OUT = '/tmp/doc-inbound';
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 

@@ -44,6 +44,24 @@ if (!routes.length) {
   process.exit(1);
 }
 
-fs.writeFileSync(outFile, JSON.stringify(routes, null, 2) + '\n', 'utf8');
+const payload = JSON.stringify(routes, null, 2) + '\n';
+
+// --check：只比对不落盘，供门禁判定「生成物是否与真相源一致」
+if (process.argv.includes('--check')) {
+  if (!fs.existsSync(outFile)) {
+    console.error(`✗ 缺少 ${path.relative(root, outFile)}，请先运行：node tools/gen-routes.mjs`);
+    process.exit(1);
+  }
+  if (fs.readFileSync(outFile, 'utf8') !== payload) {
+    console.error('✗ routes.generated.json 与 menu.config.ts 不一致');
+    console.error('  可能原因：手改了生成物，或改了路由后忘了重跑生成器');
+    console.error('  修复：node tools/gen-routes.mjs');
+    process.exit(1);
+  }
+  console.log(`✓ 路由生成物与 menu.config.ts 一致（${routes.length} 条可直连路由）`);
+  process.exit(0);
+}
+
+fs.writeFileSync(outFile, payload, 'utf8');
 console.log(`已生成 ${path.relative(root, outFile)}：${routes.length} 条可直连路由`);
 for (const r of routes) console.log(`  - ${r}`);

@@ -3,10 +3,7 @@
 // 本文件只剩字段与文案：标签自由填、联系人与电话直接填、省市区需要三段解析。
 import type { MatrixRowConfig } from '../MatrixTable.js';
 import { normalizeDefaultRecords } from '../../utils/defaultRecord.js';
-import {
-  ArchiveEmptyFieldCell,
-  ArchiveFieldCell,
-} from '../product-picker/PickerInlineCells.js';
+import { FieldCell } from '../cells/FieldCell.js';
 import ArchiveAddressMatrixShell, {
   type AddressMatrixApi,
   type AddressBlankApi,
@@ -72,7 +69,7 @@ function buildRows(
   return rows.map((a, idx) => ({
     rowKey: `address_${idx}`,
     nameCell: (
-      <ArchiveFieldCell
+      <FieldCell
         value={a.label ?? ''}
         placeholder="标签"
         disabled={!canWrite}
@@ -81,7 +78,7 @@ function buildRows(
       />
     ),
     midCells: [
-      <ArchiveFieldCell
+      <FieldCell
         key="contact"
         value={a.contact}
         placeholder="联系人"
@@ -89,7 +86,7 @@ function buildRows(
         title="修改联系人"
         onApply={(v) => api.update(idx, { contact: v })}
       />,
-      <ArchiveFieldCell
+      <FieldCell
         key="phone"
         value={a.phone}
         placeholder="电话"
@@ -97,7 +94,7 @@ function buildRows(
         title="修改电话"
         onApply={(v) => api.update(idx, { phone: v })}
       />,
-      <ArchiveFieldCell
+      <FieldCell
         key="region"
         value={formatRegion(a)}
         placeholder="省·市·区"
@@ -109,7 +106,7 @@ function buildRows(
     price: '',
     onPriceChange: () => undefined,
     priceRender: (
-      <ArchiveFieldCell
+      <FieldCell
         value={a.detail}
         placeholder="详细地址"
         disabled={!canWrite}
@@ -139,26 +136,26 @@ const CFG: AddressMatrixConfig<ArchiveCustomerAddressRecord> = {
   normalize: normalizeCustomerAddresses,
   buildRows,
   addNameCell: (api: AddressBlankApi<ArchiveCustomerAddressRecord>) => (
-    <ArchiveEmptyFieldCell
+    <FieldCell
       placeholder="标签"
       title="新增地址标签"
       onApply={(v) => api.updateLastBlank({ label: v || null })}
     />
   ),
   addMidCells: (api: AddressBlankApi<ArchiveCustomerAddressRecord>) => [
-    <ArchiveEmptyFieldCell
+    <FieldCell
       key="contact"
       placeholder="联系人"
       title="新增联系人"
       onApply={(v) => api.updateLastBlank({ contact: v })}
     />,
-    <ArchiveEmptyFieldCell
+    <FieldCell
       key="phone"
       placeholder="电话"
       title="新增电话"
       onApply={(v) => api.updateLastBlank({ phone: v })}
     />,
-    <ArchiveEmptyFieldCell
+    <FieldCell
       key="region"
       placeholder="省·市·区"
       title="新增省市区"
@@ -166,7 +163,7 @@ const CFG: AddressMatrixConfig<ArchiveCustomerAddressRecord> = {
     />,
   ],
   addPriceCell: (api: AddressBlankApi<ArchiveCustomerAddressRecord>) => (
-    <ArchiveEmptyFieldCell
+    <FieldCell
       placeholder="详细地址"
       title="新增详细地址"
       onApply={(v) => api.updateLastBlank({ detail: v })}

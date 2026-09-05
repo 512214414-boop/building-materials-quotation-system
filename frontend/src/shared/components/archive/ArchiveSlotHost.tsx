@@ -21,7 +21,7 @@ import DsSelect from '../DsSelect.js';
 import { ArchiveDialogField } from './ArchiveDialogField.js';
 import { HeaderCascadeFilter } from './HeaderCascadeFilter.js';
 import { PickerEditGateProvider } from '../product-picker/PickerEditGate.js';
-import { ArchiveFieldCell } from '../product-picker/PickerInlineCells.js';
+import { FieldCell } from '../cells/FieldCell.js';
 import EnumPicker from '../EnumPicker.js';
 import type { UnifiedTableColumn } from '../UnifiedTable.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
@@ -35,6 +35,7 @@ import { permissionReadonlyTip } from '../../utils/permissionTips.js';
 import { runParallelLimit } from '../../utils/runParallelLimit.js';
 import type {
   ArchiveColumnCtx,
+  ArchiveCompositeSlot,
   ArchiveDialogCtx,
   ArchiveEntityDef,
   ArchiveMatrixSlot,
@@ -611,7 +612,7 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           render: (_val: unknown, row: T) => {
             const ro = slot.readonlyWhen?.(row) ?? null;
             return (
-              <ArchiveFieldCell
+              <FieldCell
                 value={slot.get(row)}
                 placeholder={slot.placeholder ?? '—'}
                 title={slot.title ?? `修改${slot.label}`}
@@ -735,6 +736,26 @@ export default function ArchiveSlotHost<T extends { id: string }>({
         );
         continue;
       }
+      // 复合/嵌套槽：列表列只渲染「N 个 SKU」计数，整行可展开看子表
+      if (slot.kind === 'composite' && slot.list !== false) {
+        cols.push({
+          key: slot.key,
+          title: slot.label,
+          dataIndex: slot.key,
+          minWidth: slot.minWidth ?? COL_WIDTHS.TAG_L,
+          align: slot.align ?? 'center',
+          renderMode: 'custom',
+          render: (_v: unknown, row: T) => {
+            const n = slot.getSubRows(row).length;
+            return (
+              <span style={{ color: n ? 'var(--text-default)' : 'var(--text-tertiary)' }}>
+                {n ? `${n} 个 SKU` : '—'}
+              </span>
+            );
+          },
+        });
+        continue;
+      }
       if (slot.kind === 'custom' && slot.list !== false && slot.column) {
         cols.push(slot.column(columnCtx));
       }
@@ -824,6 +845,17 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     setFilter,
   ]);
 
+  // 复合槽：整行展开看子表（product 专用；其余实体无此槽 → undefined，行为不变）
+  const compositeSlot = def.slots.find(
+    (s): s is ArchiveCompositeSlot<T> => s.kind === 'composite' && s.list !== false,
+  );
+  const expandable = compositeSlot
+    ? {
+        expandedRowRender: (row: T) => compositeSlot.renderSubTable(row, columnCtx),
+        rowExpandable: (row: T) => (compositeSlot.getSubRows(row)?.length ?? 0) > 0,
+      }
+    : undefined;
+
   const dialogCtx: ArchiveDialogCtx<T> = {
     row: editingId ? (list.find((x) => x.id === editingId) ?? null) : null,
     canWrite,
@@ -876,6 +908,7 @@ export default function ArchiveSlotHost<T extends { id: string }>({
     <PickerEditGateProvider>
       <ArchiveListPage<T>
         selectable={selectable}
+        expandable={expandable}
         actionBar={{
           count: total,
           countUnit: def.countUnit,

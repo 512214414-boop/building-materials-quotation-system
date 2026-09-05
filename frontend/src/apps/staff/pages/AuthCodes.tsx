@@ -9,8 +9,8 @@ import DsInput from '../../../shared/components/DsInput.js';
 import DsNumberInput from '../../../shared/components/DsNumberInput.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
 import DsDialog from '../../../shared/components/DsDialog.js';
-import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { tagColumn } from '../../../shared/components/table/compositeColumns.js';
 import { useCanvasApp } from '../../../shared/hooks/useCanvasApp.js';
 import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
 import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
@@ -221,16 +221,13 @@ export default function AuthCodes() {
     return [
       specByKey.get('code')!,
       specByKey.get('phone')!,
-      {
-        title: '状态',
-        key: 'status',
-        minWidth: 100,
-        renderMode: 'custom',
-        render: (_: any, record: AuthCodeView) => {
-          const ds = getDisplayStatus(record);
-          return <DsTag color={AUTHCODE_STATUS_COLOR[ds]}>{AUTHCODE_STATUS_LABELS[ds]}</DsTag>;
+      tagColumn<AuthCodeView>(
+        { key: 'status', title: '状态', minWidth: 100 },
+        (r) => {
+          const ds = getDisplayStatus(r);
+          return { text: AUTHCODE_STATUS_LABELS[ds], color: AUTHCODE_STATUS_COLOR[ds] };
         },
-      },
+      ),
       specByKey.get('createdAt')!,
       specByKey.get('expiresAt')!,
     ];

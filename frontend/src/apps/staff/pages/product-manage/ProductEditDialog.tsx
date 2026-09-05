@@ -42,7 +42,7 @@ import {
 import { DsDialog } from '../../../../shared/components/DsDialog.js';
 import DsButton from '../../../../shared/components/DsButton.js';
 import { ArchiveDialogField, ArchiveDialogFieldSkeleton, confirmFillsBeforeSave } from '../../../../shared/components/index.js';
-import { ArchiveFieldCell, ArchiveEmptyFieldCell } from '../../../../shared/components/product-picker/PickerInlineCells.js';
+import { FieldCell } from '../../../../shared/components/cells/FieldCell.js';
 import {
   QUICK_CREATE_LAYERS,
   resolveFieldValue,
@@ -1340,11 +1340,12 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                   <span style={{ marginLeft: 4, fontSize: 10, opacity: 0.7 }}>({brand.images.length}图)</span>
                 ) : undefined,
                 editCell: brand && active ? (
-                  <ArchiveFieldCell
+                  <FieldCell
+                    field="brand"
                     value={brand.name}
                     placeholder="品牌名称"
                     title="修改品牌（查全局档案，没有则新建）"
-                    dictConfig={brandDict}
+                    fromId={brand.brandId}
                     disabled={loading || saving}
                     onDelete={{ label: '删除品牌', run: () => handleDeleteBrand(bIdx) }}
                     onApply={async (name) => {
@@ -1369,7 +1370,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
             })}
             onSelect={(key) => handleSelectProductBrand(key)}
             addCell={
-              <ArchiveEmptyFieldCell
+              <FieldCell
                 placeholder="新增品牌…"
                 title="新增品牌（查全局档案，没有则新建并挂到本产品）"
                 onApply={(v) => handleAddBrandConfirm(v)}
@@ -1404,7 +1405,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
               if (!creatingSibling) handleSwitchSpec(key);
             }}
             addCell={
-              <ArchiveEmptyFieldCell
+              <FieldCell
                 placeholder="新增系列/规格…"
                 title="新增规格变体"
                 bullets={['新增规格变体：保留品牌与单位，价格清空，保存时统一落库。']}
@@ -1431,7 +1432,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                       key: 'spec-edit-row',
                       cells: (
                         <>
-                          <ArchiveFieldCell
+                          <FieldCell
                             value={specModel}
                             placeholder="留空默认「通用」"
                             title="修改系列/规格"
@@ -1442,7 +1443,7 @@ export default function ProductEditDialog(props: ProductEditDialogProps) {
                             disabled={loading || saving}
                             onApply={(v) => setSpecModel(v)}
                           />
-                          <ArchiveFieldCell
+                          <FieldCell
                             value={specRemark}
                             placeholder="执行标准 / 企标 / 国标"
                             title="修改规格备注"

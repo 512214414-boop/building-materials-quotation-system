@@ -15,13 +15,21 @@ page:
   factsLead: 报表的核心约束是「可复现」——同一个查询条件，今天查和明天查口径一致。
   facts:
     - label: 区间汇总
-      note: '按创建时间区间 + 状态过滤。销售额取单据行金额、收款只认已对账（reconciled）、成本取成本行、退款只认退款类型为 refund。'
-    - label: 库存周转
-      note: '取有库存的行（上限 300），配最近一次出库流水（上限 800）。无出库记录按 999 天计；滞销判定为闲置不少于 60 天。'
+      note: '按创建时间区间 + 状态过滤。销售额取单据行金额、收款只认已对账（reconciled）、成本取成本行、退款只认退款类型为 refund。明细只对当前页单据逐单归集（getDocumentSummary），总量走聚合。只读表，货币列走 report_* cellSpec 装配。'
+    - label: 分类毛利
+      note: '按分类名聚合（COALESCE(categoryName,''未分类'') GROUP BY），销售额 SUM(amount)、成本 SUM(cost_amount)，毛利=销售额-成本、毛利率=毛利/销售额。按销售额降序，上限 200 行，金额 round2 舍入。只读表，货币列走 report_* cellSpec 装配。'
+    - label: 业务员绩效
+      note: '按业务员聚合（salesperson_id / salespersonName GROUP BY），销售额 SUM(total_amount)、单数 COUNT(*)；未指定业务员归「未指定」。按销售额降序，上限 200 行。只读表，货币列走 report_* cellSpec 装配。'
+    - label: 采购汇总
+      note: '进货只计 status=done 且 confirmed_at 在区间内，按确认时间降序取 200 条；应付款按 biz_type 分组求和（created_at 区间）。只读表，货币列走 report_* cellSpec 装配。'
     - label: 应收账龄
-      note: '仅未结算，按生成日分四桶：0-30 / 31-60 / 61-90 / 90+，聚合上限 2000 行。'
+      note: '仅未结算，按生成日分四桶：0-30 / 31-60 / 61-90 / 90+，聚合上限 2000 行。只读表，货币列走 report_* cellSpec 装配。'
+    - label: 库存周转
+      note: '取有库存的行（上限 300），配最近一次出库流水（上限 800）。无出库记录按 999 天计；滞销判定为闲置不少于 60 天。只读表，货币列走 report_* cellSpec 装配。'
+    - label: 退款统计
+      note: '按退款类型（refund_type）分组，求和退款数量/金额；明细取 200 条含是否回库（restock）。只读表，货币列走 report_* cellSpec 装配。'
     - label: 范围一律收窄
-      note: '所有报表都带上取数上限（300 / 800 / 2000），避免为看一个数扫全表。'
+      note: '所有报表都带上取数上限（200 / 300 / 800 / 2000），避免为看一个数扫全表。'
   tables:
     - kicker: 七类报表
       navLabel: 七类

@@ -2,10 +2,7 @@ import MatrixTable, { type MatrixRowConfig } from '../MatrixTable.js';
 import RecordExpandPanel from '../RecordExpandPanel.js';
 import useMatrixRecords from '../../hooks/useMatrixRecords.js';
 import { normalizeDefaultRecords } from '../../utils/defaultRecord.js';
-import {
-  ArchiveEmptyFieldCell,
-  ArchiveFieldCell,
-} from '../product-picker/PickerInlineCells.js';
+import { FieldCell } from '../cells/FieldCell.js';
 
 export interface ArchiveCustomerInvoiceRecord {
   id?: string;
@@ -60,7 +57,7 @@ function buildRows(
   return rows.map((r, idx) => ({
     rowKey: `invoice_${idx}`,
     nameCell: (
-      <ArchiveFieldCell
+      <FieldCell
         value={r.invoiceTitle ?? ''}
         placeholder="抬头"
         disabled={!canWrite}
@@ -69,7 +66,7 @@ function buildRows(
       />
     ),
     midCells: [
-      <ArchiveFieldCell
+      <FieldCell
         key="tax"
         value={r.taxNumber ?? ''}
         placeholder="税号"
@@ -77,7 +74,7 @@ function buildRows(
         title="修改税号"
         onApply={(v) => onUpdate(idx, { taxNumber: v })}
       />,
-      <ArchiveFieldCell
+      <FieldCell
         key="bank"
         value={r.bankName ?? ''}
         placeholder="开户行"
@@ -85,7 +82,7 @@ function buildRows(
         title="修改开户行"
         onApply={(v) => onUpdate(idx, { bankName: v })}
       />,
-      <ArchiveFieldCell
+      <FieldCell
         key="account"
         value={r.bankAccount ?? ''}
         placeholder="账号"
@@ -93,7 +90,7 @@ function buildRows(
         title="修改银行账号"
         onApply={(v) => onUpdate(idx, { bankAccount: v })}
       />,
-      <ArchiveFieldCell
+      <FieldCell
         key="addr"
         value={r.address ?? ''}
         placeholder="开票地址"
@@ -105,7 +102,7 @@ function buildRows(
     price: '',
     onPriceChange: () => undefined,
     priceRender: (
-      <ArchiveFieldCell
+      <FieldCell
         value={r.phone ?? ''}
         placeholder="开票电话"
         disabled={!canWrite}
@@ -169,32 +166,32 @@ export default function ArchiveCustomerInvoiceMatrixEditor({
           onRowSelect={onRowSelect}
           rowSelectDisabled={(rk) => !rk.startsWith('invoice_')}
           addNameCell={
-            <ArchiveEmptyFieldCell
+            <FieldCell
               placeholder="输入后自动追加"
               title="新增发票抬头"
               onApply={(v) => matrix.updateLastBlank({ invoiceTitle: v })}
             />
           }
           addMidCells={[
-            <ArchiveEmptyFieldCell
+            <FieldCell
               key="tax"
               placeholder="税号"
               title="新增税号"
               onApply={(v) => matrix.updateLastBlank({ taxNumber: v })}
             />,
-            <ArchiveEmptyFieldCell
+            <FieldCell
               key="bank"
               placeholder="开户行"
               title="新增开户行"
               onApply={(v) => matrix.updateLastBlank({ bankName: v })}
             />,
-            <ArchiveEmptyFieldCell
+            <FieldCell
               key="account"
               placeholder="账号"
               title="新增银行账号"
               onApply={(v) => matrix.updateLastBlank({ bankAccount: v })}
             />,
-            <ArchiveEmptyFieldCell
+            <FieldCell
               key="addr"
               placeholder="开票地址"
               title="新增开票地址"
@@ -202,7 +199,7 @@ export default function ArchiveCustomerInvoiceMatrixEditor({
             />,
           ]}
           addPriceCell={
-            <ArchiveEmptyFieldCell
+            <FieldCell
               placeholder="开票电话"
               title="新增开票电话"
               onApply={(v) => matrix.updateLastBlank({ phone: v })}

@@ -32,7 +32,7 @@ import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
 import SoldLinePicker, { type RefundSourceDoc } from '../../../../../shared/components/SoldLinePicker.js';
 import DocumentSourcePicker from '../../../../../shared/components/DocumentSourcePicker.js';
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { FieldCell } from '../../../../../shared/components/cells/FieldCell.js';
 import { WORKBENCH_TEXT } from '../../../../../shared/styles/shell-constants.js';
 import {
   getDocument,
@@ -926,7 +926,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
           <div style={{ flex: '1 1 150px', minWidth: 130, display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>检索单据:</span>
             <div style={{ flex: 1, minWidth: 0, height: 20, display: 'flex', alignItems: 'center' }}>
-            <WorkbenchFieldCell
+            <FieldCell scene="workbench"
               embed="inline"
               text=""
               placeholder={sourceDocs.length > 1 ? `已选 ${sourceDocs.length} 张` : '点此检索'}
@@ -961,7 +961,7 @@ export default function RefundAfterSale({ documentId }: { documentId: string }) 
           <div style={{ flex: '1 1 170px', minWidth: 140, display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)', flex: '0 0 auto' }}>检索单据产品:</span>
             <div style={{ flex: 1, minWidth: 0, height: 20, display: 'flex', alignItems: 'center' }}>
-            <WorkbenchFieldCell
+            <FieldCell scene="workbench"
               embed="inline"
               text={selectedSold?.productName || selectedSold?.productRef || ''}
               placeholder="点此检索已卖行"

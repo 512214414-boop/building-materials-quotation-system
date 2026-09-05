@@ -82,6 +82,8 @@ export function mergeColumns(
   }
 
   const result: UnifiedTableColumn<any>[] = [];
+  /** 已被骨架消费掉的 override key（剩下的要追加到末尾） */
+  const consumed = new Set<string>();
   for (const c of skeleton) {
     const slot = (c as any).slot as string | undefined;
     if (slot) {
@@ -91,7 +93,14 @@ export function mergeColumns(
       continue;
     }
     const ov = overrideByKey.get(c.key);
+    if (ov) consumed.add(c.key);
     result.push(ov ? { ...c, ...ov } : { ...c });
+  }
+  // 骨架未声明的 override 列（如视图新增的操作列）必须追加到末尾。
+  // 修正前它们被静默丢弃 —— 与文件头注释的承诺不符，也违背
+  // 「登记表加了列、页面忘了配，应当报错而不是悄悄不显示」这一本项目原则。
+  for (const [key, ov] of overrideByKey) {
+    if (!consumed.has(key)) result.push(ov);
   }
   result.push(...extras);
   return result;

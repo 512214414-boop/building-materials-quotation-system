@@ -108,8 +108,8 @@
 | 产品集合体宽表字段来源登记表（9 列 × 层/数据表/字典表/关系表/宽表落点） | ✅ | 2026-08-31 |
 | 范式 vs 派生表（**重要更新 v30 2026-09-02**） | ✅ | 反范式 `product_sku_search` 宽表已**物理删除**；检索/展示全面转范式多路召回（详见架构原则·元模型运行时 v30 章） |
 | **v31 库存快照列（2026-09-02 补建）** | ✅ | `inventory` 表新增 `specModel`/`brandName`/`unitName`（v28 定义但未落库的历史遗漏；修复后库存台账与周转报表 API 200） |
-| v23 产品名升全局字典 `product_name`（去 product.name） | ⏳ | **2026-09-05 用户裁决：长期目标态，不排期**（方向仍然有效，只是当前不阻塞业务）。**启动触发条件**：① 出现跨分类同名产品导致检索歧义；② 需要改名跨分类全局生效。两条满足其一再启动。**做完解锁**：改名全局生效、检索不歧义、统计按 ID。**当前不阻塞**：改名功能已能用，只是作用域限于同一分类内。与下面分类改关系表联锁，不可只做一条。实施前置：git 工作区干净、迁移脚本与结构变更分两个提交 |
-| v23 分类改关系表 `product_category`（去 product.categoryId） | ⏳ | **2026-09-05 用户裁决：长期目标态，不排期**。**启动触发条件**：随上面产品名升全局选项库一起触发，不单独启动。**做完解锁**：一个产品可挂多个分类并标记主分类，才能支撑「跨分类同名即同一产品」。**当前不阻塞业务** |
+| v23 产品名升全局字典 `product_name`（去 product.name） | 🕐 | **2026-09-05 用户裁决后启动（P0 文档中）**：原长期目标态不排期，用户本日明确启动①（方向仍然有效，只是当前不阻塞业务）。**启动触发条件**：① 出现跨分类同名产品导致检索歧义；② 需要改名跨分类全局生效。两条满足其一再启动。**做完解锁**：改名全局生效、检索不歧义、统计按 ID。**当前不阻塞**：改名功能已能用，只是作用域限于同一分类内。与下面分类改关系表联锁，不可只做一条。实施前置：git 工作区干净、迁移脚本与结构变更分两个提交 |
+| v23 分类改关系表 `product_category`（去 product.categoryId） | 🕐 | **2026-09-05 用户裁决后启动（P0 文档中）**：原长期目标态不排期，用户本日明确启动③。**启动触发条件**：随上面产品名升全局选项库一起触发，不单独启动。**做完解锁**：一个产品可挂多个分类并标记主分类，才能支撑「跨分类同名即同一产品」。**当前不阻塞业务** |
 | 俗称维持 `product.remark` 单字段 | ✅ | 2026-08-31 裁决：不建子表不进字典 |
 | v23 决策记录归档（论证+迁移口径） | ✅ 归档 | 见下方「v23 决策记录」小节（自 产品数据层.md git 历史恢复，2026-09-04） |
 
@@ -122,6 +122,36 @@
 **①③ 联锁不能只做一条**：产品名升字典后名字全局唯一，不能再靠「同一分类下唯一」区分同名产品——同名即同一产品，此时分类必须一对多挂（先升字典 → 分类必须走关系表）。**跨分类重名的代价与收益**：两种货同名（PPR弯头/PVC弯头）必须靠名称本身区分，建档同名会复用已有词而非新建（即「边用边建、幂等直接建即选」的字典行为）；收益=改名全局生效、检索不歧义、统计按 ID。**product 与 product_name 1:1 但不合并**：字典只管「这个词」（快建/并档/引用计数/改名全局生效），产品实体承载俗称与品牌/规格子树——分层不同、可变性不同，不因 1:1 叠成一张表。改名全局生效的边界：改 `product_name.name` → 产品/检索全跟，已开单据行是快照不改。
 
 **迁移口径（实施时照此执行，顺序不可颠倒）**：① 建 `product_name`：从 product.name 去重抽取；② 建 `product_category`：原 categoryId 各插一条 isPrimary=true；③ 同名多 product 合并：其余 categoryId 插 isPrimary=false、product_brand/spec 改挂合并后的 product.id，**同 brandId+同 specModel 的 spec 冲突只出清单不自动取舍**（俗称多条非空不同一并进清单）；④ product 删 name/categoryId 列加 productNameId FK，唯一约束 [categoryId,name]→[productNameId]；⑤ 重刷检索：分类取 isPrimary，keywords 拼全部所属分类名；⑥ 写入层：产品名按 name 幂等 ensure（与品牌/单位/分类同一套），保存事务内维护 product_category。**实施前置：git status 必须干净，迁移脚本与 schema 变更分开两个提交。**
+
+### v23 实施口径（2026-09-05 启动 · P0 文档待审）
+
+**A. 范式定调（用户裁决）**
+- 产品名 = 全局字典 `product_name`，`name` 全局唯一（参照 `brand`/`unit` 全局字典范式）。
+- 同名即同一产品（同一 `product_name` 词条 = 同一 `product` 行）；规格 `spec`（带品牌/型号）挂在产品下、归到一起。
+- 分类是产品的**多对多标签**：关系表 `product_category`（`isPrimary` + `sortOrder`），一产品可挂多分类、标记主分类。`product` 不再直连 `categoryId`。
+
+**B. 实证结论（真实库只读 SELECT · 2026-09-05）**
+- `product` 共 **290** 行，`DISTINCT name` = **290**，`categoryId` 6 个。
+- 跨分类同名（`GROUP BY name HAVING COUNT(DISTINCT categoryId)>1`）= **空**。
+- 结论：库里**不存在跨分类同名**，所有产品名天然全局唯一 → 回填**零合并风险**（每条 product 1:1 抽 `product_name`；`product_category` 每条插 `isPrimary=true`；无需 SPU 合并）。
+
+**C. 目标态（三层）**
+1. 数据层：新增 `product_name`（id / name@unique / sortOrder / status / 时间戳）；`product` 去 `name`+`categoryId`、加 `productNameId → product_name.id`（`@@unique([productNameId])`）；新增 `product_category`（id / productId / categoryId / isPrimary / sortOrder / status / 时间戳，`@@unique([productId,categoryId])`）。快照 `document_lines.productName` 来源→`product_name.name`；`categoryName` 经 `product_category` 主分类反查（字段名不变）。
+2. 配置层：`entity-meta.yml` 新增 `product_name` 实体（globalDict，name `unique:global`）；`product` 字段 `name`→引用 `productNameId`（`dictKind:product_name`）；`product` 关系 `categoryId→category` 改为经 `product_category` 多对多（主分类）；快照来源同步；`gen-entity-meta` 重生成。
+3. 应用层：后端 saveProduct / catalog / searchNormalized / dictMerge / documentLineService / resolveSnapshots / controllers；前端 ProductManage / ProductEditDialog / ProductPicker / buildSaveProductInput / baseDataApi。产品名改字典幂等 ensure（与品牌/单位同套）；分类改多选用主分类。召回字段名（productName / categoryName）保持不变 → 打分层零改。
+
+**D. 迁移路（分阶段）**
+- P0 文档（本步）：v23 实施口径写入台账待审。
+- P1 schema/meta/生成（**不动 DB**）：改 `schema.prisma` + `entity-meta.yml` → `prisma generate` + `gen-entity-meta` → 类型检查暴露改动面。
+- P2 后端改写（~20 文件，按全栈触点清单）。
+- P3 前端改写（分类多选用主分类；产品名字典引用）。
+- P4 DB 执行（**须用户单独点确认**）：`prisma migrate deploy` 建表（product_name / product_category）+ 回填脚本（name→product_name 1:1；categoryId→product_category isPrimary=true）+ 删 `product.name`/`categoryId` 列。基于实证，回填无合并、幂等可重跑。
+- P5 验收：typecheck + build + `verify:static` → 起服务 `verify` 全量 + e2e 冒烟。
+
+**E. DB 闸门**：P4 的 `migrate deploy` 与任何数据改写 SQL 不擅自执行；完整 migration.sql + 回填脚本先摆给用户审，点确认才跑。
+
+**F. 实施前置**：git 工作区干净；迁移脚本与 schema 变更分两个提交（沿用 v23 既有口径）。
+
 | 单据 documents + document_lines + 标注层 + 双区存储 | ✅ | 订单中心·全局规则 |
 | 资源引擎（**新增 2026-09-03**） | ✅ | 后端通用接口声明在 `entity-meta.yml` 的 `resources` 段；`/api/staff/r/:resource` 一组路由服务所有已登记资源。验证 11/11 |
 
@@ -212,7 +242,7 @@
 | ~~P1~~ ✅ | 客户端 3 页（`apps/customer`）相关 5 维度 | 已落地：`customer-app` 条目即五维结构（2026-09-04） |
 | ~~P1~~ ✅ 已对齐（2026-09-05）：sys-role 权限码以生成物实测为准（现 18 个）、sys-audit 动作先登记在 entity-meta auditActions 段，两篇数字与口径均指向真相源，无需改文档；卡点（并行会话提交）已随 Task 0 落账解除 |
 | ~~P1~~ ✅ 已补维度（2026-09-05）：`ops-report.yml` 七类口径已补齐（区间汇总/分类毛利/业务员绩效/采购汇总/应收账龄/库存周转/退款统计），每类标注「只读表 + 货币列走 report_* cellSpec 装配」；素材源 opsReportService 已稳定 |
-| ~~P1~~ ✅ | 元模型覆盖率：27 实体按两条边界补进 resources/pages | **2026-09-05 完成**。本会话把档案类主体（product/customer）+ 12 个单据类（inventory/inventory_ledger/inbound_task/inbound_line/backorder/purchase_inbound/staff_document/document_line/audit_log/auth_code/access_request/admin_user）全部登记进 `resources`，补全选项库类（category/brand/unit/price_type）→ 现 **resources 19/27**（19 = 27 实体中有单表落库的实体，100% 已登记）；另有 8 个（见下）无单表落库，如实例外。`pages` 段 **5/27**（supplier + 4 选项库类）：汇编器仅驱动 SupplierManage 的 ArchiveListPage；product/customer/单据类为定制页（按实体形态选装配），非缺口。**resources 未覆盖的 8 个**：report_range/margin/salesperson/purchase/ar/turnover/refund（7 个只读视图，无单表落库）+ supplier_payable（聚合表，无 `payables` 单表）——其字段/列/审计/统计已在 entities 的 fields/columns/auditActions/indicators 登记（满足配置边界，不登记才会在别处手写第二份），不在 resources 段避免生成 500 端点，属如实例外。引擎泛化修复：主键按 `primaryKeyType` 解析（category=Int）、搜索/快建读 `search.fields`（unit=unitName），实证 18/18 全过。**readOnly 引擎锁（2026-09-05 新增）**：ResourceMeta 加 `readOnly`，resourceController 的 create/update/delete/quick-add 对只读资源一律 unprocessable——守住所「单据只暴露读与列表」（此前 DELETE 不受 writable 约束会真删）。**门禁**：`npm run verify:static` 2026-09-05 9/9 全绿（S1 fe-typecheck 已转绿，红源为 editorRegistry 迁移未完，非本任务引入）。****，属「骨架通了、肌肉没长」。**启动条件**：第三道锁（§5.1）已落地且门禁稳定——没有它，补得越多漂得越快。**范围按两条边界切，不可混为一谈（2026-09-05 用户裁决）**：① **配置边界**按「声明 vs 行为」切 → 27 个实体全部登记，**包括单据**；单据只「写操作」走代码，它的字段/列/校验/权限/审计/统计口径仍必须登记，不登记就必然在别处手写第二份，直接违反「呈现层零手写」。实证：27 个守卫里已有单据守卫（`purchase_inbound_confirm`/`refund_add_lines`）、82 个审计动作已含 `purchase_inbound_confirm`、`indicators` 的 `costAmount` 就在统计单据行、后端 `resolveSnapshots.ts`/`auditLogger.ts` 已在消费——**「单据走代码」≠「单据不进配置」**。② **引擎边界**按「单表 vs 事务」切 → 档案类（`globalDict`/`subject`）全走零代码 CRUD；单据类只登记读与列表，写操作走实体专属 service。此边界方法论 `meta-runtime` 篇已写死，**不得放宽**——放宽就是把状态机与跨表对账塞进配置，养出上帝配置。**分批建议**：先补字典类（category/brand/unit/price_type 等，结构最规整、风险最低）拿第二批实证，再推档案类主体 |
+| ~~P1~~ ✅ | 元模型覆盖率：27 实体按两条边界补进 resources/pages | **2026-09-05 完成**。本会话把档案类主体（product/customer）+ 12 个单据类（inventory/inventory_ledger/inbound_task/inbound_line/backorder/purchase_inbound/staff_document/document_line/audit_log/auth_code/access_request/admin_user）全部登记进 `resources`，补全选项库类（category/brand/unit/price_type）→ 现 **resources 19/27**（19 = 27 实体中有单表落库的实体，100% 已登记）；另有 8 个（见下）无单表落库，如实例外。`pages` 段 **5/27**（supplier + 4 选项库类）：**汇编器＝`ArchiveSlotHost`**，已驱动 supplier/customer（列顺序读 `pages.supplier.slots` 配置）；**product 仍停在旧壳 `ArchiveListPage`+`entityCellSpecs`、未迁 ArchiveSlotHost**——这是「档案类页面 unification 未完成」的迁移债，不是「按实体形态选装配、非缺口」（2026-09-05 用户纠正：差异是实现的债非本质不同）。product 是复合体（product→brand→spec→unit→price 跨 5 表），`ArchiveSlotHost` 现仅支持行级平铺子表，需扩展到复合/嵌套槽才真零代码。单据（CostVerify/PaymentReconcile/Delivery/AllocationView）是多阶段业务流，与档案不同类，按引擎边界代码驱动、不进 ArchiveSlotHost。 → 已立 Task 5（《档案类页面统一化设计.md》），待你审 §5 未决项（UX 取舍 / 宽表聚合位置）后开工。**resources 未覆盖的 8 个**：report_range/margin/salesperson/purchase/ar/turnover/refund（7 个只读视图，无单表落库）+ supplier_payable（聚合表，无 `payables` 单表）——其字段/列/审计/统计已在 entities 的 fields/columns/auditActions/indicators 登记（满足配置边界，不登记才会在别处手写第二份），不在 resources 段避免生成 500 端点，属如实例外。引擎泛化修复：主键按 `primaryKeyType` 解析（category=Int）、搜索/快建读 `search.fields`（unit=unitName），实证 18/18 全过。**readOnly 引擎锁（2026-09-05 新增）**：ResourceMeta 加 `readOnly`，resourceController 的 create/update/delete/quick-add 对只读资源一律 unprocessable——守住所「单据只暴露读与列表」（此前 DELETE 不受 writable 约束会真删）。**门禁**：`npm run verify:static` 2026-09-05 9/9 全绿（S1 fe-typecheck 已转绿，红源为 editorRegistry 迁移未完，非本任务引入）。****，属「骨架通了、肌肉没长」。**启动条件**：第三道锁（§5.1）已落地且门禁稳定——没有它，补得越多漂得越快。**范围按两条边界切，不可混为一谈（2026-09-05 用户裁决）**：① **配置边界**按「声明 vs 行为」切 → 27 个实体全部登记，**包括单据**；单据只「写操作」走代码，它的字段/列/校验/权限/审计/统计口径仍必须登记，不登记就必然在别处手写第二份，直接违反「呈现层零手写」。实证：27 个守卫里已有单据守卫（`purchase_inbound_confirm`/`refund_add_lines`）、82 个审计动作已含 `purchase_inbound_confirm`、`indicators` 的 `costAmount` 就在统计单据行、后端 `resolveSnapshots.ts`/`auditLogger.ts` 已在消费——**「单据走代码」≠「单据不进配置」**。② **引擎边界**按「单表 vs 事务」切 → 档案类（`globalDict`/`subject`）全走零代码 CRUD；单据类只登记读与列表，写操作走实体专属 service。此边界方法论 `meta-runtime` 篇已写死，**不得放宽**——放宽就是把状态机与跨表对账塞进配置，养出上帝配置。**分批建议**：先补字典类（category/brand/unit/price_type 等，结构最规整、风险最低）拿第二批实证，再推档案类主体 |
 | ~~P2~~ ✅ | 范式 vs 派生表的决策记录 | 已收编：meta-runtime 检索演进表（v29/v30 裁决+四条删除前置）+ §三「v23 决策记录」归档小节（2026-09-04） |
 | ~~P2~~ ✅ 已落地（2026-09-05） | Meta Studio 的「新增实体向导」 | **已交付**：`tools/meta-studio.mjs` 新增 `POST /api/entity`（preview / confirm 两段式）——自写序列化器（flow map 风格，不用 yaml.dump 避免全文件漂移）→ 定位 entities 段末插入 → js-yaml 回读校验 → 落盘后跑生成器，**生成器失败自动回滚**。UI 加四步向导（身份/字段/列/预览）＋**模板版本机制**（改模板能覆盖旧 index.html，先备份 .bak）。**验证**：纯函数 29 项 + UI 渲染 39 项 + 端到端（真写入→生成器跑通→哈希比对回滚）+ 接口冒烟全过。**注意**：若手动起独立实例（8898），旧实例没有新路由需重启；默认走工具台 /meta/ 则始终最新 |
 | ~~P2~~ ✅ 已结案 · 不该收（2026-09-05 核实证伪） | ~~roles 一页收档案框架~~ → **判定：不归档案框架，待办撤销**（按「该独立则独立」结案）。证据：① `RolePermissions.tsx:296-509` 是**左角色列表 + 右权限树**双栏，`ArchiveSlotHost` 只有单表（`ArchiveSlotHost.tsx:877-961`）无分栏；② 保存的是**权限集 JSON**（`ViewPermissions = Partial<Record<ViewCode,'none'/'ro'/'rw'>>`，`shared/types/index.ts:478`）走独立端点 `PUT /staff/roles/:code/permissions`，不是档案字段；③ 按 **code** 寻址（`systemApi.ts:250-257`），宿主硬编码 `rowKey="id"`（`ArchiveSlotHost.tsx:916`）；④ 权限树叶子是编译期固定键集 `ALL_VIEW_CODES`（`types/index.ts:591`）不可增删，而 matrix 语义是「本行自己的可增删子记录数组」（`archiveSlotTypes.ts:132`）；⑤ `roles` 表无 status、无 updated_at、无父子树（`migration.sql:2-13`），与档案 `ArchiveEntityDef`（`archiveSlotTypes.ts:228-291`）五条冲突。**顺带校正台账本行旧口径**：`users` 侧收的是 `cellSpecsWithEditorsToColumns`（**列配置驱动**），与 `ArchiveSlotHost`（**档案槽位驱动**）是两套框架，不能拿来证明 roles 该收档案框架 |

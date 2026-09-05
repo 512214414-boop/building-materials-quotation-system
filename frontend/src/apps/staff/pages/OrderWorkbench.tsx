@@ -17,7 +17,7 @@ import CreateDocumentModal from '../../../shared/components/CreateDocumentModal.
 import DocumentSourcePicker from '../../../shared/components/DocumentSourcePicker.js';
 import { PermissionDenied } from '../../../shared/components/common/PermissionDenied.js';
 import { PickerEditGateProvider } from '../../../shared/components/product-picker/PickerEditGate.js';
-import { WorkbenchFieldCell } from '../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { FieldCell } from '../../../shared/components/cells/FieldCell.js';
 import { DS_SHELL_INLINE_BTN } from '../../../shared/styles/shell-constants.js';
 import type { StaffDocumentListItem } from '../../../shared/services/api/documentApi.js';
 import { getWorkbenchViews } from '../menu.config.js';
@@ -146,7 +146,7 @@ function WorkbenchTabBar({
         ＋ 新建
       </button>
       <div className="ds-shell-search-chip" style={{ ...TAB_CHIP, minWidth: 56, maxWidth: 88, padding: '0 6px' }}>
-        <WorkbenchFieldCell
+        <FieldCell scene="workbench"
           embed="inline"
           text=""
           placeholder="检索"

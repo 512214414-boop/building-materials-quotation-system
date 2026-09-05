@@ -108,8 +108,42 @@ async function main() {
   const unk = await fetch(`${BASE}/api/staff/r/not_registered_entity`, { headers: H });
   check('未登记资源返回 404（不能绕过登记表）', unk.status === 404, `status=${unk.status}`);
 
+  // ===== 第二批实证：引擎泛化到非 supplier 的全局字典 =====
+  const catName = `元模型验证分类_${Date.now()}`;
+  const catList = await fetch(`${BASE}/api/staff/r/category?page=1&pageSize=5`, { headers: H });
+  const catListJson = (await catList.json()) as any;
+  check('分类列表接口可用', catList.status === 200 && Array.isArray(catListJson?.data?.list), `条数=${catListJson?.data?.list?.length ?? 0} 总数=${catListJson?.data?.pagination?.total ?? 0}`);
+  const catQa = await fetch(`${BASE}/api/staff/r/category/quick-add`, { method: 'POST', headers: H, body: JSON.stringify({ name: catName }) });
+  const catQaJson = (await catQa.json()) as any;
+  const catId = catQaJson?.data?.id;
+  check('分类快建接口可用', catQa.status === 201 && !!catId, `id=${catId}`);
+  const catGet = await fetch(`${BASE}/api/staff/r/category/${catId}`, { headers: H });
+  const catGetJson = (await catGet.json()) as any;
+  check('分类详情接口可用', catGet.status === 200 && catGetJson?.data?.name === catName);
+  const catUp = await fetch(`${BASE}/api/staff/r/category/${catId}`, { method: 'PATCH', headers: H, body: JSON.stringify({ sortOrder: 5 }) });
+  const catUpJson = (await catUp.json()) as any;
+  check('分类改接口可用（白名单字段）', catUp.status === 200 && catUpJson?.data?.sortOrder === 5);
+  const catRc = await fetch(`${BASE}/api/staff/r/category/${catId}/ref-counts`, { headers: H });
+  const catRcJson = (await catRc.json()) as any;
+  check('分类引用计数接口可用', catRc.status === 200 && Array.isArray(catRcJson?.data?.refCounts), JSON.stringify(catRcJson?.data?.refCounts ?? []));
+  await fetch(`${BASE}/api/staff/r/category/${catId}`, { method: 'DELETE', headers: H });
+
+  // 单位：名称列是 unitName（验证引擎泛化到非 name 字段）
+  const unitName = `元模型验证单位_${Date.now()}`;
+  const unitQa = await fetch(`${BASE}/api/staff/r/unit/quick-add`, { method: 'POST', headers: H, body: JSON.stringify({ unitName }) });
+  const unitQaJson = (await unitQa.json()) as any;
+  const unitId = unitQaJson?.data?.id;
+  check('单位快建接口可用（unitName 名称列）', unitQa.status === 201 && !!unitId, `id=${unitId} name=${unitQaJson?.data?.name}`);
+  const unitList = await fetch(`${BASE}/api/staff/r/unit?keyword=${encodeURIComponent(unitName)}`, { headers: H });
+  const unitListJson = (await unitList.json()) as any;
+  const unitHit = (unitListJson?.data?.list ?? []).some((r: any) => String(r.id) === String(unitId));
+  check('单位按 unitName 检索可用（引擎泛化）', unitList.status === 200 && unitHit);
+  await fetch(`${BASE}/api/staff/r/unit/${unitId}`, { method: 'DELETE', headers: H });
+
   // 清理测试数据（物理删除，避免污染）
   await prisma.supplier.delete({ where: { id: BigInt(String(createdId)) } });
+  await prisma.category.delete({ where: { id: Number(catId) } }).catch(() => {});
+  await prisma.unit.delete({ where: { id: BigInt(String(unitId)) } }).catch(() => {});
   console.log('\n已清理测试数据');
 
   console.log(`\n结果：${pass} 通过 / ${fail} 失败`);

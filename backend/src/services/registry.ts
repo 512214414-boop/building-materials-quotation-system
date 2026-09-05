@@ -52,6 +52,11 @@ export interface RegistryDef {
   label: string;
   /** 唯一键策略（去重依据；决定 quickAdd/ensureByName/ensureByParent 的查重键） */
   uniqueKey: RegistryUniqueKey;
+  /**
+   * 名称字段（默认 'name'）。全局字典里 unit 的名称列是 unitName 而非 name，
+   * 由 resources.search.fields[0] 透传下来，使注册表通用层不硬编码列名。
+   */
+  nameField?: string;
   /** 建档默认值（name 之外的字段；可依 name 计算） */
   defaults?: (name: string) => Record<string, unknown>;
   /**
@@ -87,20 +92,21 @@ export async function quickAdd(
   if (def.uniqueKey.type !== 'global') {
     throw new Error(`quickAdd 仅支持全局唯一档案；「${def.label}」为父级从属实体，请走 ensureByParent`);
   }
+  const nf = def.nameField ?? 'name';
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable(`${def.label}名称不能为空`);
-  const existing = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
-  if (existing) return { id: existing.id, name: existing.name };
+  const existing = await delegate(db, def.model).findFirst({ where: { [nf]: trimmed } });
+  if (existing) return { id: existing.id, name: (existing as Record<string, unknown>)[nf] as string };
   try {
     const created = await delegate(db, def.model).create({
-      data: { name: trimmed, ...(def.defaults?.(trimmed) ?? {}) },
+      data: { [nf]: trimmed, ...(def.defaults?.(trimmed) ?? {}) },
     });
-    return { id: created.id, name: created.name };
+    return { id: created.id, name: (created as Record<string, unknown>)[nf] as string };
   } catch (e) {
     // P2002：并发下同名创建竞争 → 回查复用（幂等兜底）
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      const again = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
-      if (again) return { id: again.id, name: again.name };
+      const again = await delegate(db, def.model).findFirst({ where: { [nf]: trimmed } });
+      if (again) return { id: again.id, name: (again as Record<string, unknown>)[nf] as string };
     }
     throw e;
   }
@@ -120,9 +126,10 @@ export async function ensureByName(
   if (def.uniqueKey.type !== 'global') {
     throw new Error(`ensureByName 仅支持全局唯一档案；「${def.label}」为父级从属实体，请走 ensureByParent`);
   }
+  const nf = def.nameField ?? 'name';
   const trimmed = name.trim();
   if (!trimmed) throw Errors.unprocessable(`${def.label}名称不能为空`);
-  const existing = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
+  const existing = await delegate(db, def.model).findFirst({ where: { [nf]: trimmed } });
   if (existing) {
     // 名称唯一复用：本次携带的附加档案字段覆盖更新（仅提供的字段，影响面仅限该条）
     if (extra != null && def.extraToData) {
@@ -131,21 +138,21 @@ export async function ensureByName(
         await delegate(db, def.model).update({ where: { id: existing.id }, data: upd });
       }
     }
-    return { id: existing.id, name: existing.name };
+    return { id: existing.id, name: (existing as Record<string, unknown>)[nf] as string };
   }
   try {
     const created = await delegate(db, def.model).create({
       data: {
-        name: trimmed,
+        [nf]: trimmed,
         ...(def.defaults?.(trimmed) ?? {}),
         ...(extra != null && def.extraToData ? def.extraToData(extra) : {}),
       },
     });
-    return { id: created.id, name: created.name };
+    return { id: created.id, name: (created as Record<string, unknown>)[nf] as string };
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-      const again = await delegate(db, def.model).findFirst({ where: { name: trimmed } });
-      if (again) return { id: again.id, name: again.name };
+      const again = await delegate(db, def.model).findFirst({ where: { [nf]: trimmed } });
+      if (again) return { id: again.id, name: (again as Record<string, unknown>)[nf] as string };
     }
     throw e;
   }

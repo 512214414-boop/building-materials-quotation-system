@@ -7,8 +7,8 @@ import type { Dayjs } from 'dayjs';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../shared/components/UnifiedTable.js';
 import DsButton from '../../../shared/components/DsButton.js';
 import DsSelect from '../../../shared/components/DsSelect.js';
-import DsTag from '../../../shared/components/DsTag.js';
 import ViewFrame from '../../../shared/components/ViewFrame.js';
+import { tagColumn } from '../../../shared/components/table/compositeColumns.js';
 import { entityCellSpecs, type GeneratedCellSpec } from '../../../shared/config/entityRelations.generated.js';
 import { cellSpecsWithEditorsToColumns, type CellHandlers } from '../../../shared/components/table/editorRegistry.js';
 import {
@@ -158,14 +158,10 @@ export default function AuditLogs() {
     );
     return [
       specByKey.get('user')!,
-      {
-        title: '操作类型',
-        dataIndex: 'action',
-        key: 'action',
-        minWidth: 150,
-        renderMode: 'custom',
-        render: (value: string) => <DsTag color={getActionColor(value)}>{value}</DsTag>,
-      },
+      tagColumn<AuditLogView>(
+        { key: 'action', title: '操作类型', minWidth: 150 },
+        (r) => ({ text: r.action, color: getActionColor(r.action) }),
+      ),
       specByKey.get('resourceType')!,
       specByKey.get('resourceId')!,
       specByKey.get('ipAddress')!,

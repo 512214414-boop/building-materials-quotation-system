@@ -6,7 +6,7 @@
 //
 // renderMode 为什么是 static 而不是 custom：
 //   static 的语义是「不由 InteractionLayer 接管，单元格自己管交互」——这是实话，
-//   confirm 入口的格子（WorkbenchFieldCell）本来就自己管理点击与浮层。
+//   confirm 入口的格子（FieldCell）本来就自己管理点击与浮层。
 //   custom 的语义是「无法归类」，用它是认输，也正因为它，135 处列成了治理盲区。
 //   注意：这不是 InteractionLayer 的回归——现状这些列走 custom 时同样不被接管。
 //

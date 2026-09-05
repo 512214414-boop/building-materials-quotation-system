@@ -4,7 +4,7 @@
 //   规格层与渲染层分离，登记表、页面、渲染器三方才能共用同一份参数。
 //
 // 本组件是「消灭 custom」的落点：页面用参数声明一格，由这里统一渲染，
-//   不再每个页面在 renderMode='custom' 的 render 里手写 <WorkbenchFieldCell/>。
+//   不再每个页面在 renderMode='custom' 的 render 里手写 <FieldCell scene="workbench"/>。
 //
 // 纪律（项目硬纪律，由本组件统一保证，页面无权决定）：
 //   门禁格（disabledReason）必须保持与可编辑格一致的视觉——hover、手型、键盘可达都在，
@@ -13,7 +13,7 @@
 // 边界：本组件只渲染一格。展开面板的跨行定位、列宽测量归表格层，不在此处。
 
 import { useState } from 'react';
-import { WorkbenchFieldCell } from '../workbench/WorkbenchFieldCell.js';
+import { FieldCell } from '../cells/FieldCell.js';
 import { DisplayCell, type PickerCellEmbed } from '../product-picker/PickerInlineCells.js';
 import { CELL_INPUT_FOCUS_STYLE, CELL_INPUT_STYLE } from './cell-editors/CellEditor.types.js';
 import type { CellGateSpec, CellSearchSpec, CellSpec, CellValueState } from './cellSpec.js';
@@ -240,7 +240,7 @@ export function CellSpecRenderer<T = any>({
     }
     const search = resolveSearch(gate, record);
     return (
-      <WorkbenchFieldCell
+      <FieldCell scene="workbench"
         text={text}
         placeholder={spec.placeholder ?? '—'}
         disabled={locked}

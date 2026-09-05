@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>集合体 × 表 · 特征矩阵</title>
+<style>
+  :root{
+    --bg:#F7F7F5; --surface:#FFFFFF; --line:#E5E3DC; --line-2:#D3D1C7;
+    --tx:#2C2C2A; --tx-2:#5F5E5A; --tx-3:#888780;
+    --c-product:#185FA5; --c-product-bg:#E6F1FB;
+    --c-supplier:#0F6E56; --c-supplier-bg:#E1F5EE;
+    --c-customer:#3B6D11; --c-customer-bg:#EAF3DE;
+    --c-warehouse:#854F0B; --c-warehouse-bg:#FAEEDA;
+    --c-doc:#534AB7; --c-doc-bg:#EEEDFE;
+    --c-sys:#5F5E5A; --c-sys-bg:#F1EFE8;
+    --warn:#A32D2D; --warn-bg:#FCEBEB;
+    --ok:#3B6D11; --ok-bg:#EAF3DE;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:13px;line-height:1.6;}
+  .wrap{max-width:1680px;margin:0 auto;padding:20px 24px 60px;}
+  h1{font-size:19px;font-weight:500;margin:0 0 4px;}
+  .sub{color:var(--tx-2);margin:0 0 18px;font-size:13px;}
+  .tabs{display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--line);}
+  .tab{padding:8px 16px;cursor:pointer;border:none;background:none;font-size:13px;
+    color:var(--tx-2);border-bottom:2px solid transparent;font-family:inherit;margin-bottom:-1px;}
+  .tab.on{color:var(--tx);border-bottom-color:var(--tx);font-weight:500;}
+  .panel{display:none;} .panel.on{display:block;}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px;}
+  .card h2{font-size:14px;font-weight:500;margin:0 0 10px;}
+  .card p{margin:0 0 8px;color:var(--tx-2);}
+  .card p:last-child{margin-bottom:0;}
+
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px;}
+  .fgroup{display:flex;flex-direction:column;gap:4px;}
+  .fgroup label{font-size:11px;color:var(--tx-3);letter-spacing:.02em;}
+  select,input[type=text]{font-family:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--line-2);
+    border-radius:6px;background:var(--surface);color:var(--tx);min-width:110px;}
+  input[type=text]{min-width:170px;}
+  .btn{font-family:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--line-2);
+    border-radius:6px;background:var(--surface);color:var(--tx);cursor:pointer;}
+  .btn:hover{background:var(--bg);}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .chip{padding:4px 11px;border:1px solid var(--line-2);border-radius:14px;cursor:pointer;
+    font-size:12px;background:var(--surface);user-select:none;color:var(--tx-2);}
+  .chip.on{color:#fff;border-color:transparent;}
+  .chip.on[data-g=产品档案]{background:var(--c-product);}
+  .chip.on[data-g=供应商档案]{background:var(--c-supplier);}
+  .chip.on[data-g=客户档案]{background:var(--c-customer);}
+  .chip.on[data-g=库房档案]{background:var(--c-warehouse);}
+  .chip.on[data-g=单据集合体]{background:var(--c-doc);}
+  .chip.on[data-g=系统权限]{background:var(--c-sys);}
+
+  .stat{display:flex;gap:18px;align-items:center;padding:0 2px 10px;color:var(--tx-2);font-size:12px;flex-wrap:wrap;}
+  .stat b{color:var(--tx);font-weight:500;}
+
+  .tw{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:74vh;}
+  table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;}
+  th,td{padding:7px 10px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line);}
+  thead th{position:sticky;top:0;background:#FAFAF8;z-index:3;font-weight:500;color:var(--tx-2);
+    font-size:11px;cursor:pointer;border-bottom:1px solid var(--line-2);}
+  thead th:hover{color:var(--tx);background:#F2F1EC;}
+  thead th.num{cursor:default;}
+  tbody tr{cursor:pointer;} tbody tr:hover{background:#FAFAF8;}
+  td.sticky{position:sticky;left:0;background:var(--surface);z-index:2;font-weight:500;}
+  tbody tr:hover td.sticky{background:#FAFAF8;}
+  td.sticky2{position:sticky;left:118px;background:var(--surface);z-index:2;
+    border-right:1px solid var(--line);}
+  tbody tr:hover td.sticky2{background:#FAFAF8;}
+  tbody tr[data-g=产品档案] td.sticky{border-left:3px solid var(--c-product);}
+  tbody tr[data-g=供应商档案] td.sticky{border-left:3px solid var(--c-supplier);}
+  tbody tr[data-g=客户档案] td.sticky{border-left:3px solid var(--c-customer);}
+  tbody tr[data-g=库房档案] td.sticky{border-left:3px solid var(--c-warehouse);}
+  tbody tr[data-g=单据集合体] td.sticky{border-left:3px solid var(--c-doc);}
+  tbody tr[data-g=系统权限] td.sticky{border-left:3px solid var(--c-sys);}
+
+  .tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;line-height:1.5;}
+  .t-dict{background:var(--c-sys-bg);color:var(--c-sys);}
+  .t-global{background:#E6F1FB;color:#185FA5;}
+  .t-mount{background:#E1F5EE;color:#0F6E56;}
+  .t-row{background:#FAEEDA;color:#854F0B;}
+  .t-snap{background:#EEEDFE;color:#534AB7;}
+  .t-mark{background:#FBEAF0;color:#993556;}
+  .t-derive{background:#EAF3DE;color:#3B6D11;}
+  .t-warn{background:var(--warn-bg);color:var(--warn);}
+  .t-ok{background:var(--ok-bg);color:var(--ok);}
+  .t-plain{background:#F1EFE8;color:var(--tx-2);}
+  .dim{color:var(--tx-3);}
+
+  tr.detail td{background:#FAFAF8;white-space:normal;color:var(--tx-2);cursor:default;
+    font-size:12px;line-height:1.7;padding:10px 14px 12px 16px;}
+  tr.detail:hover td{background:#FAFAF8;}
+  .dl{border-left:2px solid var(--line-2);padding-left:10px;}
+  .dl b{color:var(--tx);font-weight:500;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:1100px){.grid2{grid-template-columns:1fr;}}
+  .kv{display:grid;grid-template-columns:82px 1fr;gap:4px 10px;font-size:12px;}
+  .kv dt{color:var(--tx-3);} .kv dd{margin:0;color:var(--tx);}
+  .chain{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+    background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;
+    margin:8px 0;line-height:2;}
+  .chain .lv{color:var(--tx-3);}
+  .arrow{color:var(--tx-3);padding:0 4px;}
+  .note{background:var(--warn-bg);border-left:3px solid var(--warn);padding:8px 12px;
+    border-radius:0 6px 6px 0;color:var(--tx);font-size:12px;margin:8px 0;}
+  .note.ok{background:var(--ok-bg);border-left-color:var(--ok);}
+  ul{margin:6px 0 0;padding-left:20px;} li{margin-bottom:4px;color:var(--tx-2);}
+  li b{color:var(--tx);font-weight:500;}
+  .xtable{width:100%;border-collapse:collapse;font-size:12px;}
+  .xtable th,.xtable td{border:1px solid var(--line);padding:6px 9px;white-space:normal;}
+  .xtable th{background:#FAFAF8;font-weight:500;color:var(--tx-2);font-size:11px;}
+  .xtable td.n{text-align:center;color:var(--tx-3);}
+  .xtable td.hit{background:var(--ok-bg);color:var(--ok);text-align:center;font-weight:500;}
+  .legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;}
+  .lg{font-size:12px;color:var(--tx-2);}
+  .lg b{color:var(--tx);font-weight:500;}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+    background:var(--bg);padding:1px 5px;border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>集合体 × 表 · 特征矩阵</h1>
+  <p class="sub">62 张表 × 17 个维度。数据源：<code>backend/prisma/schema.prisma</code>（关系真相源）+ 四个档案页的 slots 配置 + 表功能方法论的形态规则。<b>用来找共性、定位例外、把形态钉成槽位。</b></p>
+
+  <div class="tabs">
+    <button class="tab on" data-p="matrix">特征矩阵</button>
+    <button class="tab" data-p="answer">你的两个问题</button>
+    <button class="tab" data-p="cross">规律交叉验证</button>
+    <button class="tab" data-p="legend">维度定义</button>
+  </div>
+
+  <!-- ========== 矩阵 ========== -->
+  <div class="panel on" id="p-matrix">
+    <div class="filters">
+      <div class="fgroup" style="flex:1 1 100%">
+        <label>集合体（点选筛选，可多选）</label>
+        <div class="chips" id="f-group"></div>
+      </div>
+      <div class="fgroup"><label>集合体类型</label><select id="f-agg"><option value="">全部</option></select></div>
+      <div class="fgroup"><label>层</label><select id="f-layer"><option value="">全部</option></select></div>
+      <div class="fgroup"><label>落地形态</label><select id="f-form"><option value="">全部</option></select></div>
+      <div class="fgroup"><label>维度数（键数）</label><select id="f-keys"><option value="">全部</option></select></div>
+      <div class="fgroup"><label>默认语义</label><select id="f-def"><option value="">全部</option></select></div>
+      <div class="fgroup"><label>只读 / 可变</label><select id="f-rw"><option value="">全部</option></select></div>
+      <div class="fgroup"><label>全文搜索</label><input type="text" id="f-q" placeholder="表名 / 中文名 / 特征解释" /></div>
+      <div class="fgroup"><label>&nbsp;</label><button class="btn" id="f-reset">重置</button></div>
+    </div>
+
+    <div class="stat" id="stat"></div>
+    <div class="tw">
+      <table id="tbl">
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p style="color:var(--tx-3);font-size:12px;margin-top:8px;">点任意行展开「为什么是这样」的特征解释。点表头排序。搜索是全文的——搜 <code>sale_price</code> 会连「单位」一起命中，因为它的解释里写了自己被 sale_price 引用，正好用来反查引用关系。</p>
+  </div>
+
+  <!-- ========== 问题解答 ========== -->
+  <div class="panel" id="p-answer">
+    <div class="card">
+      <h2>问题一：为什么产品编辑点「产品名称」触发，供应商管理点「供应商名称」触发？</h2>
+      <p><b>共性（先说一样的）：名称是集合体根实体的锚点，这是全站统一的入口规则，不是两个巧合。</b></p>
+      <p>方法论原文：「一个树形关系图集合体 = 一个管理功能：<b>名称列点开，就能编辑整棵树上所有表</b>」。名称之所以被选中做入口，是因为它在关系图上具备三个唯一性：</p>
+      <ul>
+        <li><b>唯一标识</b>——product.name 在 (categoryId, name) 上唯一；supplier.name / warehouse.name 同理。点它不会歧义。</li>
+        <li><b>树根位置</b>——名称挂在根实体上，树下所有挂载表都能从它到达。</li>
+        <li><b>业务指代</b>——人嘴里说的就是这个名字，点名称符合直觉。</li>
+      </ul>
+      <p><b>差异（再说不一样的）：点了之后去哪儿，由树的深度决定。</b></p>
+      <div class="chain">
+        <span class="lv">产品树 · 深 3 层</span><br />
+        product <span class="arrow">→</span> product_brand <span class="arrow">→</span> spec <span class="arrow">→</span> spec_unit <span class="arrow">→</span> (sale_price / purchase_price / product_image)
+      </div>
+      <div class="chain">
+        <span class="lv">供应商树 · 深 1 层</span><br />
+        supplier <span class="arrow">→</span> (supplier_contact / supplier_address)
+      </div>
+      <div class="note ok"><b>结论：入口规则相同（点名称），承载方式不同（深树走弹窗、浅树走行内矩阵）。决定因素是「维度数 + 层级深度」这两个特征维度，不是功能口味。</b></div>
+      <p>代码侧的证据：供应商 / 客户 / 库房三个档案页共用同一套档案框架，槽位声明完全一致——</p>
+      <div class="chain">
+        SupplierManage: <span class="lv">kind:</span> 'name' → 'matrix'(contacts) → 'matrix'(addresses) → 'custom' → 'scalar'<br />
+        CustomerManage: <span class="lv">kind:</span> 'name' → 'scalar'(type) → 'matrix'(contacts) → 'matrix'(invoices) → 'matrix'(addresses) → 'scalar'<br />
+        WarehouseManage: <span class="lv">kind:</span> 'name' → 'matrix'(zones) → 'matrix'(contacts) → 'scalar' → 'scalar' → 'custom'
+      </div>
+      <div class="note"><b>产品管理是唯一的例外</b>：它没有走这套档案框架的 slots，而是自定义表格 + <code>ProductEditDialog</code> 整树弹窗。这是框架槽位化时最该先收拾的一处——要么把产品也收进槽（深树用「弹窗型槽」），要么明确登记它是合法的深树分支。</div>
+    </div>
+
+    <div class="card">
+      <h2>问题二：产品矩阵的顺序为什么是 产品信息行 → 品牌行 → 规格行 → 单位行 → 图片行？</h2>
+      <p><b>答案：顺序 = 关系图的挂载层级深度，从根到叶。每一「行」= 一次挂载 = 图上的一层。</b></p>
+      <p>方法论：「挂载树的画法（<b>粒度定层级</b>）：树的每一层 = 一次挂载：粒度到哪一层就挂到哪一层」「多行级联（品牌行→规格行→单位行）整体呈现挂载层级关系，一眼看清」。</p>
+      <p>代码里的 §A–§E 标注与关系图逐层对齐（<code>ProductEditDialog.tsx</code>）：</p>
+      <div class="chain">
+        <span class="lv">§A 产品信息行</span> 分类 | 产品名称 | 备注 &nbsp;← 深度 0，根实体自己的字段（product）<br />
+        <span class="lv">§B 品牌切换行</span> CascadeSwitchRow &nbsp;← 深度 1，product <span class="arrow">×</span> brand（product_brand）<br />
+        <span class="lv">§C 规格切换行</span> CascadeSwitchRow &nbsp;← 深度 2，spec 挂在 product+brand 下<br />
+        <span class="lv">§D 单位区</span> 矩阵 + 售价/进价浮层 &nbsp;← 深度 3，spec_unit 挂 spec 下<br />
+        <span class="lv">§E 产品图片</span> 矩阵 &nbsp;← 深度 3，product_image 挂 spec 下（与单位同级）
+      </div>
+      <p><b>所以决定顺序的是三个因素，按优先级：</b></p>
+      <ol>
+        <li><b>层级深度（主排序）</b>——深的排后面。品牌(1) &lt; 规格(2) &lt; 单位(3)。</li>
+        <li><b>依赖顺序（前置键）</b>——规格必须先选品牌、单位必须先选规格。图上是谁的外键，界面上就排在谁后面。这是一个可以自动推导的硬约束。</li>
+        <li><b>同层内按业务主次</b>——单位和图片都在深度 3，单位在前是因为它是价格/库存的载体，业务权重更高。<b>这一条是唯一需要人工指定的</b>，前两条都能从关系图自动推出。</li>
+      </ol>
+      <div class="note ok"><b>可槽位化的部分：层级深度和依赖顺序都能从 Prisma 关系自动推导 → 矩阵行序可以自动生成，只留「同层排序」一个人工权重参数。</b>这就是你要找的规律。</div>
+      <p>另外 §D 里售价/进价没有单独占一行，而是收进单位行的展开面板——因为它们是<b>多键组合</b>（sale_price 是 spec×unit×price_type 三键，purchase_price 是 spec×unit×supplier 三键），方法论规定「跨记录数（一条数 = 多键组合）→ 展开/弹层面板，不占主行格子」。代码用 <code>UnitPriceExpandPanel</code> Popover 实现，与规则一致。</p>
+    </div>
+  </div>
+
+  <!-- ========== 交叉验证 ========== -->
+  <div class="panel" id="p-cross">
+    <div class="card">
+      <h2>维度交叉验证</h2>
+      <p>选两个维度做交叉统计，格内是表数量。<b>有数字的格子 = 已实现的组合；空格 = 这个组合在项目里不存在</b>——要么是不需要，要么是槽位还没覆盖到（后者就是你要找的缺口）。</p>
+      <div class="filters" style="margin-bottom:0">
+        <div class="fgroup"><label>行维度</label><select id="x-row"></select></div>
+        <div class="fgroup"><label>列维度</label><select id="x-col"></select></div>
+        <div class="fgroup"><label>只看集合体</label><select id="x-group"><option value="">全部</option></select></div>
+      </div>
+    </div>
+    <div class="card"><div id="xtable"></div></div>
+
+    <div class="card">
+      <h2>从数据里读出来的规律</h2>
+      <p>把落地形态收敛到方法论定义的 7 大槽位后，几条规律自己浮出来了。<b>收敛度 100% 的可以直接钉成槽，分裂的说明还缺一个判定维度。</b></p>
+
+      <div class="note ok"><b>① 快照层 100% 落多记录矩阵（4/4）。</b>document_lines / inbound_lines / purchase_inbound_lines / reimbursement_bill_lines——单据行无论属于哪个单据集合体，形态完全一致。差异只在「格子里存的是引用还是快照」，形态参数化即可。→ 可直接钉成<b>快照矩阵槽</b>。</div>
+
+      <div class="note ok"><b>② 衍生层 100% 落只读台账（6/6）。</b>product_sku_search、inventory、五张 archived_* 全部只读。方法论「不手填，源保存后同步」在数据上完全兑现。→ 可直接钉成<b>只读槽</b>。</div>
+
+      <div class="note"><b>③ 挂载层 9/14 落多记录矩阵，剩下 5 个分裂成两类。</b>切换条 2 个（product_brand / spec，中间层且下挂还有子记录）+ 字典多选 2 个（supplier_business_category / brand，引用已有字典而非创建子记录）。<b>缺的判定维度是「来源类型」</b>——挂载的是子记录还是字典引用，形态不同。</div>
+
+      <div class="note"><b>④ 维度数决定行内还是展开。</b>三键 → 展开面板 3/5（sale_price、purchase_price 都在里面）；单键 → 全部行内。与方法论「跨记录数（多键组合）→ 展开/弹层面板，不占主行格子」吻合。<b>键数 ≥ 3 收进面板可以做成硬规则。</b></div>
+
+      <div class="note"><b>⑤ 全局层分裂成信息行(11) + 字典检索+快建(7)。</b>判定条件是<b>有没有父实体</b>：无父 = 集合体根实体 → 信息行（product / supplier / customers / warehouse / documents…）；有父 = 被引用的名单 → 字典（category / brand / unit / price_type…）。这条能从 Prisma 关系直接算出。</div>
+
+      <div class="note"><b>⑥ 标注层分裂成多记录矩阵(5) + 只读台账(5)。</b>不是两种形态，是同一个矩阵的两种状态——结清/定档前可编辑，之后冻结。<b>这是「只读/可变」开关，不是新槽位。</b></div>
+
+      <h2 style="margin-top:18px;">槽位化判定链</h2>
+      <p>上面六条合起来，就是一张能自动判定槽位的决策链。每个判断条件都能从 Prisma 关系 + 一条特征配置算出，不需要人拍脑袋。</p>
+      <div class="chain">
+        有父实体吗？<br />
+        ├─ <b>无</b> → <span class="lv">信息行槽</span>（集合体根实体，点名称进编辑）<br />
+        └─ <b>有</b> → 在哪一层？<br />
+        &nbsp;&nbsp;&nbsp;├─ <span class="lv">全局层</span> → <b>字典检索+快建槽</b><br />
+        &nbsp;&nbsp;&nbsp;├─ <span class="lv">挂载层</span> → 挂的是子记录吗？<br />
+        &nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ <b>是</b> → <b>多记录矩阵槽</b>（默认列开关由「默认语义」定）<br />
+        &nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ <b>否</b> → <b>字典多选槽</b>（引用已有字典）<br />
+        &nbsp;&nbsp;&nbsp;├─ <span class="lv">行级层</span> → 键数 ≥ 3 吗？<br />
+        &nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ <b>是</b> → <b>展开/弹层面板槽</b><br />
+        &nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ <b>否</b> → <b>行内确认层格槽</b><br />
+        &nbsp;&nbsp;&nbsp;├─ <span class="lv">快照层</span> → <b>多记录矩阵槽（快照版）</b><br />
+        &nbsp;&nbsp;&nbsp;├─ <span class="lv">标注层</span> → <b>多记录矩阵槽 + 阶段只读开关</b><br />
+        &nbsp;&nbsp;&nbsp;└─ <span class="lv">衍生层</span> → <b>只读台账槽</b>
+      </div>
+      <div class="note ok"><b>再叠加三个格级参数（不换槽，只调参数）：</b>来源类型（字典引用 vs 直接值）、依赖顺序（门禁提示）、空行交互（按钮新增 vs 直接追加）。这三个是<b>格级</b>的——同一个矩阵里 method 走字典、value 走直接输入，就是证据。</div>
+    </div>
+  </div>
+
+  <!-- ========== 维度定义 ========== -->
+  <div class="panel" id="p-legend">
+    <div class="card">
+      <h2>17 个维度分四组</h2>
+      <p>前三组来自表功能方法论（<code>js/data/gen/01-know-table.js</code>），第四组是「特征分支」——方法论明确规定：<b>这些差异全部在同一组件里用参数注入，禁止为差异另写一个组件</b>。所以第四组其实就是槽位的参数清单。</p>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLS = [
+  {k:'group',  t:'集合体',    grp:'身份'},
+  {k:'table',  t:'表',        grp:'身份', sticky:2},
+  {k:'cn',     t:'中文名',    grp:'身份'},
+  {k:'aggType',t:'集合体类型',grp:'身份'},
+  {k:'depth',  t:'层级深度',  grp:'关系图', num:1},
+  {k:'parent', t:'父实体',    grp:'关系图'},
+  {k:'card',   t:'关系基数',  grp:'关系图'},
+  {k:'layer',  t:'层',        grp:'关系图'},
+  {k:'form',   t:'落地形态',  grp:'形态'},
+  {k:'entry',  t:'触发入口',  grp:'形态'},
+  {k:'rows',   t:'记录基数',  grp:'特征分支'},
+  {k:'hasDefault',t:'默认语义',grp:'特征分支'},
+  {k:'dep',    t:'依赖顺序',  grp:'特征分支'},
+  {k:'src',    t:'来源类型',  grp:'特征分支'},
+  {k:'keys',   t:'维度数',    grp:'特征分支'},
+  {k:'rw',     t:'只读/可变', grp:'特征分支'},
+  {k:'addMode',t:'空行交互',  grp:'特征分支'}
+];
+
+const D = [
+// ── 产品档案 ──────────────────────────────────────────────
+{g:'产品档案',t:'category',cn:'分类',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'字典检索+快建',e:'检索/快建',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(name唯一)',rw:'可变',am:'快建',
+ why:'单层名单、无父依赖 → 字典。被 product 和 supplier_business_category 引用，改名全局生效。产品弹窗 §A 里的分类格走检索+快建，符合「全局字典不做矩阵行」。'},
+{g:'产品档案',t:'product',cn:'产品',agg:'档案集合体',d:0,p:'category',c:'N:1',l:'全局层',f:'信息行',e:'点名称进整树弹窗',r:'1',df:'无',dp:'需先分类(空则ensure未分类)',s:'混合',kk:'双键(categoryId+name)',rw:'可变(可停用)',am:'快建',
+ why:'集合体根实体。深度 0 → 主实体信息行。它是唯一「不走档案框架 slots」的根实体：树深 3 层，行内放不下，所以点名称进 ProductEditDialog 整树弹窗。唯一键 (categoryId,name) 防重复建档。'},
+{g:'产品档案',t:'brand',cn:'品牌',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'字典检索+快建',e:'在产品内表现为切换条',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(name全局唯一)',rw:'可变(全局停用)',am:'快建',
+ why:'全局独立档案，name @unique。在产品的关系图里是被引用方，但在产品弹窗 §B 里表现为「级联切换行」——这是「字典被引用时」的形态特例：引用处用切换条选，选中后可点名称改名。'},
+{g:'产品档案',t:'product_brand',cn:'产品×品牌',agg:'绑定表',d:1,p:'product',c:'N:M',l:'挂载层',f:'切换条(级联)',e:'点选项切换',r:'N',df:'无',dp:'需先有产品',s:'字典引用(brand)',kk:'双键(productId+brandId)',rw:'可变',am:'末尾空位确认层',
+ why:'两框之间只存双方 ID → 绑定表。在产品弹窗 §B 用 CascadeSwitchRow 实现：行首=层级名、选项横排、末尾=新增空位。承载「这个产品卖哪些品牌」。'},
+{g:'产品档案',t:'spec',cn:'规格',agg:'档案集合体(挂载)',d:2,p:'product_brand',c:'1:N',l:'挂载层',f:'切换条+多字段编辑行',e:'点选项切换；选中后出单行编辑表格',r:'N',df:'无',dp:'需先选品牌',s:'直接值+字典引用',kk:'三键(productId+brandId+specModel)',rw:'可变',am:'末尾空位确认层',
+ why:'深度 2，挂在 product+brand 下。有依赖顺序：必须先选品牌。多字段层（specModel+remark）→ 选中后下方出单行编辑表格（表头行+一行），这是「多字段层」区别于单字段层（品牌）的形态分支。'},
+{g:'产品档案',t:'unit',cn:'单位',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'字典检索+快建',e:'检索/快建',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(unitName)',rw:'可变',am:'快建',
+ why:'全店共用单位名单。被 spec_unit / brand_unit_conversion / sale_price / purchase_price 四处引用，改名全局生效。'},
+{g:'产品档案',t:'spec_unit',cn:'规格单位',agg:'绑定表',d:3,p:'spec',c:'N:M',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isBase/isDisplay 互斥)',dp:'需先选规格',s:'字典引用(unit)',kk:'双键(specId+unitId)',rw:'可变',am:'空行晋升',
+ why:'产品弹窗 §D 单位区。挂载子表（一对多）→ 多记录矩阵，这是全站同构的标准形态。有默认语义且互斥：isBase 基准单位唯一、isDisplay 显示单位唯一 → 开默认列开关。'},
+{g:'产品档案',t:'brand_unit_conversion',cn:'单位换算率',agg:'档案集合体(行级)',d:4,p:'spec',c:'1:N',l:'行级层',f:'行内确认层格',e:'点值确认，不弹新矩阵',r:'N',df:'无',dp:'需先有单位',s:'直接值(数字)',kk:'双键(specId+unitId)',rw:'可变',am:'—',
+ why:'行级数挂叶子 → 行内确认层格。方法论明确「子表的行级数（挂叶子行上的值）→ 行内确认层格，点值确认，不弹新矩阵」。换算率按品牌和规格都会变，所以挂在 spec 下。'},
+{g:'产品档案',t:'price_type',cn:'售价类型',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'字典检索+快建',e:'检索/快建',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(name)',rw:'可变',am:'快建',
+ why:'零售/工程等售价类型。与渠道对等的售价侧维度，行键是 规格+单位+售价类型。'},
+{g:'产品档案',t:'contact_method',cn:'联系方式',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'字典检索+快建',e:'检索/快建',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(name)',rw:'可变',am:'快建',
+ why:'电话/微信/QQ 等。被 supplier_contact / customer_contact / warehouse_contact 三处共用——这是「几类活碰到同一类现实问题才抽成一套」的实例。'},
+{g:'产品档案',t:'address_type',cn:'地址类型',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'字典检索+快建',e:'检索/快建',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(name唯一)',rw:'可变',am:'快建',
+ why:'公司地址/仓库地址等。被 supplier_address 引用（addressTypeName）。注意：supplier_address 存的是 addressTypeName 快照名，档案改名不回改已存地址——与 purchase_price 的 supplierName 同口径。'},
+{g:'产品档案',t:'sale_price',cn:'售价',agg:'档案集合体(行级)',d:4,p:'spec_unit',c:'1:N',l:'行级层',f:'展开/弹层面板',e:'单位行展开 UnitPriceExpandPanel',r:'N',df:'有(isDefault)',dp:'需先选单位',s:'直接值(数字)',kk:'三键(spec×unit×price_type)',rw:'可变',am:'—',
+ why:'跨记录数（一条数是多键组合）→ 展开面板，不占主行格子。三键组合（specId+unitId+priceTypeId）放不进主行，所以收进 §D 单位行的 Popover 浮层。这是「维度数」特征维度直接决定形态的典型。'},
+{g:'产品档案',t:'purchase_price',cn:'进价',agg:'档案集合体(行级)',d:4,p:'spec_unit',c:'1:N',l:'行级层',f:'展开/弹层面板',e:'单位行展开 UnitPriceExpandPanel',r:'N',df:'有(isDefault)',dp:'需先选单位',s:'直接值+快照名(supplierName)',kk:'三键(spec×unit×supplier)',rw:'可变',am:'—',
+ why:'与售价同形态。差异：supplierId 无 @relation，是快照式引用（存 ID + 当时名 supplierName）——因为供应商名称会改，进价要钉在「当时问到的那个渠道」上。这符合总纲领「当时抄死」。'},
+{g:'产品档案',t:'product_sku_search',cn:'SKU 宽表',agg:'衍生宽表',d:-1,p:'—',c:'—',l:'衍生层',f:'只读(服务检索)',e:'检索',r:'N',df:'无',dp:'无',s:'派生',kk:'多键(摊平)',rw:'只读',am:'—',
+ why:'内容能从别的表推出来 → 衍生宽表。不手填，源保存后同步；只服务检索与看数，不是事实源。方法论否决「报表数据手工补一条」。摊平了 productName/brandName/unitName 等冗余列专为检索提速。'},
+{g:'产品档案',t:'product_image',cn:'产品图片',agg:'档案集合体(挂载)',d:3,p:'spec',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'图片区矩阵',r:'N',df:'有(isMain 互斥)',dp:'需先选规格',s:'直接值(文件)',kk:'单键父(specId)',rw:'可变',am:'空行晋升',
+ why:'产品弹窗 §E。与单位同在深度 3，都挂在 spec 下——同层排序靠业务主次（单位在前，因为它是价格/库存的载体）。有默认语义且互斥（isMain 主图唯一）。'},
+{g:'产品档案',t:'sale_spec_point',cn:'售价点位(单条)',agg:'档案集合体(行级)',d:4,p:'spec',c:'1:N',l:'行级层',f:'行内格',e:'点值确认',r:'1',df:'无',dp:'需先选规格',s:'直接值(数字)',kk:'双键(specId+priceTypeId)',rw:'可变',am:'—',
+ why:'点位记在圈组上，规格可单独改。读价顺序：这条有单独改过的用单独的 → 没有用圈组 → 再没有当 1。已单独改过的规格，整批调时不跟着变——这是「主记录语义」的变体。'},
+{g:'产品档案',t:'purchase_spec_point',cn:'进价点位(单条)',agg:'档案集合体(行级)',d:4,p:'spec',c:'1:N',l:'行级层',f:'行内格',e:'点值确认',r:'1',df:'无',dp:'需先选规格',s:'直接值(数字)',kk:'双键(specId+supplierId)',rw:'可变',am:'—',
+ why:'与售价点位对等，行键换成 规格×渠道。进价按「渠道+品牌+分类」成圈组。'},
+{g:'产品档案',t:'sale_point_rule',cn:'售价点位规则',agg:'档案集合体(全局)',d:-1,p:'—',c:'—',l:'全局层',f:'批量调整面板',e:'整批改',r:'N',df:'无',dp:'无',s:'直接值',kk:'三键(priceType+brandName+categoryName)',rw:'可变',am:'—',
+ why:'圈组级点位。改全局改这一圈组，已单独改过的规格不跟着变——方法论「确认修改和改全局同时存在」的实现。注意用 brandName/categoryName 名称而非 ID，是圈组的定位方式。'},
+{g:'产品档案',t:'supplier_point_rule',cn:'供应商点位规则',agg:'档案集合体(全局)',d:-1,p:'—',c:'—',l:'全局层',f:'批量调整面板',e:'整批改',r:'N',df:'无',dp:'无',s:'直接值',kk:'多键',rw:'可变',am:'—',
+ why:'进价侧圈组点位，与售价点位规则对等。'},
+
+// ── 供应商档案 ──────────────────────────────────────────────
+{g:'供应商档案',t:'supplier',cn:'供应商',agg:'档案集合体',d:0,p:'—',c:'—',l:'全局层',f:'信息行(档案框架 name 槽)',e:'点名称→行内框架编辑',r:'1',df:'无',dp:'无',s:'直接值',kk:'单键(name)',rw:'可变',am:'行内快建',
+ why:'集合体根实体。树深仅 1 层 → 行内放得下 → 走档案框架 kind:"name" 槽 + 行内矩阵展开，不需要独立弹窗。渐进式录入：名称可留空自动归入默认渠道。'},
+{g:'供应商档案',t:'supplier_contact',cn:'供应商联系',agg:'档案集合体(挂载)',d:1,p:'supplier',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isDefault)',dp:'需先有供应商',s:'混合(method字典/值直接)',kk:'单键父(supplierId)',rw:'可变',am:'空行晋升(直接追加)',
+ why:'全站矩阵范本（ArchiveContactMatrixEditor）。挂载子表 → 多记录矩阵 + 确认层单元格 + 空行晋升。method 走 contact_method 字典引用，name/value 直接值——同一矩阵里两种来源类型混用，说明「来源类型」是格级参数不是表级。'},
+{g:'供应商档案',t:'supplier_address',cn:'供应商地址',agg:'档案集合体(挂载)',d:1,p:'supplier',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isDefault)',dp:'需先有供应商',s:'混合(类型字典/文本直接)',kk:'单键父(supplierId)',rw:'可变',am:'空行晋升',
+ why:'与联系矩阵同构同组件。差异：带坐标（lng/lat/coordSource），且 persist 时要把默认地址回写到 supplier.address 冗余列——这是「挂载子表反哺父表冗余字段」的特例，值得单独登记。'},
+{g:'供应商档案',t:'supplier_business_category',cn:'经营分类',agg:'绑定表',d:1,p:'supplier',c:'N:M',l:'挂载层',f:'字典多选',e:'经营范围选择器',r:'N',df:'无',dp:'需先有供应商',s:'字典引用(category)',kk:'双键(supplier+category)',rw:'可变',am:'勾选',
+ why:'绑定表：只改绑定不解绑本体，管理挂父实体编辑，不算独立档案。形态是字典多选（SupplierBusinessScopePicker），不是矩阵——因为它是「引用已有字典」而非「创建子记录」。'},
+{g:'供应商档案',t:'supplier_business_brand',cn:'经营品牌',agg:'绑定表',d:1,p:'supplier',c:'N:M',l:'挂载层',f:'字典多选',e:'经营范围选择器',r:'N',df:'无',dp:'需先有供应商',s:'字典引用(brand)',kk:'双键(supplier+brand)',rw:'可变',am:'勾选',
+ why:'同上。与经营分类一起构成「这个供应商供什么」的回答口径——开单时「找人问」就是查这两张表。'},
+
+// ── 客户档案 ──────────────────────────────────────────────
+{g:'客户档案',t:'customers',cn:'客户',agg:'档案集合体',d:0,p:'—',c:'—',l:'全局层',f:'信息行(档案框架 name 槽)',e:'点名称→行内框架编辑',r:'1',df:'无',dp:'无',s:'直接值',kk:'单键(customer_code)',rw:'可变',am:'行内快建',
+ why:'树深 1 层 → 行内框架。注意：方法论明确「没有客户档案就不让开单」是禁止项，所以开单时客户格必须允许留空快建。'},
+{g:'客户档案',t:'customer_type',cn:'客户类型',agg:'字典',d:-1,p:'—',c:'1:N',l:'全局层',f:'下拉/字典检索',e:'点值确认',r:'1',df:'无',dp:'无',s:'字典引用',kk:'单键(name)',rw:'可变',am:'快建',
+ why:'客户的单字段层级，走 scalar 槽（点值确认），不做矩阵行。与产品「品牌」这类单字段层同构。'},
+{g:'客户档案',t:'customer_contact',cn:'客户联系',agg:'档案集合体(挂载)',d:1,p:'customers',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isDefault)',dp:'需先有客户',s:'混合',kk:'单键父(customerId)',rw:'可变',am:'空行晋升',
+ why:'与供应商联系矩阵同组件同形态（共用 ArchiveContactMatrixEditor）。三个档案的联系矩阵是同一槽位——这就是已经槽位化的部分。'},
+{g:'客户档案',t:'customer_invoice',cn:'开票信息',agg:'档案集合体(挂载)',d:1,p:'customers',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isDefault)',dp:'需先有客户',s:'直接值',kk:'单键父(customerId)',rw:'可变',am:'空行晋升',
+ why:'字段多（税号/银行/账号/地址/电话）但仍是一对多挂载子表 → 多记录矩阵。多字段不升级形态，只加列。'},
+{g:'客户档案',t:'customer_addresses',cn:'收货地址',agg:'档案集合体(挂载)',d:1,p:'customers',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isDefault)',dp:'需先有客户',s:'直接值',kk:'单键父(customerId)',rw:'可变',am:'空行晋升',
+ why:'与供应商地址矩阵同构。业务语义不同（收货 vs 公司地址）但形态完全一致——证明「形态由关系图位置+表类型决定，与业务名词无关」。'},
+{g:'客户档案',t:'customer_sessions',cn:'客户会话',agg:'系统表',d:1,p:'customers',c:'1:N',l:'—',f:'无界面',e:'—',r:'N',df:'无',dp:'需先有客户',s:'系统生成',kk:'单键父',rw:'只读',am:'—',
+ why:'登录会话，系统内部维护，不进档案管理界面。属于「有父子关系但不进编辑矩阵」的一类——槽位化时要能声明「不参与」。'},
+
+// ── 库房档案 ──────────────────────────────────────────────
+{g:'库房档案',t:'warehouse',cn:'仓库',agg:'档案集合体',d:0,p:'—',c:'—',l:'全局层',f:'信息行(档案框架 name 槽)',e:'点名称→行内框架编辑',r:'1',df:'无',dp:'无',s:'直接值',kk:'单键(name)',rw:'可变',am:'行内快建',
+ why:'树深 1 层 → 行内框架。isMain 主仓库标记是 custom 槽（开关），不是 matrix。'},
+{g:'库房档案',t:'warehouse_zone',cn:'库位',agg:'档案集合体(挂载)',d:1,p:'warehouse',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有仓库',s:'直接值',kk:'单键父(warehouseId)',rw:'可变',am:'空行晋升',
+ why:'挂载子表 → 多记录矩阵。无默认语义（库位不互斥）→ 默认列关闭。这是「默认语义」作为开关参数的直接证据。'},
+{g:'库房档案',t:'warehouse_contact',cn:'仓库负责人',agg:'档案集合体(挂载)',d:1,p:'warehouse',c:'1:N',l:'挂载层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'有(isDefault)',dp:'需先有仓库',s:'混合',kk:'单键父(warehouseId)',rw:'可变',am:'空行晋升',
+ why:'与供应商/客户联系矩阵同组件。第三处复用同一 contact 矩阵槽位。'},
+{g:'库房档案',t:'inventory',cn:'库存',agg:'档案集合体(行级)',d:2,p:'warehouse×spec',c:'1:N',l:'行级层',f:'只读台账/查询',e:'按仓按货看数',r:'N',df:'无',dp:'需先有仓库+规格',s:'派生',kk:'五键(仓×位×spec×brand×unit)',rw:'只读(由流水推导)',am:'—',
+ why:'五键组合，是全表维度数最高的一张。qty 与 weighted_avg_cost 由 inventory_ledger 推导，不手填——符合衍生层「不手填，源保存后同步」。'},
+{g:'库房档案',t:'inventory_ledger',cn:'库存流水',agg:'标注层',d:2,p:'warehouse×spec',c:'1:N',l:'标注层',f:'只读流水',e:'看数',r:'N',df:'无',dp:'—',s:'系统生成',kk:'多键',rw:'只读',am:'—',
+ why:'对已发生事实的_append_记录，可追不可改。存 balance_qty / balance_avg_cost 便于对账。方法论：标注层「各阶段补充独立成表，可来回改；结清/定档冻结」。'},
+
+// ── 单据集合体 ──────────────────────────────────────────────
+{g:'单据集合体',t:'documents',cn:'单据主表',agg:'单据集合体',d:0,p:'—',c:'—',l:'全局层(主表)',f:'信息行+阶段视图',e:'点单号进工作台',r:'1',df:'无',dp:'无',s:'直接值+快照',kk:'单键(document_no)',rw:'可变(结清后只读)',am:'新建',
+ why:'事件主表。方法论：单据集合体「主表+行快照，行存 ID+当时值；后续各阶段各成标注层，不改快照行」。customerName/Phone/Company 是快照冗余——档案改名不改已开的单。'},
+{g:'单据集合体',t:'document_lines',cn:'单据行',agg:'快照层',d:1,p:'documents',c:'1:N',l:'快照层',f:'多记录矩阵(点值表)',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有主表',s:'快照(ID+当时值)',kk:'单键父(documentId)',rw:'可变(定档后冻结)',am:'空行晋升',
+ why:'落单抄 ID + 当时值（productName/specModel/brandName/unitName 全冗余）。方法论否决「快照行跟着档案变」。这是与档案矩阵最关键的一处差异：同样是多记录矩阵，这里每格都是快照不是引用。'},
+{g:'单据集合体',t:'payment_records',cn:'收款记录',agg:'标注层',d:2,p:'documents',c:'1:N',l:'标注层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有单',s:'直接值',kk:'单键父(document_id)',rw:'可变(对账后只读)',am:'空行晋升',
+ why:'标注层：对已发生行的补充，独立成表。定金和尾款拆开收 → 允许开单当时就收一笔，不强迫先配完货。'},
+{g:'单据集合体',t:'allocation_lines',cn:'配货行',agg:'标注层',d:2,p:'document_lines',c:'1:N',l:'标注层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有单据行',s:'混合(来源两枝)',kk:'双键(line+source)',rw:'可变',am:'空行晋升',
+ why:'来源两枝：内部仓出 or 外部渠道走。source_type 决定这一行的成本口径——三种成本分支在这里落地。'},
+{g:'单据集合体',t:'delivery_records',cn:'交付记录',agg:'标注层',d:2,p:'documents',c:'1:N',l:'标注层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先配货',s:'直接值',kk:'单键父(document_id)',rw:'可变',am:'空行晋升',
+ why:'配货履约的「发出去」环节。地址是开单时抄在单上的，档案后来改地址不自动改已在走的单。'},
+{g:'单据集合体',t:'cost_lines',cn:'成本行',agg:'标注层',d:2,p:'document_lines',c:'1:N',l:'标注层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先配货',s:'派生',kk:'多键',rw:'可变(成本标注期)',am:'空行晋升',
+ why:'三种出法三种成本：仓出按当时均价；外面刚好够这笔的算进订单成本；外面多调的不算订单成本、货进库存。成本标注是一个独立阶段，标注完可定档。'},
+{g:'单据集合体',t:'refund_lines',cn:'退货行',agg:'标注层',d:2,p:'document_lines',c:'1:N',l:'标注层',f:'多记录矩阵',e:'对着卖掉的行退',r:'N',df:'无',dp:'需先对上已卖行',s:'快照',kk:'双键(line+原单)',rw:'可变',am:'—',
+ why:'售后：只能退本店当时确实卖掉的数量。退的价是当时卖给这个人、写在那一行上的价，不是名册现价。依赖顺序硬约束：没对上已卖掉的行，不能按嘴里说的数量退。'},
+{g:'单据集合体',t:'backorders',cn:'欠库',agg:'标注层',d:2,p:'document_lines',c:'1:N',l:'标注层',f:'台账列表',e:'看数+冲销',r:'N',df:'无',dp:'需先配货不足',s:'派生',kk:'单键父(line_id)',rw:'可变(冲销)',am:'—',
+ why:'内部仓出不够时当场记下欠着，货进仓时冲掉欠。不能假装已经出齐——这条硬约束落在标注层。'},
+{g:'单据集合体',t:'supplier_payable_lines',cn:'供应商应付',agg:'标注层',d:2,p:'documents',c:'1:N',l:'标注层',f:'台账列表',e:'看数+结清',r:'N',df:'无',dp:'需先有进货',s:'快照(supplierName)',kk:'多键',rw:'可变(结清后只读)',am:'—',
+ why:'付给供应商的是当时问到的价，应付钉在当时进的那笔货、当时谈的价上。supplierName 快照化，不随后来的档案改。'},
+{g:'单据集合体',t:'inbound_tasks',cn:'入库任务',agg:'单据集合体',d:0,p:'—',c:'—',l:'全局层(主表)',f:'信息行+行子表',e:'点任务号',r:'1',df:'无',dp:'无',s:'直接值',kk:'单键(inbound_no)',rw:'可变(确认后只读)',am:'新建',
+ why:'进货管货：货到了要点进仓，库存跟着变。确认进仓后状态冻结——这是单据集合体里「阶段只读」的体现。'},
+{g:'单据集合体',t:'inbound_lines',cn:'入库行',agg:'快照层',d:1,p:'inbound_tasks',c:'1:N',l:'快照层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有任务',s:'快照',kk:'单键父(task_id)',rw:'可变(确认后只读)',am:'空行晋升',
+ why:'存 productName/specModel/brandName/unitName 冗余 + unit_cost。多调的进库存，不算这笔客户单的成本。'},
+{g:'单据集合体',t:'purchase_inbounds',cn:'采购入库',agg:'单据集合体',d:0,p:'—',c:'—',l:'全局层(主表)',f:'信息行+行子表',e:'点单号',r:'1',df:'无',dp:'无',s:'直接值',kk:'—',rw:'可变',am:'新建',
+ why:'待入的货能看见、能确认进仓。与 inbound_tasks 是进货管货的两条线。'},
+{g:'单据集合体',t:'purchase_inbound_lines',cn:'采购入库行',agg:'快照层',d:1,p:'purchase_inbounds',c:'1:N',l:'快照层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有主表',s:'快照',kk:'单键父',rw:'可变',am:'空行晋升',
+ why:'同上，快照层。'},
+{g:'单据集合体',t:'reimbursement_bills',cn:'报销单',agg:'单据集合体',d:0,p:'—',c:'—',l:'全局层(主表)',f:'信息行+行子表',e:'点单号',r:'1',df:'无',dp:'无',s:'直接值',kk:'单键(bill_no)',rw:'可变',am:'新建',
+ why:'与 documents 同构（source_document_id 指回原单），是单据集合体的又一次复用。'},
+{g:'单据集合体',t:'reimbursement_bill_lines',cn:'报销单行',agg:'快照层',d:1,p:'reimbursement_bills',c:'1:N',l:'快照层',f:'多记录矩阵',e:'矩阵行+确认层',r:'N',df:'无',dp:'需先有主表',s:'快照',kk:'单键父(bill_id)',rw:'可变',am:'空行晋升',
+ why:'报销单行快照。'},
+{g:'单据集合体',t:'archived_orders',cn:'归档订单',agg:'衍生层(归档)',d:1,p:'documents',c:'1:1',l:'衍生层',f:'只读台账',e:'看数',r:'1',df:'无',dp:'需先定档',s:'派生',kk:'单键',rw:'只读(结清冻结)',am:'—',
+ why:'定档归档：结清只读。方法论「演进不改历史；统计基于 ID」。归档是快照的再固化，不能改。'},
+{g:'单据集合体',t:'archived_order_lines',cn:'归档订单行',agg:'衍生层(归档)',d:2,p:'archived_orders',c:'1:N',l:'衍生层',f:'只读台账',e:'看数',r:'N',df:'无',dp:'—',s:'派生',kk:'单键父',rw:'只读',am:'—',
+ why:'同上，只读。'},
+{g:'单据集合体',t:'archived_logistics',cn:'归档物流',agg:'衍生层(归档)',d:2,p:'archived_orders',c:'1:N',l:'衍生层',f:'只读台账',e:'看数',r:'N',df:'无',dp:'—',s:'派生',kk:'单键父',rw:'只读',am:'—',
+ why:'同上，只读。'},
+{g:'单据集合体',t:'archived_costs',cn:'归档成本',agg:'衍生层(归档)',d:2,p:'archived_orders',c:'1:N',l:'衍生层',f:'只读台账',e:'看数',r:'N',df:'无',dp:'—',s:'派生',kk:'单键父',rw:'只读',am:'—',
+ why:'同上，只读。'},
+{g:'单据集合体',t:'archived_refunds',cn:'归档退货',agg:'衍生层(归档)',d:2,p:'archived_orders',c:'1:N',l:'衍生层',f:'只读台账',e:'看数',r:'N',df:'无',dp:'—',s:'派生',kk:'单键父',rw:'只读',am:'—',
+ why:'同上，只读。'},
+
+// ── 系统权限 ──────────────────────────────────────────────
+{g:'系统权限',t:'users',cn:'用户',agg:'档案集合体',d:0,p:'—',c:'—',l:'全局层',f:'信息行+行子表',e:'点用户名',r:'1',df:'无',dp:'无',s:'直接值',kk:'单键(user_code)',rw:'可变',am:'新建',
+ why:'系统管理的档案集合体，形态与普通档案同构。'},
+{g:'系统权限',t:'roles',cn:'角色',agg:'字典',d:0,p:'—',c:'—',l:'全局层',f:'信息行+权限勾选',e:'点角色名',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(code)',rw:'可变(is_system 只读)',am:'新建',
+ why:'字典型档案。is_system 内置角色不可改——「只读/可变」在字段级也有分支。'},
+{g:'系统权限',t:'user_roles',cn:'用户×角色',agg:'绑定表',d:1,p:'users×roles',c:'N:M',l:'挂载层',f:'勾选矩阵',e:'勾选',r:'N',df:'无',dp:'需先有用户+角色',s:'字典引用',kk:'双键(user+role)',rw:'可变',am:'勾选',
+ why:'标准绑定表。只改绑定不解绑本体。'},
+{g:'系统权限',t:'authorization_codes',cn:'授权码',agg:'系统表',d:0,p:'—',c:'—',l:'—',f:'台账列表',e:'看数',r:'N',df:'无',dp:'无',s:'系统生成',kk:'单键(code)',rw:'只读',am:'签发',
+ why:'系统签发，不可编辑只能签发/作废。'},
+{g:'系统权限',t:'access_requests',cn:'访问申请',agg:'单据集合体',d:0,p:'—',c:'—',l:'全局层(主表)',f:'台账+审批流',e:'点申请',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键',rw:'可变(审批后只读)',am:'—',
+ why:'审批流：审批后只读。与单据集合体同构（阶段推进后冻结）。'},
+{g:'系统权限',t:'audit_logs',cn:'审计日志',agg:'标注层',d:-1,p:'—',c:'—',l:'标注层',f:'只读流水',e:'看数',r:'N',df:'无',dp:'—',s:'系统生成',kk:'—',rw:'只读',am:'—',
+ why:'只_append_不可改。留痕是回滚的前提。'},
+{g:'系统权限',t:'system_config',cn:'系统配置',agg:'字典',d:0,p:'—',c:'—',l:'全局层',f:'键值编辑',e:'点值确认',r:'N',df:'无',dp:'无',s:'直接值',kk:'单键(key)',rw:'可变',am:'—',
+ why:'键值型配置。'},
+{g:'系统权限',t:'field_change_logs',cn:'字段变更日志',agg:'标注层',d:-1,p:'—',c:'—',l:'标注层',f:'只读流水',e:'看数',r:'N',df:'无',dp:'—',s:'系统生成',kk:'三键(表+记录+字段)',rw:'只读',am:'—',
+ why:'字段级留痕，支撑「演进不改历史」的追溯。'}
+];
+
+const LAYER_CLS = {'全局层':'t-global','挂载层':'t-mount','行级层':'t-row','快照层':'t-snap','标注层':'t-mark','衍生层':'t-derive'};
+const GROUPS = ['产品档案','供应商档案','客户档案','库房档案','单据集合体','系统权限'];
+
+let sortKey='group', sortDir=1, activeGroups=new Set(), openRow=null;
+
+const FKEYS = ['agg','layer','form','keys','def','rw'];
+
+function uniq(k){ return [...new Set(D.map(x=>x[k]).filter(Boolean))].sort(); }
+
+function initFilters(){
+  const chips=document.getElementById('f-group');
+  GROUPS.forEach(g=>{
+    const c=document.createElement('span');
+    c.className='chip on'; c.dataset.g=g; c.textContent=g;
+    c.onclick=()=>{ if(activeGroups.has(g)){activeGroups.delete(g);c.classList.remove('on');}
+      else{activeGroups.add(g);c.classList.add('on');} render(); };
+    chips.appendChild(c);
+  });
+  const map={agg:'agg',layer:'l',form:'f',keys:'kk',def:'df',rw:'rw'};
+  Object.keys(map).forEach(fid=>{
+    const sel=document.getElementById('f-'+fid);
+    uniq(map[fid]).forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o); });
+    sel.onchange=render;
+  });
+  document.getElementById('f-q').oninput=render;
+  document.getElementById('f-reset').onclick=()=>{
+    activeGroups=new Set(GROUPS);
+    document.querySelectorAll('.chip').forEach(c=>c.classList.add('on'));
+    FKEYS.forEach(fid=>document.getElementById('f-'+fid).value='');
+    document.getElementById('f-q').value='';
+    render();
+  };
+  GROUPS.forEach(g=>activeGroups.add(g));
+}
+
+function val(r,k){ return r[k]==null?'':String(r[k]); }
+function getV(r,col){ return {'group':'g','table':'t','cn':'cn','aggType':'agg','depth':'d','parent':'p','card':'c','layer':'l','form':'f','entry':'e','rows':'r','hasDefault':'df','dep':'dp','src':'s','keys':'kk','rw':'rw','addMode':'am'}[col]||col; }
+
+function filtered(){
+  const q=document.getElementById('f-q').value.trim().toLowerCase();
+  const sf={}; FKEYS.forEach(fid=>sf[fid]=document.getElementById('f-'+fid).value);
+  const map={agg:'agg',layer:'l',form:'f',keys:'kk',def:'df',rw:'rw'};
+  return D.filter(r=>{
+    if(!activeGroups.has(r.g)) return false;
+    for(const fid of FKEYS){ if(sf[fid] && r[map[fid]]!==sf[fid]) return false; }
+    if(q && !(r.t.toLowerCase().includes(q)||r.cn.includes(q)||r.why.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function renderHead(){
+  const tr=document.getElementById('thead');
+  tr.innerHTML='';
+  COLS.forEach(c=>{
+    const th=document.createElement('th');
+    th.textContent=c.t + (sortKey===c.k?(sortDir>1?' ▲':' ▼'):'');
+    if(c.k==='depth') th.className='num';
+    th.onclick=()=>{ if(sortKey===c.k) sortDir*=-1; else {sortKey=c.k;sortDir=1;} renderHead(); render(); };
+    tr.appendChild(th);
+  });
+}
+
+function cell(r,col){
+  const v=r[getV(r,col)];
+  if(col==='layer'){
+    const cls=LAYER_CLS[v]||'t-plain';
+    return '<span class="tag '+cls+'">'+esc(v)+'</span>';
+  }
+  if(col==='depth') return v==='-1'?'<span class="dim">字典/被引用</span>':'<span class="dim">'+v+'</span>';
+  if(col==='table') return '<code>'+esc(v)+'</code>';
+  if(col==='rw'&&v.indexOf('只读')===0) return '<span class="tag t-warn">'+esc(v)+'</span>';
+  if(col==='hasDefault'&&v.indexOf('有')===0) return '<span class="tag t-ok">'+esc(v)+'</span>';
+  if(col==='keys'&&/三键|四键|五键|多键/.test(v)) return '<span class="tag t-warn">'+esc(v)+'</span>';
+  if(col==='dep'&&v!=='无'&&v!=='—') return '<span class="tag t-row">'+esc(v)+'</span>';
+  if(!v||v==='—') return '<span class="dim">—</span>';
+  return esc(v);
+}
+function esc(s){ return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+function render(){
+  renderHead();
+  let rows=filtered();
+  rows.sort((a,b)=>{
+    let x=a[getV(a,sortKey)], y=b[getV(b,sortKey)];
+    if(sortKey==='depth'){ x=Number(x); y=Number(y); }
+    else { x=String(x); y=String(y); }
+    return x<y?-sortDir:(x>y?sortDir:0);
+  });
+  const tb=document.getElementById('tbody');
+  tb.innerHTML='';
+  rows.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.dataset.g=r.g; tr.dataset.t=r.t;
+    let h='';
+    COLS.forEach((c,i)=>{
+      const cls = i===0?'sticky':(i===1?'sticky2':'');
+      h+='<td class="'+cls+'">'+cell(r,c.k)+'</td>';
+    });
+    tr.innerHTML=h;
+    tr.onclick=()=>{
+      const nxt=tr.nextElementSibling;
+      if(nxt&&nxt.classList.contains('detail')){ nxt.remove(); return; }
+      document.querySelectorAll('tr.detail').forEach(x=>x.remove());
+      const d=document.createElement('tr');
+      d.className='detail';
+      const td=document.createElement('td');
+      td.colSpan=COLS.length;
+      td.innerHTML='<div class="dl"><b>'+esc(r.cn)+' · <code>'+esc(r.t)+'</code></b> — '+esc(r.why)+'</div>';
+      d.appendChild(td);
+      tr.after(d);
+    };
+    tb.appendChild(tr);
+  });
+  const cnt={}; rows.forEach(r=>cnt[r.g]=(cnt[r.g]||0)+1);
+  document.getElementById('stat').innerHTML='显示 <b>'+rows.length+'</b> / '+D.length+' 张表　·　'+
+    GROUPS.filter(g=>cnt[g]).map(g=>g+' <b>'+cnt[g]+'</b>').join('　');
+}
+
+// 交叉验证：把带括号细节的取值归一成类别，否则行数爆炸不可用
+function norm(k,v){
+  if(!v||v==='—') return '';
+  if(k==='kk'){ const m=/^(单键|双键|三键|四键|五键|多键)/.exec(v); return m?m[1]:v; }
+  if(k==='l'){ const m=/^(全局层|挂载层|行级层|快照层|标注层|衍生层)/.exec(v); return m?m[1]:v; }
+  if(k==='dp'){ return (v==='无')?'无依赖':'有依赖'; }
+  if(k==='rw'){ return /^只读/.test(v)?'只读':'可变'; }
+  if(k==='df'){ return /^有/.test(v)?'有默认':'无默认'; }
+  // 落地形态收敛到方法论定义的 7 大槽位类型——归不进去的就是「形态没收敛」的信号
+  if(k==='f'){
+    if(/信息行|键值/.test(v)) return '信息行';
+    if(/切换条/.test(v)) return '切换条';
+    if(/多记录矩阵/.test(v)) return '多记录矩阵';
+    if(/行内确认层格|行内格/.test(v)) return '行内确认层格';
+    if(/展开|批量|勾选矩阵/.test(v)) return '展开/弹层面板';
+    if(/字典|下拉|勾选/.test(v)) return '字典检索+快建';
+    if(/只读|台账|无界面/.test(v)) return '只读台账';
+    return v;
+  }
+  if(k==='agg'){ const m=/^(档案集合体|单据集合体|字典|绑定表|衍生宽表|快照层|标注层|系统表)/.exec(v); return m?m[1]:v; }
+  return v;
+}
+
+// 交叉验证
+function renderCross(){
+  const opts=['g','agg','l','f','kk','rw','df','dp','s','am','c'];
+  const label={g:'集合体',agg:'集合体类型',l:'层',f:'落地形态',kk:'维度数',rw:'只读/可变',df:'默认语义',dp:'依赖顺序',s:'来源类型',am:'空行交互',c:'关系基数'};
+  const selR=document.getElementById('x-row'), selC=document.getElementById('x-col'), selG=document.getElementById('x-group');
+  if(!selR.options.length){
+    opts.forEach(k=>{ [selR,selC].forEach(s=>{const o=document.createElement('option');o.value=k;o.textContent=label[k];s.appendChild(o);}); });
+    selR.value='l'; selC.value='f';
+    GROUPS.forEach(g=>{const o=document.createElement('option');o.value=g;o.textContent=g;selG.appendChild(o);});
+    [selR,selC,selG].forEach(s=>s.onchange=renderCross);
+  }
+  let data=D;
+  if(selG.value) data=D.filter(r=>r.g===selG.value);
+  const rk=selR.value, ck=selC.value;
+  const rvs=[...new Set(data.map(r=>norm(rk,r[rk])))].filter(Boolean).sort();
+  const cvs=[...new Set(data.map(r=>norm(ck,r[ck])))].filter(Boolean).sort();
+  const map={};
+  data.forEach(r=>{ const a=norm(rk,r[rk]),b=norm(ck,r[ck]); if(!a||!b)return; const kk=a+'||'+b; map[kk]=(map[kk]||0)+1; });
+  let h='<table class="xtable"><thead><tr><th>'+label[rk]+' \\ '+label[ck]+'</th>';
+  cvs.forEach(c=>h+='<th>'+esc(c)+'</th>');
+  h+='<th>合计</th></tr></thead><tbody>';
+  rvs.forEach(a=>{
+    let tot=0; cvs.forEach(c=>tot+=(map[a+'||'+c]||0));
+    h+='<tr><th>'+esc(a)+'</th>';
+    cvs.forEach(c=>{ const n=map[a+'||'+c]||0; h+= n? '<td class="hit">'+n+'</td>' : '<td class="n">·</td>'; });
+    h+='<th>'+tot+'</th></tr>';
+  });
+  h+='</tbody></table>';
+  h+='<p style="margin-top:10px;color:var(--tx-3);font-size:12px;">读法：一行里只有一格有数 = 该维度值稳定对应一种形态（好，可直接钉成槽）；一行散在多格 = 形态未收敛，需要再找一个维度来解释差异；<b>整列为空</b> = 这个形态在当前维度下还没被用到。</p>';
+  document.getElementById('xtable').innerHTML=h;
+}
+
+// 维度定义
+const LEGEND=[
+ ['身份','集合体','这张表属于哪个业务聚合。方法论：一组表围着一个实体转 = 一个集合体 = 一个管理功能。'],
+ ['身份','集合体类型','由关系图形态推出，不靠人起名：档案集合体 / 单据集合体 / 字典 / 绑定表 / 衍生宽表。'],
+ ['关系图','层级深度','从根实体数第几跳。决定矩阵行序——深的排后面。字典/被引用方记为 -1。'],
+ ['关系图','父实体','挂谁下面。方法论：树上挂谁下，界面就嵌谁下。'],
+ ['关系图','关系基数','1:1 / 1:N / N:M。N:M 通常意味着绑定表。'],
+ ['关系图','层','全局 / 挂载 / 行级 / 快照 / 标注 / 衍生。每层一条可变性与同步规则，硬到能否决一种实现。'],
+ ['形态','落地形态','关系图位置 + 表类型 → 大类形态。这是槽位的「类型」：信息行 / 切换条 / 多记录矩阵 / 行内确认层格 / 展开面板 / 字典检索+快建 / 只读台账。'],
+ ['形态','触发入口','用户点哪里进编辑。全站共性：点集合体根实体的名称。'],
+ ['特征分支','记录基数','1 条 vs N 条 → 单值格 vs 多记录矩阵。同一组件，不是两个组件。'],
+ ['特征分支','默认语义','要不要「默认」且互斥（基准单位 / 主图 / 默认地址）。有才开默认列开关。'],
+ ['特征分支','依赖顺序','有没有前置键（先选品牌才能选规格）。门禁用提示不用静默，视觉不变。'],
+ ['特征分支','来源类型','字典引用 vs 直接值 → 带检索快建 vs 纯输入。这是<b>格级</b>参数，同一矩阵里可混用。'],
+ ['特征分支','维度数','一条数是几个键的组合。单/双键放行内，三键及以上收进展开面板。'],
+ ['特征分支','只读/可变','看数与定档冻结，跟可编辑区分。字段级也有分支（如 roles.is_system）。'],
+ ['特征分支','空行交互','按钮新增 vs 直接输入追加。按「新增要不要确认成本」选。']
+];
+function renderLegend(){
+  document.getElementById('legend').innerHTML = LEGEND.map(([g,k,d])=>
+    '<div class="lg"><span class="tag t-plain">'+g+'</span> <b>'+k+'</b><br />'+d+'</div>').join('');
+}
+
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    document.getElementById('p-'+t.dataset.p).classList.add('on');
+    if(t.dataset.p==='cross') renderCross();
+    if(t.dataset.p==='legend') renderLegend();
+  };
+});
+
+initFilters(); render();
+</script>
+</body>
+</html>

@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { portOf } from './ports.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_HTML = path.join(ROOT, '项目掌控台.html');
@@ -260,15 +261,15 @@ function collectGit() {
 
 /* --------------------------- 三套地址（智能入口） ------------------------- */
 // 公网只映射 8080（cpolar）；局域网/本机对所有端口有效
+// 端口号来自 tools/ports.mjs（唯一真相源），不在这里写死。
+// 外围工具（文档站/掌控台/配置台）都收在工具台 8124 下，按路径分流；
+// 公网只映射 8080，故 hub 的 publicOk 全为 false（开发期靠同热点访问）。
 const SERVICES = [
-  { port: 8080, path: '/', name: '员工端（日常干活的地方）', hint: '点开登录就能用', publicOk: true },
-  { port: 8081, path: '/', name: '员工端（开发热更新）', hint: '改代码后看实时效果', publicOk: false },
-  { port: 8123, path: '/', name: '方法论文档站', hint: 'AI 行为规则的源头', publicOk: false },
-];
-const EXTRA_PORTS = [
-  { port: 3000, name: '后端接口' },
-  { port: 8124, name: '掌控台自己的服务端口' },
-  { port: 8898, name: '登记表配置台（高级）' },
+  { port: portOf('staff'),    path: '/',      name: '员工端（日常干活的地方）', hint: '点开登录就能用', publicOk: true },
+  { port: portOf('staffDev'), path: '/',      name: '员工端（开发热更新）',     hint: '改代码后看实时效果', publicOk: false },
+  { port: portOf('hub'),      path: '/board', name: '掌控台',                   hint: '进度+智能入口+待拍板', publicOk: false },
+  { port: portOf('hub'),      path: '/doc/',  name: '方法论文档站',            hint: 'AI 行为规则的源头', publicOk: false },
+  { port: portOf('hub'),      path: '/meta/', name: '登记表配置台（高级）',     hint: '给 AI 用的登记表向导', publicOk: false },
 ];
 
 function collectAccess() {
@@ -325,6 +326,11 @@ const devPending = tally.doing + tally.warn + tally.todo + pending.length;
 const total = tally.done + devPending || 1;
 const rate = Math.round((tally.done / total) * 100);
 const updated = new Date().toLocaleString('zh-CN', { hour12: false });
+
+// 验收门禁结果：由 tools/verify.mjs 产出。掌控台**只消费、不重新判定** ——
+// 判定逻辑必须唯一，否则两处各判一套会打架（这正是本项目"假绿"的老毛病）。
+const gateFile = path.join(ROOT, 'verify-report.json');
+const gate = fs.existsSync(gateFile) ? JSON.parse(fs.readFileSync(gateFile, 'utf8')) : null;
 
 // —— 三区开发驱动台：从台账上浮「能驱动开发」的信号 ——
 // 区2 待你拍板：卡住开发的决策（不决就动不了那条线）；已完成(✅)行里的历史「矛盾」字样不算
@@ -461,6 +467,40 @@ const planHtml = planTasks.length
   </section>`
   : '';
 
+// 验收门禁区：没跑过 = 没验证过，必须显式说出来，不能静默略过
+const gateHtml = gate
+  ? `<section class="zone gate">
+    <h2>验收门禁：${gate.ok ? '✅ 可以交付' : '❌ 不许交付'}</h2>
+    <p class="why">由 <code>npm run verify</code> 产出。<b>全绿才许标记「已交付」</b>，有红项先修到绿。判定只看命令退出码 —— 不看 AI 自评（AI 说“做完了”不算数）。</p>
+    <div class="box">
+      <div class="gate-sum">共 ${gate.stages.length} 道门 · 通过 ${gate.summary?.passed ?? gate.stages.filter((s) => s.status === 'PASS').length} · 失败 ${gate.summary?.failed ?? gate.stages.filter((s) => s.status !== 'PASS').length} · 耗时 ${(gate.durationMs / 1000).toFixed(1)}s · 更新于 ${esc(gate.generatedAt)}</div>
+      <table class="gt"><tbody>
+        ${gate.stages
+          .map(
+            (s) =>
+              `<tr><td class="gi">${s.status === 'PASS' ? '✅' : '❌'}</td><td class="gk">${esc(s.id)}</td><td class="gn">${esc(s.name)}</td><td class="gw">${esc(s.why || '')}</td></tr>`,
+          )
+          .join('')}
+      </tbody></table>
+    </div>
+  </section>`
+  : `<section class="zone gate">
+    <h2>验收门禁：⚠ 还没跑过</h2>
+    <p class="why"><b>没跑过 = 没验证过。</b>对 AI 说「跑验收」，或执行 <code>npm run verify</code>。</p>
+  </section>`;
+
+// 架构蓝图区：把"东西该放哪"摊到台面上，否则蓝图只是一篇没人读的 md
+const archHtml = `<section class="zone arch">
+  <h2>架构蓝图（动手前先看：这东西该放哪）</h2>
+  <p class="why">完整版见 <code>架构蓝图.md</code>。下面是最容易踩的四条，其中可机器判定的部分已在门禁 <code>S0b</code> 自动检查。</p>
+  <div class="box"><ul class="plist">
+    <li><div class="txt"><div class="name">L1/L2 真相源唯一</div><div class="note">路由只改 <code>menu.config.ts</code>（跑 <code>gen-routes</code>）；实体只改 <code>data-source/entity-meta.yml</code>（跑 <code>gen-entity-meta</code>）。<b>generated.* 禁止手改</b>。</div></div></li>
+    <li><div class="txt"><div class="name">L3 平台层只此一份</div><div class="note">通用件只在 <code>shared/</code> 实现一份。业务页不得复制平台代码改副本，也不得为单页写 if 绕过。<b>依赖只能 apps → shared，反向即违规</b>。</div></div></li>
+    <li><div class="txt"><div class="name">L4 业务胶水层</div><div class="note">只放平台配置表达不了的专属业务计算（报价点位、退货分摊等）。<b>禁止在这里重写表格 / 弹窗 / 单元格分发</b>。</div></div></li>
+    <li><div class="txt"><div class="name">三次原则（何时才抽象）</div><div class="note">第 1 次写业务层；第 2 次允许复制但<b>必须登记进 docs-coverage.md</b>；第 3 次必须抽到平台层并补单测。安全 / 权限 / 金额第 2 次即须统一。</div></div></li>
+  </ul></div>
+</section>`;
+
 const html = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -488,6 +528,11 @@ const html = `<!doctype html>
   .stat.a .num{color:var(--ok)}.stat.b .num{color:var(--warn)}.stat.d .num{color:var(--bad)}
   .next{background:#eef4ff;border:1px solid #c9dafc;border-radius:12px;padding:14px;font-size:15px;margin-top:10px}
   .zone{margin-top:18px}
+  .gate-sum{font-size:13px;color:var(--sub);margin-bottom:8px}
+  .gt{width:100%;border-collapse:collapse;font-size:13px}
+  .gt td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  .gi{width:22px}.gk{width:46px;font-weight:700;white-space:nowrap}
+  .gn{width:112px;font-weight:600;white-space:nowrap}.gw{color:var(--sub)}
   .nextcmd{background:#eef4ff;border:1px solid #c9dafc;border-radius:12px;padding:14px;margin-top:8px}
   .pipe{display:flex;flex-direction:column;gap:10px;margin-top:8px}
   .nc-step{font-size:12px;font-weight:700;color:#0d7a3c;margin-bottom:2px}
@@ -551,6 +596,10 @@ const html = `<!doctype html>
       ? ''
       : `<div class="tip" style="margin-top:8px"><strong>出门在外也想用？</strong>公网入口还没建。对 AI 说「建公网」，建好后这里会出现公网按钮，手机在任何网络都能打开日常页面。</div>`
   }
+
+  ${gateHtml}
+
+  ${archHtml}
 
   <section class="zone next">
     <h2>下一步该干什么（按优先级排的开发管道）</h2>
@@ -690,6 +739,21 @@ ${headline}完成度 ${rate}%（${tally.done}/${total}）。
 ## 现在能不能用（三套地址，按设备选用）
 
 ${addrRows}
+
+## 验收门禁：${gate ? (gate.ok ? '✅ 可以交付' : '❌ 不许交付') : '⚠ 还没跑过'}
+
+${gate ? `由 \`npm run verify\` 产出（更新于 ${plain(gate.generatedAt)}；共 ${gate.stages.length} 道门 · 通过 ${gate.summary?.passed ?? 0} · 失败 ${gate.summary?.failed ?? 0}）。**全绿才许标记「已交付」**，有红项先修到绿。判定只看命令退出码，不看 AI 自评。
+
+${gate.stages.map((s) => `- ${s.status === 'PASS' ? '✅' : '❌'} **${plain(s.id)} ${plain(s.name)}** — ${plain(s.why || '')}`).join('\n')}` : '**没跑过 = 没验证过。** 先执行 `npm run verify`。'}
+
+## 架构蓝图（动手前先看：这东西该放哪）
+
+完整版见 \`架构蓝图.md\`。四条最容易踩的红线（可机器判定的部分由门禁 S0b 自动检查）：
+
+1. **L1/L2 真相源唯一**：路由只改 \`menu.config.ts\`（跑 \`gen-routes\`）；实体只改 \`data-source/entity-meta.yml\`（跑 \`gen-entity-meta\`）。**generated.* 禁止手改**。
+2. **L3 平台层只此一份**：通用件只在 \`shared/\` 实现一份；业务页不得复制平台代码改副本，也不得为单页写 if 绕过。**依赖只能 apps → shared，反向即违规**。
+3. **L4 业务胶水层**：只放平台配置表达不了的专属业务计算；**禁止在此重写表格 / 弹窗 / 单元格分发**。
+4. **三次原则**：第 1 次写业务层；第 2 次允许复制但**必须登记进 docs-coverage.md**；第 3 次必须抽到平台层并补单测。安全 / 权限 / 金额第 2 次即须统一。
 
 ## 下一步该干什么（按优先级排的开发管道，对 AI 说任意一句直接开干）
 

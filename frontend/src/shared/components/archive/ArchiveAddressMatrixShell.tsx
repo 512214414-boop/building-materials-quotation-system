@@ -18,7 +18,6 @@ import type { ReactNode } from 'react';
 import MatrixTable, { type MatrixRowConfig } from '../MatrixTable.js';
 import RecordExpandPanel from '../RecordExpandPanel.js';
 import useMatrixRecords from '../../hooks/useMatrixRecords.js';
-import { ArchiveEmptyFieldCell } from '../product-picker/PickerInlineCells.js';
 
 /** 数据行操作 API，由外壳接好线后交给 cfg 使用 */
 export interface AddressMatrixApi<T> {
@@ -120,5 +119,3 @@ export default function ArchiveAddressMatrixShell<T extends { isDefault?: boolea
     </div>
   );
 }
-
-export { ArchiveEmptyFieldCell };

@@ -10,7 +10,7 @@ import { App as AntdApp } from 'antd';
 import DsSelect from './DsSelect.js';
 import DsShellRow from './DsShellRow.js';
 import CustomerPicker, { type CustomerPickerValue } from './CustomerPicker.js';
-import { WorkbenchFieldCell } from './workbench/WorkbenchFieldCell.js';
+import { FieldCell } from './cells/FieldCell.js';
 import { useDocumentStore } from '../stores/document.js';
 import { updateDocument, updateDocumentBusiness } from '../services/api/documentApi.js';
 import { STAGE_STATUS_LABELS, type StageStatus } from '../types/index.js';
@@ -208,7 +208,7 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>日期:</span>
         <span style={{ ...pointSlotStyle, minWidth: 100 }}>
-          <WorkbenchFieldCell
+          <FieldCell scene="workbench"
             embed="inline"
             text={dateStr}
             placeholder="—"
@@ -224,7 +224,7 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>单据标题:</span>
         <span style={{ ...pointSlotStyle, minWidth: 120 }}>
-          <WorkbenchFieldCell
+          <FieldCell scene="workbench"
             embed="inline"
             text={titleStr}
             placeholder="—"
@@ -240,7 +240,7 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>客户信息:</span>
         <span style={{ ...pointSlotStyle, minWidth: 160, maxWidth: 260 }}>
-          <WorkbenchFieldCell
+          <FieldCell scene="workbench"
             embed="inline"
             text={customerSummary}
             placeholder="姓名 / 电话 / 尾号"
@@ -275,7 +275,7 @@ export default function DocumentContextBar({ documentId }: { documentId?: string
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
         <span style={{ ...WORKBENCH_TEXT, color: 'var(--text-secondary)' }}>收货地址:</span>
         <span style={{ ...pointSlotStyle, minWidth: 160, maxWidth: 280 }}>
-          <WorkbenchFieldCell
+          <FieldCell scene="workbench"
             embed="inline"
             text={addressStr}
             placeholder="本次收货地址"

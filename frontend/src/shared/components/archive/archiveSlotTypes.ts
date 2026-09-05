@@ -215,6 +215,29 @@ export interface ArchiveCustomSlot<T> {
   dialogRender?: (ctx: ArchiveDialogCtx<T>) => ReactNode;
 }
 
+/**
+ * 复合/嵌套槽：列表行内可展开的子表（如产品的 品牌×规格×单位×售价/进价 SKU 矩阵）。
+ *
+ * 为什么是 product 专用例外、不建通用分组引擎：product 是第一个也是唯一一个需要在列表里
+ * 展开看下挂多记录的业务；其余档案实体一行=一个实体，无此需求。该槽登记为 product 专用，
+ * 出现第二类复合体时再升级为通用（三次原则 / 第二次出现必须登记）。
+ *
+ * 列表列：宿主给该槽渲染一列「N 个 SKU」计数，整行可展开（UnifiedTable.expandedRowRender）。
+ * 弹窗：composite 只进列表，不进编辑弹窗（品牌→规格→单位走 cascade 槽、价格走 matrix 槽）。
+ */
+export interface ArchiveCompositeSlot<T> {
+  kind: 'composite';
+  key: string;
+  label: string;
+  list?: boolean;
+  minWidth?: number;
+  align?: 'left' | 'center';
+  /** 给定实体行，返回子表明细行（如 SkuSearchRow[]）；空数组则该行不可展开 */
+  getSubRows: (row: T) => unknown[];
+  /** 子表渲染（持有自己的行级态，如 useSkuPriceState + createSkuPriceColumns） */
+  renderSubTable: (row: T, ctx: ArchiveColumnCtx<T>) => ReactNode;
+}
+
 export type ArchiveSlot<T> =
   | ArchiveNameSlot<T>
   | ArchiveScalarSlot<T>
@@ -223,7 +246,8 @@ export type ArchiveSlot<T> =
   | ArchiveToggleSlot<T>
   | ArchiveReadonlySlot<T>
   | ArchiveCascadeSlot<T>
-  | ArchiveCustomSlot<T>;
+  | ArchiveCustomSlot<T>
+  | ArchiveCompositeSlot<T>;
 
 export interface ArchiveEntityDef<T extends { id: string }> {
   permission: ViewCode;

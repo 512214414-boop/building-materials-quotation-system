@@ -9,26 +9,25 @@
 //   display=enum-tag         → StatusTagCell
 //   display=date             → DateTimeCell
 //   editEntry=link           → NameLinkCell（点开编辑弹窗）
-//   editEntry=confirm & dict → PickerNameCell（含「改全局」onApplyGlobal）
-//   editEntry=confirm & none → ArchiveFieldCell（备注等纯值确认层）
+//   editEntry=confirm & dict → FieldCell（含「改全局」onApplyGlobal）
+//   editEntry=confirm & none → FieldCell（备注等纯值确认层）
 //   editEntry=expand         → ExpandCell（▾ 展开矩阵，面板由表格层持有）
 //   editEntry=none/text      → DisplayCell（只读文本/数字）
 
 import type { ReactNode } from 'react';
 import type { GeneratedCellSpec } from '../../config/entityRelations.generated.js';
-import { PickerNameCell } from '../product-picker/PickerInlineCells.js';
 import {
   ImageThumbCell,
   StatusTagCell,
   DateTimeCell,
   NameLinkCell,
 } from '../cells/index.js';
-import { ArchiveFieldCell, DisplayCell } from '../product-picker/PickerInlineCells.js';
+import { DisplayCell } from '../product-picker/PickerInlineCells.js';
 // 统一确认层单元格：原生支持 picker / 字典(input) / 数字输入 / bullets / cellSwitch /
 // 门禁 / 非标标记 全套——是「确认层统一」的落点。PickerNameCell / ArchiveFieldCell 是旧路径，
 // 仅服务实体字典与纯值（14 个只读页），不碰 picker / 动态检索 / 数字输入，故并存。
-import { WorkbenchFieldCell } from '../workbench/WorkbenchFieldCell.js';
-import type { WorkbenchGatePickerRender } from '../workbench/WorkbenchFieldCell.js';
+import { FieldCell } from '../cells/FieldCell.js';
+import type { WorkbenchGatePickerRender } from '../cells/FieldCell.js';
 import type { DictRecordConfig } from '../DictRefField.js';
 import type { DictChangeKind, SuggestField } from '../../services/api/baseDataApi.js';
 
@@ -72,7 +71,7 @@ export interface CellHandlers<T = any> {
   fontSize?: (record: T) => string | undefined;
   /** 表头级联筛等自定义表头节点（覆盖配置里的纯文本 title） */
   titleNode?: ReactNode;
-  /** 统一门禁（WorkbenchFieldCell）占位符，如 '0' / '0.00' / '备注' */
+  /** 统一门禁（FieldCell）占位符，如 '0' / '0.00' / '备注' */
   placeholder?: string;
   /** 门禁原因（函数，按行判定未满足的前置条件；视觉保持 hover，点击给提示） */
   gateReason?: (record: T) => string | undefined;
@@ -92,6 +91,8 @@ export interface CellHandlers<T = any> {
   suggestField?: (record: T) => SuggestField | undefined;
   /** 统一门禁输入框类型（数字列传 'number'） */
   unifiedInput?: (record: T) => 'text' | 'number' | undefined;
+  /** 行级硬禁用（真实锁定态，如已核定/视图锁定；与门禁提示不同，允许置灰） */
+  disabled?: (record: T) => boolean;
 }
 
 /**
@@ -147,7 +148,7 @@ export function renderCell<T = any>(
   }
 
   if (spec.editEntry === 'confirm') {
-    // 统一门禁：声明任一能力即走 WorkbenchFieldCell（与 CellSpec 同组件、同 props，行为保真）。
+    // 统一门禁：声明任一能力即走 FieldCell（与 CellSpec 同组件、同 props，行为保真）。
     // 14 个只读页不传这些 handler 字段 → 走下方旧路径（PickerNameCell / ArchiveFieldCell），零回归。
     const picker = handlers.pickerRender?.(record);
     const dictConfig = handlers.dictConfig?.(record);
@@ -156,7 +157,7 @@ export function renderCell<T = any>(
     const input = handlers.unifiedInput?.(record);
     if (picker || dictConfig || dictField || suggestField || input) {
       return (
-        <WorkbenchFieldCell
+        <FieldCell scene="workbench"
           text={value}
           placeholder={handlers.placeholder ?? '—'}
           gateReason={handlers.gateReason?.(record) ?? gate?.disabledReason}
@@ -166,6 +167,7 @@ export function renderCell<T = any>(
           embed="table"
           input={input ?? (spec.display === 'number' ? 'number' : 'text')}
           allowEmpty={gate?.allowEmpty}
+          disabled={handlers.disabled?.(record)}
           title={handlers.title ?? spec.title}
           bullets={handlers.bullets?.(record)}
           pickerRender={picker}
@@ -184,14 +186,14 @@ export function renderCell<T = any>(
     if (gate?.searchKind === 'dict') {
       const fromId = handlers.fromId?.(record);
       return (
-        <PickerNameCell
+        <FieldCell
           value={value}
           placeholder="—"
           kind={gate.dictField as any}
           scope={handlers.scope?.(record) ?? ''}
           fromId={fromId as any}
           embed="table"
-          allowRoot
+          disabled={handlers.disabled?.(record)}
           onApply={(next: string) => handlers.onApply(record, next)}
           onApplyGlobal={
             handlers.onApplyGlobal ? (next: string) => handlers.onApplyGlobal!(record, next) : undefined
@@ -201,7 +203,7 @@ export function renderCell<T = any>(
     }
     // 无字典的纯值确认层（备注等）
     return (
-      <ArchiveFieldCell
+      <FieldCell
         value={value}
         placeholder="—"
         title={handlers.title ?? spec.title}
@@ -245,7 +247,7 @@ export function cellSpecToColumnWithEditor<T = any>(
     className?: string;
     fitContent?: boolean;
     wrap?: boolean;
-    /** 邻格快切（需外层包 CellSwitchProvider）；统一门禁透传给 WorkbenchFieldCell */
+    /** 邻格快切（需外层包 CellSwitchProvider）；统一门禁透传给 FieldCell */
     cellSwitch?: { rowIdOf: (record: T) => string };
   } = {},
 ): import('./cell-editors/CellEditor.types.js').UnifiedTableColumn<T> {
@@ -263,6 +265,15 @@ export function cellSpecToColumnWithEditor<T = any>(
     getFitText: (record: T) => handlers.fitText?.(record) ?? handlers.value(record),
     render: (_v: any, record: T) => renderCell(spec, handlers, record, layout),
   } as import('./cell-editors/CellEditor.types.js').UnifiedTableColumn<T>;
+}
+
+// 声明式可编辑列构造助手（A 类列统一出口，与采购报价/CostVerify/workbench 视图同套）
+export function editableColumn<T>(
+  spec: GeneratedCellSpec,
+  handlers: CellHandlers<T>,
+  layout: { minWidth?: number; align?: 'left' | 'center' | 'right' },
+): import('./cell-editors/CellEditor.types.js').UnifiedTableColumn<T> {
+  return cellSpecToColumnWithEditor<T>(spec, handlers, layout);
 }
 
 /** 批量：保持生成配置的顺序（顺序即列顺序） */

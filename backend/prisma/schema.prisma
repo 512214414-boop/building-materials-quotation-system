@@ -360,6 +360,8 @@ model category {
 
   /// v8.0：产品归属分类（扁平，无父子层级）
   products product[]
+  /// v23：产品×分类关系表反向
+  productCategories product_category[]
   supplierBusinessCategories supplier_business_category[]
 
   /// v15.4：name 全局唯一
@@ -396,11 +398,64 @@ model product {
   specs         spec[]
   /// v22.0：产品×品牌关联
   productBrands product_brand[]
+  /// v23：产品名升全局字典（product_name.name 全局唯一）；P4 移除 name 字段、productNameId 改非空唯一
+  productNameId BigInt?
+  productName   product_name? @relation(fields: [productNameId], references: [id])
+  /// v23：产品 × 分类 多对多关系表（替代单 categoryId）
+  productCategories product_category[]
+  @@index([productNameId])
 
   /// v14.0：同一分类下产品名不重复，防止重复建档
   @@unique([categoryId, name])
   @@index([categoryId])
   @@map("product")
+}
+
+/// v23：产品名全局字典（参照 brand/unit 范式：name 全局唯一、改名全局生效）
+/// 产品名从 product.name 抽出，product.productNameId 引用；改名只改本表 name，全站跟随
+model product_name {
+  id        BigInt   @id @default(autoincrement())
+  /// 产品名称（全局唯一，如「PPR热水管」）
+  name      String   @db.VarChar(200)
+  /// 排序
+  sortOrder Int      @default(0)
+  /// 状态 1启用 0停用
+  status    Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// v23：反向引用（产品 → 产品名，1:1）
+  products product[]
+
+  /// 产品名全局唯一
+  @@unique([name])
+  @@index([status])
+  @@map("product_name")
+}
+
+/// v23：产品 × 分类 关系表（替代 product.categoryId 单分类）
+/// 一产品可挂多分类，isPrimary 标记主分类；categoryName 快照由主分类反查
+model product_category {
+  id         BigInt   @id @default(autoincrement())
+  productId  BigInt
+  categoryId Int
+  /// 是否主分类（列表/检索默认展示主分类）
+  isPrimary  Boolean  @default(false)
+  /// 排序
+  sortOrder  Int      @default(0)
+  /// 状态 1启用 0停用
+  status     Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  product  product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  /// 同一产品 + 同一分类 只一条关系
+  @@unique([productId, categoryId])
+  @@index([productId])
+  @@index([categoryId])
+  @@map("product_category")
 }
 
 /// 3. 规格系列表（v22.0）：产品 → 品牌 → 规格；每条记录已含品牌维度

@@ -74,6 +74,18 @@ DOC_VIZ.whyBiz["cell-gate-path"] = {
     [
       "行内操作常驻不悬停",
       "列表行内的改/删按钮常驻渲染，不靠 hover 出现——移动端没有 hover，hover 态格局不稳。"
+    ],
+    [
+      "一个层级一个组件，差异是参数不是组件",
+      "单元格层（一个格子怎么显示、点下去怎么改）全站只有唯一出口 FieldCell；调用方只声明字段名 field，差异降为参数（display / editEntry / variant / scene），禁止再立第二个 XxxCell——层内多元会各自演化、再次漂移（本项目已吃过这个亏）。"
+    ],
+    [
+      "字段定义决定确认层行为",
+      "字段在 fieldDefs（entity-meta.yml）登记 identity（byId=标准·有 ID / byText=非标·自由文本）；byId + globalDict / subject → 完整字典档 + 行内改/删 + 改全局；byText → 纯值确认层。能力由字段定义推导，调用方零分支。"
+    ],
+    [
+      "入口不得二选一，同一事实只声明一次",
+      "「品牌属于哪个字典」只在一个地方声明（fieldDefs），代码不得再手写 dictConfig= / dictField= / kind= 第二套路径；重复声明必然漂。"
     ]
   ]
 };

@@ -5,10 +5,7 @@ import useMatrixRecords from '../../hooks/useMatrixRecords.js';
 import { normalizeDefaultRecords } from '../../utils/defaultRecord.js';
 import { contactMethodDict } from '../../config/contactMethodDict.js';
 import { isContactLoginValue, CONTACT_LOGIN_VALUE_HINT } from '../../utils/contactLoginValue.js';
-import {
-  ArchiveEmptyFieldCell,
-  ArchiveFieldCell,
-} from '../product-picker/PickerInlineCells.js';
+import { FieldCell } from '../cells/FieldCell.js';
 
 export interface ArchiveContactRecord {
   name: string;
@@ -93,7 +90,7 @@ function buildContactRows(
   return contacts.map((c, idx) => ({
     rowKey: `contact_${idx}`,
     nameCell: (
-      <ArchiveFieldCell
+      <FieldCell
         value={c.name}
         placeholder={isContactDataRow(c) ? copy.namePh : copy.nameEmptyPh}
         disabled={!canWrite}
@@ -102,7 +99,7 @@ function buildContactRows(
       />
     ),
     midCells: [
-      <ArchiveFieldCell
+      <FieldCell
         key="method"
         value={c.method}
         placeholder="方式"
@@ -116,7 +113,7 @@ function buildContactRows(
     price: '',
     onPriceChange: () => undefined,
     priceRender: (
-      <ArchiveFieldCell
+      <FieldCell
         value={c.value}
         placeholder={isContactDataRow(c) ? copy.valuePh : copy.valueEmptyPh}
         disabled={!canWrite}
@@ -188,14 +185,14 @@ export default function ArchiveContactMatrixEditor({
           onRowSelect={onRowSelect}
           rowSelectDisabled={(rk) => !rk.startsWith('contact_')}
           addNameCell={
-            <ArchiveEmptyFieldCell
+            <FieldCell
               placeholder={copy.nameEmptyPh}
               title={copy.addNameTitle}
               onApply={(v) => matrix.updateLastBlank({ name: v })}
             />
           }
           addMidCells={[
-            <ArchiveEmptyFieldCell
+            <FieldCell
               key="method"
               placeholder="方式"
               title={copy.addMethodTitle}
@@ -205,7 +202,7 @@ export default function ArchiveContactMatrixEditor({
             />,
           ]}
           addPriceCell={
-            <ArchiveEmptyFieldCell
+            <FieldCell
               placeholder={copy.valueEmptyPh}
               title={copy.addValueTitle}
               onApply={(v) => {

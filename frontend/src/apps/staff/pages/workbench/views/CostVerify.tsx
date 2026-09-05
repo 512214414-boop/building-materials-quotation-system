@@ -24,7 +24,8 @@ import { Spin, Menu, type MenuProps } from 'antd';
 import { LockOutlined, UndoOutlined, UnlockOutlined } from '@ant-design/icons';
 import { DsButton, DsTag } from '../../../../../shared/components/index.js';
 import UnifiedTable, { type UnifiedTableColumn } from '../../../../../shared/components/UnifiedTable.js';
-import { WorkbenchFieldCell } from '../../../../../shared/components/workbench/WorkbenchFieldCell.js';
+import { editableColumn } from '../../../../../shared/components/table/editorRegistry.js';
+import { tagColumn } from '../../../../../shared/components/table/compositeColumns.js';
 import ViewFrame from '../../../../../shared/components/ViewFrame.js';
 import { BizField } from '../../../../../shared/components/StageBizStrip.js';
 import { HeaderCascadeFilter } from '../../../../../shared/components/archive/HeaderCascadeFilter.js';
@@ -824,7 +825,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
         className: 'ds-cascade-col',
         align: 'left',
         renderMode: 'static',
-        render: (_v, r: CostRow) => {
+        render: (_v: unknown, r: CostRow) => {
           if (r.hideBrandName) return <span />;
           return r.brandName ? (
             <span style={{ color: 'var(--text-default)' }}>{r.brandName}</span>
@@ -926,27 +927,20 @@ export default function CostVerify({ documentId }: { documentId: string }) {
         ),
       },
       // 11. 实际成本
-      {
-        key: 'actualCost',
-        title: '实际成本',
-        dataIndex: 'actualCost',
-        minWidth: 110,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_v: number, record: CostRow) => (
-          <WorkbenchFieldCell
-            text={record.actualCost == null ? '' : String(record.actualCost)}
-            placeholder="0.00"
-            align="center"
-            mono
-            input="number"
-            disabled={isRowDisabled(record)}
-            title="实际成本"
-            onApply={(next) => void persistCostField(record, { actualCost: parseFloat(next) || 0 })}
-          />
-        ),
-      },
+      editableColumn(
+        { key: 'actualCost', title: '实际成本', display: 'number', editEntry: 'confirm', valueState: undefined, gate: { input: 'number' }, hidden: undefined },
+        {
+          value: (r) => (r.actualCost == null ? '' : String(r.actualCost)),
+          placeholder: '0.00',
+          mono: () => true,
+          unifiedInput: () => 'number',
+          disabled: isRowDisabled,
+          title: '实际成本',
+          onApply: (r, next) => void persistCostField(r, { actualCost: parseFloat(next) || 0 }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: 110, align: 'center' },
+      ),
       // 12. 调整额
       {
         key: 'costAdjust',
@@ -969,28 +963,21 @@ export default function CostVerify({ documentId }: { documentId: string }) {
           );
         },
       },
-      // 13. 运费分摊（number 模式 + isDisabled）
-      {
-        key: 'freight',
-        title: '运费分摊',
-        dataIndex: 'freight',
-        minWidth: 100,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_v: number, record: CostRow) => (
-          <WorkbenchFieldCell
-            text={record.freight == null ? '' : String(record.freight)}
-            placeholder="0.00"
-            align="center"
-            mono
-            input="number"
-            disabled={isRowDisabled(record)}
-            title="运费分摊"
-            onApply={(next) => void persistCostField(record, { freight: parseFloat(next) || 0 })}
-          />
-        ),
-      },
+      // 13. 运费分摊（number 模式 + 行级禁用）
+      editableColumn(
+        { key: 'freight', title: '运费分摊', display: 'number', editEntry: 'confirm', valueState: undefined, gate: { input: 'number' }, hidden: undefined },
+        {
+          value: (r) => (r.freight == null ? '' : String(r.freight)),
+          placeholder: '0.00',
+          mono: () => true,
+          unifiedInput: () => 'number',
+          disabled: isRowDisabled,
+          title: '运费分摊',
+          onApply: (r, next) => void persistCostField(r, { freight: parseFloat(next) || 0 }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: 100, align: 'center' },
+      ),
       // 14. 成本小计
       {
         key: 'costAmount',
@@ -999,7 +986,7 @@ export default function CostVerify({ documentId }: { documentId: string }) {
         minWidth: 110,
         align: 'center',
         renderMode: 'static',
-        render: (v: number, r) => (
+        render: (v: number, r: CostRow) => (
           <span
             style={{
               color: r.dirty ? 'var(--text-brand)' : 'var(--text-default)',
@@ -1065,38 +1052,25 @@ export default function CostVerify({ documentId }: { documentId: string }) {
           </span>
         ),
       },
-      // 18. 核定备注（text 模式 + isDisabled）
-      {
-        key: 'remark',
-        title: '核定备注',
-        dataIndex: 'remark',
-        minWidth: 160,
-        align: 'center',
-        renderMode: 'custom',
-        isDisabled: isRowDisabled,
-        render: (_v: string, record: CostRow) => (
-          <WorkbenchFieldCell
-            text={record.remark || ''}
-            placeholder="成本备注"
-            align="center"
-            allowEmpty
-            disabled={isRowDisabled(record)}
-            title="核定备注"
-            onApply={(next) => void persistCostField(record, { remark: next })}
-          />
-        ),
-      },
+      // 18. 核定备注（text 模式 + 行级禁用）
+      editableColumn(
+        { key: 'remark', title: '核定备注', display: 'text', editEntry: 'confirm', valueState: undefined, gate: { allowEmpty: true }, hidden: undefined },
+        {
+          value: (r) => r.remark || '',
+          placeholder: '成本备注',
+          unifiedInput: () => 'text',
+          disabled: isRowDisabled,
+          title: '核定备注',
+          onApply: (r, next) => void persistCostField(r, { remark: next }),
+          bullets: () => ['确认后写入当前行。', '取消不保存。'],
+        },
+        { minWidth: 160, align: 'center' },
+      ),
       // 19. 状态
-      {
-        key: 'verified',
-        title: '状态',
-        dataIndex: 'verified',
-        minWidth: 76,
-        align: 'center',
-        renderMode: 'static',
-        render: (v: boolean) =>
-          v ? <DsTag color="success">已核定</DsTag> : <DsTag>待核定</DsTag>,
-      },
+      tagColumn<CostRow>(
+        { key: 'verified', title: '状态', dataIndex: 'verified', minWidth: 76, align: 'center' },
+        (r) => (r.verified ? { color: 'success', text: '已核定' } : { color: undefined, text: '待核定' }),
+      ),
     ],
     [isRowDisabled, persistCostField, lineFilter],
   );

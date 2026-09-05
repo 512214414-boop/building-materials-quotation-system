@@ -1,15 +1,13 @@
 // 选品/档案格子只展示。点开后在确认浮层里改（看全文 + 影响范围 + 确认/取消）。
 // 划过仍走原来常驻输入框那套 hover（边框 + 底），光标改成手型，让人知道能点。
+//
+// 收敛说明（v26.x）：所有编辑型单值确认格已统一到 cells/FieldCell（唯一出口，一个层级一个组件）。
+// 本文件仅保留：展示型 DisplayCell（FieldCell 内部渲染文件，不对外承担编辑语义）与
+// 数字格 PickerNumCell（委托 FieldCell 的薄封装，保留 label / 数字 onApply / previewGlobal 这些数字专属 prop）。
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react';
-import { Checkbox, message } from 'antd';
-import { usePickerEditGate } from './PickerEditGate.js';
-import {
-  catalogDictField,
-  type CatalogImpactView,
-  type PickerCatalogKind,
-} from './pickerCatalogImpact.js';
-import type { DictRecordConfig } from '../DictRefField.js';
-import type { DictChangeKind, SuggestField } from '../../services/api/baseDataApi.js';
+import { message } from 'antd';
+import type { PickerCatalogKind } from './pickerCatalogImpact.js';
+import { FieldCell } from '../cells/FieldCell.js';
 
 export type PickerCellEmbed = 'inline' | 'table';
 
@@ -147,60 +145,6 @@ export function DisplayCell({
   );
 }
 
-export function PickerNameCell({
-  value,
-  disabled,
-  placeholder = '—',
-  align = 'left',
-  kind,
-  scope,
-  fromId,
-  embed,
-  allowRoot,
-  onApply,
-  onApplyGlobal,
-}: {
-  value: string;
-  disabled?: boolean;
-  placeholder?: string;
-  align?: 'left' | 'center';
-  kind: PickerCatalogKind;
-  scope?: string;
-  fromId?: string;
-  embed?: PickerCellEmbed;
-  allowRoot?: boolean;
-  onApply: (next: string) => void | Promise<void>;
-  onApplyGlobal?: (next: string) => void | Promise<void>;
-}) {
-  const gate = usePickerEditGate();
-  return (
-    <DisplayCell
-      text={value}
-      placeholder={placeholder}
-      align={align}
-      embed={embed}
-      disabled={disabled}
-      onOpen={(el) =>
-        gate.open(
-          {
-            kind,
-            from: value,
-            scope,
-            fromId,
-            dictField: catalogDictField(kind),
-            input: 'text',
-            placeholder,
-            apply: onApply,
-            applyGlobal: onApplyGlobal,
-          },
-          el,
-          allowRoot ? { allowRoot: true } : undefined,
-        )
-      }
-    />
-  );
-}
-
 export function PickerNumCell({
   value,
   disabled,
@@ -210,7 +154,7 @@ export function PickerNumCell({
   scope,
   label,
   embed,
-  allowRoot,
+  fromId,
   onApply,
   onApplyGlobal,
   previewGlobal,
@@ -223,7 +167,7 @@ export function PickerNumCell({
   scope?: string;
   label?: string;
   embed?: PickerCellEmbed;
-  allowRoot?: boolean;
+  fromId?: string;
   onApply: (next: number) => void | Promise<void>;
   onApplyGlobal?: (next: number) => void | Promise<void>;
   previewGlobal?: (to: string) => Promise<{
@@ -233,239 +177,25 @@ export function PickerNumCell({
     blocking?: string[];
   }>;
 }) {
-  const gate = usePickerEditGate();
-  const text = label ?? (value == null ? '' : Number(value).toFixed(2));
+  // 收敛：数字格也走唯一出口 FieldCell（label 覆盖展示、input=number、onApply 包一层 number）
+  const displayText = label ?? (value == null ? '' : Number(value).toFixed(2));
   return (
-    <DisplayCell
-      text={text}
+    <FieldCell
+      kind={kind}
+      value={value ?? null}
+      disabled={disabled}
       placeholder={placeholder}
-      align="center"
       color={color}
+      align="center"
       mono
       embed={embed}
-      disabled={disabled}
-      onOpen={(el) =>
-        gate.open(
-          {
-            kind,
-            from: value == null ? '' : String(value),
-            scope,
-            input: 'number',
-            placeholder,
-            apply: (next) => onApply(Number(next)),
-            applyGlobal: onApplyGlobal ? (next) => onApplyGlobal(Number(next)) : undefined,
-            previewGlobal,
-          },
-          el,
-          allowRoot ? { allowRoot: true } : undefined,
-        )
-      }
+      input="number"
+      label={displayText}
+      scope={scope}
+      fromId={fromId}
+      onApply={(s) => onApply(Number(s))}
+      onApplyGlobal={onApplyGlobal ? (s) => onApplyGlobal(Number(s)) : undefined}
+      previewGlobal={previewGlobal}
     />
-  );
-}
-
-export function PickerEmptyName({
-  placeholder,
-  kind,
-  scope,
-  embed,
-  allowRoot,
-  onApply,
-  leadCheck = false,
-}: {
-  placeholder: string;
-  kind: PickerCatalogKind;
-  scope?: string;
-  embed?: PickerCellEmbed;
-  allowRoot?: boolean;
-  onApply: (name: string) => void | Promise<void>;
-  /** 数据行左边有勾选时，空行也要占同一格，否则名称会错位 */
-  leadCheck?: boolean;
-}) {
-  const gate = usePickerEditGate();
-  const cell = (
-    <DisplayCell
-      text=""
-      placeholder={placeholder}
-      embed={embed}
-      onOpen={(el) =>
-        gate.open(
-          {
-            kind,
-            from: '',
-            scope,
-            input: 'text',
-            placeholder,
-            apply: onApply,
-            dictField: catalogDictField(kind),
-          },
-          el,
-          allowRoot ? { allowRoot: true } : undefined,
-        )
-      }
-    />
-  );
-  if (!leadCheck) return cell;
-  return (
-    <span className="ds-grid-name">
-      <span className="ds-grid-check">
-        <Checkbox disabled />
-      </span>
-      {cell}
-    </span>
-  );
-}
-
-/** 档案矩阵格：点值确认层（无改全局）。供应商联系/地址、库房区位等统一走此槽。 */
-export function ArchiveFieldCell({
-  value,
-  disabled,
-  placeholder = '—',
-  align = 'left',
-  input = 'text',
-  title,
-  bullets,
-  suggestField,
-  dictConfig,
-  onApply,
-  disabledReason,
-  onReject,
-  allowNoChange,
-  onDelete,
-  /**
-   * v26.4 同源字典能力：传 dictField（如 'category'/'brand'/'unit'）即走与表体
-   * PickerNameCell 同一条确认层——检索下拉带「完整字典」档 + 行内改名/删 + 改全局。
-   * 不传则为本地标量/本地字典（供应商联系、地址等），只给检索结果档，无字典管理入口。
-   * 与 PickerNameCell 的 catalogDictField 路径对齐，杜绝同类第二套确认层。
-   */
-  dictField,
-  fromId,
-  applyGlobal,
-  kind,
-}: {
-  value: string;
-  disabled?: boolean;
-  placeholder?: string;
-  align?: 'left' | 'center';
-  input?: 'text' | 'number';
-  title: string;
-  bullets?: string[];
-  suggestField?: SuggestField;
-  dictConfig?: DictRecordConfig<any>;
-  onApply: (next: string) => void | Promise<void>;
-  /** v25.4 门禁提示：前置未满足的原因（如「请先填写系列/规格」），视觉保持 hover，点击给提示 */
-  disabledReason?: string;
-  onReject?: (reason: string) => void;
-  /** v26.2 确认层承载切换语义：值没变也可确认（apply 按当前值执行） */
-  allowNoChange?: boolean;
-  /** v26.3 确认层承载删除：底栏出现删除按钮 */
-  onDelete?: { label: string; run: () => void | Promise<void> };
-  /** v26.4 同源字典能力：命中 DictEntryField 即渲染两档 + 改名/删 + 改全局 */
-  dictField?: DictChangeKind;
-  fromId?: string;
-  applyGlobal?: (next: string) => void | Promise<void>;
-  /** 默认 'archiveField'（无改全局）；字典类传对应 kind（如 'category'）以开启改全局预览 */
-  kind?: PickerCatalogKind;
-}) {
-  const gate = usePickerEditGate();
-  const impact: CatalogImpactView = {
-    title,
-    change: '',
-    bullets: bullets ?? ['仅修改当前格子。', '取消则不保存。'],
-  };
-  return (
-    <DisplayCell
-      text={value}
-      placeholder={placeholder}
-      align={align}
-      disabled={disabled}
-      rejectReason={disabledReason}
-      onReject={onReject}
-      onOpen={(el) =>
-        gate.open(
-          {
-            kind: kind ?? 'archiveField',
-            from: value,
-            fromId,
-            dictField,
-            input,
-            placeholder,
-            impact,
-            suggestField,
-            dictConfig,
-            apply: onApply,
-            applyGlobal,
-            allowNoChange,
-            onDelete,
-          },
-          el,
-          { allowRoot: true },
-        )
-      }
-    />
-  );
-}
-
-export function ArchiveEmptyFieldCell({
-  placeholder,
-  title,
-  bullets,
-  suggestField,
-  dictConfig,
-  onApply,
-  leadCheck = false,
-  disabledReason,
-  onReject,
-}: {
-  placeholder: string;
-  title: string;
-  bullets?: string[];
-  suggestField?: SuggestField;
-  dictConfig?: DictRecordConfig<any>;
-  onApply: (value: string) => void | Promise<void>;
-  leadCheck?: boolean;
-  /** v25.4 门禁提示：前置未满足的原因（如「请先填写系列/规格」），视觉保持 hover，点击给提示 */
-  disabledReason?: string;
-  onReject?: (reason: string) => void;
-}) {
-  const gate = usePickerEditGate();
-  const impact: CatalogImpactView = {
-    title,
-    change: '',
-    bullets: bullets ?? ['确认后写入当前行。', '取消则不保存。'],
-  };
-  const cell = (
-    <DisplayCell
-      text=""
-      placeholder={placeholder}
-      disabled={false}
-      rejectReason={disabledReason}
-      onReject={onReject}
-      onOpen={(el) =>
-        gate.open(
-          {
-            kind: 'archiveField',
-            from: '',
-            input: 'text',
-            placeholder,
-            impact,
-            suggestField,
-            dictConfig,
-            apply: onApply,
-          },
-          el,
-          { allowRoot: true },
-        )
-      }
-    />
-  );
-  if (!leadCheck) return cell;
-  return (
-    <span className="ds-grid-name">
-      <span className="ds-grid-check">
-        <Checkbox disabled />
-      </span>
-      {cell}
-    </span>
   );
 }
