@@ -51,6 +51,12 @@ export const config = {
     credentials: true,
   },
   isProd: env('NODE_ENV', 'development') === 'production',
+  // P4 接缝：事件总线驱动选择；当前仅 in-process 就绪，redis-stream/rabbitmq 为远端接缝预留
+  features: {
+    eventBus: env('EVENT_BUS', 'in-process') as 'in-process' | 'redis-stream' | 'rabbitmq',
+    // P4 接缝：检索驱动；当前仅 db 就绪，elasticsearch 为远端接缝预留
+    searchDriver: env('SEARCH_DRIVER', 'db') as 'db' | 'elasticsearch',
+  },
 };
 
 export type AppConfig = typeof config;
