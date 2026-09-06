@@ -724,6 +724,17 @@ sequenceDiagram
 5. `node tools/gen-docs.mjs` 后 `grep -c "ProductEditDialog" AGENTS.md` == 0，且资产表出现「集合编辑矩阵（宿主：ArchiveSlotHost · 实例：productEditSlots）」；
 6. `npm run verify:static` **12/12 PASS**（S9 仍绿）。
 
+**要求的断言类型**（本任务"改变了行为"，必须补行为断言；只跑 verify 不算交付）
+| 行为 | 断言类型 | 具体断言（`backend/tests/signal-lib.test.ts`） |
+|---|---|---|
+| 注释里的 `custom` 不计数 | 单测 · 值断言 | `countRenderModeCustom("// renderMode: 'custom'")` **== 0** |
+| 字符串里的 `//` 不被误剥离 | 单测 · 值断言 | `countRenderModeCustom("const u = 'http://x';")` == 0，且 `stripComments` 保留该整行 |
+| 模板字符串不误伤 | 单测 · 值断言 | `` stripComments("const s = `a//b`;") `` 原样返回 |
+| freshness 判定 | 单测 · 值断言 | `freshnessOf({generatedAt: now-1h})` → `stale === false`；`now-25h` → `stale === true` |
+| 门禁信号不再产出 | 集成 · 快照断言 | 给定一份含 `stages:[{id:'S1',status:'FAIL'}]` 的 fixture → `scan-signals` 输出信号里 `filter(s => /^门禁/.test(s.title)).length === 0` |
+
+> **变异验证（必做）**：删掉 `stripComments` 的引号状态跟踪 → 第 2 条用例必须转红；把 `staleAfterMs` 改为 `0` → 第 4 条必须转红。
+
 ---
 
 ### T02 · 生成物 44 处 custom 归零（B-类1） · P0 · 可并行
@@ -758,6 +769,18 @@ sequenceDiagram
 3. 故意在 yml 某列写回 `renderMode: custom` → `node tools/gen-entity-meta.mjs` **exit 1**（负向验证，验证后还原）；
 4. 浏览器冒烟：产品管理（分组/平铺两模式）、库存台账、待入库、欠库、采购入库、单据列表、审计日志、授权码、访问申请、员工账号、供应商应付、经营报表 12 个列表页**列渲染与改前逐列一致**（截图对比）；
 5. `npm run verify:static` **12/12 PASS**。
+
+**要求的断言类型**（本任务"改变了行为"，必须补行为断言；只跑 verify 不算交付）
+| 行为 | 断言类型 | 具体断言 |
+|---|---|---|
+| `deriveRenderMode` 映射正确 | 单测 · 表驱动 | 逐行断言：`{editEntry:'confirm'}`→`'picker'`；`'none'/'link'/'expand'`→`'static'`；无 cellSpec→`renderMode ?? 'static'`（**含默认不再是 `'custom'`**） |
+| 生成物不再产出 custom | 集成 · 计数断言 | `grep -c 'renderMode: "custom"' entityRelations.generated.ts` **== 0** |
+| 生成器对拍 | 集成 · 退出码断言 | `node tools/gen-entity-meta.mjs --check` → **exit 0** |
+| ③-c 纪律闸门生效 | **负向断言** | 在 yml 某列写回 `renderMode: custom` → `node tools/gen-entity-meta.mjs` **exit 1**（验证后还原） |
+| 12 页列渲染未退化 | 浏览器 · 逐列快照 | 改前/改后各截一列，断言 **列数、列序、列宽、对齐、表头文案** 五项全等（不是"看起来差不多"） |
+
+> **变异验证（必做）**：把 `deriveRenderMode` 的 `'confirm'` 分支改成 `'custom'` → 生成物计数断言必须转红；
+> 把 ③-c 的 `process.exit(1)` 改回 `console.warn` → 负向断言必须转红。
 
 ---
 
@@ -807,6 +830,21 @@ sequenceDiagram
 6. 12 个列表页冒烟逐列对比（同 T02 第 4 条）；
 7. `npm run verify:static` **12/12 PASS**。
 
+**要求的断言类型**（本任务"改变了行为"，必须补行为断言；只跑 verify 不算交付）
+| 行为 | 断言类型 | 具体断言（`frontend/tests/compositeColumns.test.ts`） |
+|---|---|---|
+| 7 个工厂产出合规列 | 单测 · 结构断言 | 每个工厂：`expect(col.renderMode).toBe('static')` / `key` / `title` / `align` / `minWidth` 逐项断言 |
+| `actionsColumn` 按钮**常驻不 hover** | 单测 · DOM 断言 | 渲染后 `container.querySelectorAll('button').length === actions.length`（**不触发任何 hover 事件**） |
+| `refTagColumn` 徽标条件 | 单测 · DOM 断言 | `resolve()` 返回 `isMain: true` → 断言存在 `<DsTag>` 且文案 == `'主'`；`false` → 断言不存在 |
+| `numberToneColumn` 着色与后缀 | 单测 · DOM 断言 | `toneOf` 返回 warning → 断言 style 含 `var(--status-warning-default)`；`suffixOf` 返回 `' · 滞销'` → 断言文本包含它 |
+| `copyTextColumn` 复制回调 | 单测 · 交互断言 | `fireEvent.click` → 断言 `onCopied` 被调用且入参 == 原文本 |
+| 门禁格视觉一致 | 单测 · DOM 断言 | 传入 `disabledReason` 的格与可编辑格的 `classList` **逐项相等**（禁止置灰/消失） |
+| 未新增 `*Cell` 导出 | 静态 · 退出码断言 | `node tools/check-cell-layer.mjs` → exit 0 |
+
+> **变异验证（必做）**：把任一工厂的 `renderMode` 改回 `'custom'` → 结构断言转红；
+> 把 `actionsColumn` 的按钮包一层 `onMouseEnter` 才渲染 → DOM 断言转红；
+> 删掉 `refTagColumn` 的徽标分支 → 徽标断言转红。
+
 ---
 
 ### T04 · product 统一化收口（C 项） · P1
@@ -846,6 +884,26 @@ sequenceDiagram
 6. 删除流程、批量启停、批量改价**三种批量动作**回归通过；
 7. `grep -rn "product" frontend/src/shared/components/archive/archiveSlotTypes.ts | grep -v "上下文\|注释"` == 0（框架不认业务名，通用性证明）；
 8. `npm run verify:static` **12/12 PASS**。
+
+**要求的断言类型**（本任务"重构了行为 + 动到了金额"，必须补行为断言；只跑 verify 不算交付）
+| 行为 | 断言类型 | 具体断言 |
+|---|---|---|
+| ProductManage 瘦身且非"空壳化" | 静态 · 计数断言 | `wc -l` **< 200**，**且** `grep -c "useSkuPriceState\|createSkuPriceColumns" ProductManage.tsx` == 0（定义确实迁出，不是被注释掉 / 折叠） |
+| custom 槽收口且已登记 | 静态 · 计数 + 邻近断言 | `grep -c "kind: 'custom'" productEditSlots.tsx` ≤ 1；若 == 1，断言其**上方 10 行内**存在 `@escape` 块且同时含 `原因` 与 `到期条件` 两个键（缺一即 FAIL） |
+| 分组 / 平铺切换 | e2e · DOM 断言 | 点开关 → 断言 `data-mode` 由 `grouped` 变 `flat`，**且**平铺模式下分组表头行（`[data-testid="group-header"]`）数量 == 0；反向再断言一次 |
+| 三段级联筛选在**两种模式**下都生效 | e2e · 值断言 | **每种模式各跑一次**：选产品 → 断言品牌 options 集合被收窄（比对 option 数组，不是"个数 > 0"）；再选品牌 → 断言规格 options 被收窄；断言结果行的 **id 数组全等**（排序后） |
+| 关键词搜索在**两种模式**下都生效 | e2e · 值断言 | **每种模式各跑一次**，断言命中行的 **id 数组全等**（排序后） |
+| ⚠️ **批量改价取数正确**（四 ref 迁移的风险点；金额类，第 2 次即须统一） | e2e · **集合 + 金额双断言** | ① 分组模式勾选 N 个 sku → 断言提交 payload 的 `skuId` 数组与"分组视图下勾选的 skuId 集合"**逐 id 相等**（比对数组内容，**不比个数**）；② 平铺模式同样断言一次；③ **切换模式后立即批量改价** → 断言 payload 取的是**当前**模式数据，不得含上一个模式的 skuId；④ 改价后**逐行**断言金额 == `原值 × 系数`（`toBeCloseTo(期望, 2)`），**不得只断言"接口返回 200"** |
+| 批量启停 / 批量删除 | e2e · 集合断言 | 断言受影响 id 数组 == 勾选集合；**并**断言未勾选行的 `enabled` 字段未变（防"批量动作误伤全表"） |
+| 编辑弹窗五区块 | 浏览器 · 逐块快照 | 品牌级联 / 规格级联 / 单位与价格 / 产品图片 / 分类 五块，改前改后各截一块，断言 **区块数量、区块顺序、字段集合、默认值** 四项全等 |
+| supplier / customer / warehouse 零变化 | 浏览器 · 快照对比 | 三页各截全页，断言 DOM 结构与改前**逐节点 diff == 0**（`displayLevel` 缺省 `'entity'` 的兜底证明） |
+| 框架不认业务名 | 静态 · grep 计数 | 剥离注释后 `grep -rn "product" archiveSlotTypes.ts` == 0 |
+| 四 ref 未被"重建" | 静态 · 引用点计数断言 | `productArchiveDef.tsx` 中 `modeIsFlat` / `lastProducts` / `lastSkus` / `skuProductMap` 四个 ref 的**读取点数量 == 改前数量**（迁移中丢一个引用 = 静默改错价） |
+
+> **变异验证（必做）**：
+> ① 把 `modeIsFlat` 从 `useRef` 改成局部 `useState`（即重建）→ "切换模式后立即批量改价"那条断言**必须转红**（若不转红，说明断言没锁住这个风险，重写断言）；
+> ② 把 `skuProductMap` 的填充时机从「`lastSkus` 变化后」挪进 render → payload 集合断言必须转红；
+> ③ 把 `actionsColumn` 换回 hover 才渲染 → 批量动作按钮的 DOM 断言必须转红。
 
 ---
 
@@ -890,6 +948,28 @@ sequenceDiagram
 6. `npx prisma validate` → 有效；`node tools/check-arch.mjs` → exit 0；
 7. `npm run verify:static` **14/14 PASS**（原 12 + S8 + S12）。
 
+**要求的断言类型**（本任务"新增了守卫行为"，必须补行为断言；只跑 verify 不算交付）
+| 行为 | 断言类型 | 具体断言 |
+|---|---|---|
+| E 项回写 | 静态 · 文本断言 | `docs-coverage.md` 第 111/112 行状态列含 `⏳ 已裁决·非缺口`，且掌控台不再把 v23 两条计入欠债数 |
+| FK 漂移三分类 | 单测 · 表驱动（fixture 驱动） | 给定一段 `migrate diff` SQL fixture，断言分类结果：DROP+ADD 同名 → **D2 真漂移**；仅 DROP 且命中 `V11_ALLOWLIST` → **D1 豁免**；仅 DROP 且**不在**白名单 → **必须报错**（不许静默放过）；ADD 新 FK → D3 提示 |
+| `V11_ALLOWLIST` 自动提取 | 单测 · 值断言 + **负向断言** | 从 schema 头部注释块构造 fixture → 断言提取结果**含全部 18 个** v11.0 解耦关系；**且不含**任何已知 D2 漂移字段（负向：白名单不能误吞真漂移） |
+| schema 对齐后无真漂移 | 集成 · 退出码断言 | `npx prisma migrate diff --from-schema-datasource --to-schema-datamodel --script` → 输出中 DROP+ADD 同名 FK 条数 == 0 |
+| S8 哈希规范化（抗噪） | 单测 · 值断言 | 同一 schema 的四种变体（**键序不同 / 注释不同 / AUTO_INCREMENT 值不同 / 空白不同**）→ 规范化后 `sha256` **全等** |
+| S8 哈希灵敏度（防"规范化过头"） | 单测 · **负向断言** | 改一个列名 / 一个 `onDelete` → 哈希**必须不同**（若相同，说明规范化把有效信息也抹了） |
+| S8 回放全绿 | 集成 · 退出码 + 报告字段断言 | `node tools/migrate-replay.mjs` **exit 0**，且报告逐项断言 `hashMatch === true` / `tableDiff.length === 0` / `columnDiff.length === 0` / `fkDrift === 0`（**逐字段断言，不只看出 exit 0**） |
+| S12 租户隔离（7 类操作） | e2e · 数据断言 | 对 `findUnique/findFirst/findMany/count/aggregate/groupBy/update/delete` **各一条用例**，断言返回行 `rows.every(r => r.tenantId === 'A')`；交叉更新：A 上下文 `updateMany` B 的行 → 断言 `count === 0` |
+| S12 不误连开发库 | e2e · **硬安全断言** | 用例开头断言当前连接库名 == `bm_quotation_e2e`（**不等于即 abort**，不许靠配置自觉） |
+| S12 自清理 | e2e · 副作用断言 | 用例结束后按 `tenant_id` 查询残余行数 == 0 |
+| S8 / S12 门禁不静默跳过 | 集成 · 退出码断言 | 把 `DATABASE_URL` 临时指向不可用端口 → verify 报告中 S8 / S12 阶段 `status === 'FAIL'`（**断言不是 `'SKIP'` 也不是 `'PASS'`**） |
+
+> **变异验证（必做）**：
+> ① 故意改 schema 里一个 `onDelete` → S8 **必须转红**；
+> ② 故意在白名单外加一个 FK → S8 **必须转红**；
+> ③ 往 `V11_ALLOWLIST` 手工塞一个非 v11 字段 → "白名单不得误吞真漂移"的负向断言**必须转红**；
+> ④ 从 `applyTenantToArgs` 的 `WHERE_OPS` 里删掉 `findMany` → **只有** findMany 那条用例转红（若全红，说明用例粒度不合格，拆分）；
+> ⑤ 仅在 schema 里加一行注释 → S8 **不得转红**（抗噪断言，防哈希规范化失效）。
+
 ---
 
 ### T06 · 面板 id 唯一形态收敛（附带发现） · P2 · 可并行
@@ -924,6 +1004,25 @@ sequenceDiagram
 2. 6 处消费点各 ≤ 1 行，且**无** `string \| undefined` / `string \| null` 的 ref 守卫样板；
 3. 新增单测全绿 + **变异验证通过**；
 4. `npm run verify:static` **12/12 PASS**（S1 仍绿）。
+
+**要求的断言类型**（本任务"改变了 id 分配时机"，必须补行为断言；只跑 verify 不算交付）
+| 行为 | 断言类型 | 具体断言（`frontend/tests/useStablePanelId.test.ts`） |
+|---|---|---|
+| **多次渲染只分配一次**（锁死 A 类写法回归） | 单测 · **调用次数断言** | 用渲染计数器包一个测试组件，`rerender` 5 次 → `vi.spyOn` 断言 `allocPanelId` 调用次数 **== 1** |
+| id 跨渲染稳定 | 单测 · 值断言 | 第 1 次渲染的 id == 第 5 次渲染的 id |
+| 不同实例 id 不同 | 单测 · 值断言 | 同屏渲染两个实例 → `id1 !== id2` |
+| `override` 优先且不分配 | 单测 · 值断言 + 次数断言 | `useStablePanelId('fixed')` → 返回 `'fixed'`，**且** `allocPanelId` 调用次数 **== 0**（保 `panelIdProp ?? allocPanelId()` 语义） |
+| 组件里零直接调用 | 静态 · grep 计数 | `grep -rn "allocPanelId()" frontend/src` 仅剩 `PanelTree.ts`（定义处）与 `useStablePanelId.ts`（唯一出口） |
+| 无守卫样板 | 静态 · grep 计数 | 6 处消费点各 ≤ 1 行，且**不含** `useRef<string \|` 的守卫样板 |
+| **面板层级不被破坏**（回归 v13 已确认缺陷） | 集成 · 面板树断言 | **必须断言**：① 二层弹窗（z=1100）内展开的浮层 `z > 1100`；② 一层弹窗（z=1000）内展开的浮层 `z` 落在 `1050..1099`；③ 浮层 z **不与下一层弹窗的 1100 相撞** |
+
+> **变异验证（必做）**：
+> ① `useState(() => allocPanelId())` → `useState(allocPanelId())`（去掉箭头函数）→ "只分配一次"用例**必须转红**；
+> ② 把 `override` 分支改成 `allocPanelId() ?? override` → "override 不分配"用例**必须转红**；
+> ③ 把 `FLOAT_Z_OFFSET` 从 50 改成 0 → 上面"面板层级"三条断言中至少第 ① 条转红。
+
+> ⚠️ **与 v13 的文件重叠 + 先后**：本任务要动 `DsDialog.tsx`（L40-43）、`FloatPanel.tsx`（L171）、`RecordFieldColumn.tsx`（L52-55），**三者都是 v13 面板树正在改的文件**。
+> **顺序：v13 先落地并转绿 → 再动 T06。** 若反序，双方会互相覆盖，且 T06 的"面板层级"断言会建在错误的基线之上。
 
 ---
 

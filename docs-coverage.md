@@ -108,8 +108,8 @@
 | 产品集合体宽表字段来源登记表（9 列 × 层/数据表/字典表/关系表/宽表落点） | ✅ | 2026-08-31 |
 | 范式 vs 派生表（**重要更新 v30 2026-09-02**） | ✅ | 反范式 `product_sku_search` 宽表已**物理删除**；检索/展示全面转范式多路召回（详见架构原则·元模型运行时 v30 章） |
 | **v31 库存快照列（2026-09-02 补建）** | ✅ | `inventory` 表新增 `specModel`/`brandName`/`unitName`（v28 定义但未落库的历史遗漏；修复后库存台账与周转报表 API 200） |
-| v23 产品名升全局字典 `product_name`（去 product.name） | ❌ 字典已撤销 · ✅ 已收口为名全局唯一 | **2026-09-05 定稿（裁决 A：撤字典 · 名全局唯一）**：用户反思"标准 3NF 已满足业务目标、产品名不需独立字典（唯一是约束不是对象）"——v23 P1/P2a/P2b 已外科手术式回退（未落库，P4 无需执行）；唯一键从 `[categoryId,name]` 收紧为 `@@unique([name])`（saveProduct/catalog 查重改 `findUnique({ name })`，提示"已存在同名产品"），迁移 `20260905120000_product_name_global_unique` 已 deploy（索引实测 `product_name_key` 生效、`findUnique({name})` 命中/未命中正常）；完整 `npm run verify` 10/10。详见《根因分析与预防措施.md》定稿版 + 《架构蓝图 v3》§9。 |
-| v23 分类改关系表 `product_category`（去 product.categoryId） | ❌ 已回退（暂不实施） | **2026-09-05 随产品名字典方向一并作废**：product 维持单 `categoryId`（v8 扁平模型），`product_category` 模型与关系已回退；多分类需求若再现按蓝图 v3 推导链单独评估。 |
+| v23 产品名升全局字典 `product_name`（去 product.name） | ⏳ 已裁决·非缺口 | **2026-09-05 定稿（裁决 A：撤字典 · 名全局唯一）**：用户反思"标准 3NF 已满足业务目标、产品名不需独立字典（唯一是约束不是对象）"——v23 P1/P2a/P2b 已外科手术式回退（未落库，P4 无需执行）；唯一键从 `[categoryId,name]` 收紧为 `@@unique([name])`（saveProduct/catalog 查重改 `findUnique({ name })`，提示"已存在同名产品"），迁移 `20260905120000_product_name_global_unique` 已 deploy（索引实测 `product_name_key` 生效、`findUnique({name})` 命中/未命中正常）；完整 `npm run verify` 10/10。详见《根因分析与预防措施.md》定稿版 + 《架构蓝图 v3》§9。 |
+| v23 分类改关系表 `product_category`（去 product.categoryId） | ⏳ 已裁决·非缺口 | **2026-09-05 随产品名字典方向一并作废**：product 维持单 `categoryId`（v8 扁平模型），`product_category` 模型与关系已回退；多分类需求若再现按蓝图 v3 推导链单独评估。 |
 | 俗称维持 `product.remark` 单字段 | ✅ | 2026-08-31 裁决：不建子表不进字典 |
 | v23 决策记录归档（论证+迁移口径） | ✅ 归档 | 见下方「v23 决策记录」小节（自 产品数据层.md git 历史恢复，2026-09-04） |
 
