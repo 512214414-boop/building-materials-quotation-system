@@ -2,7 +2,7 @@
 // 元模型运行时 · 阶段 E：界面列登记表由真相源驱动，手写 entityRelations.ts 已改为 re-export。
 
 import { COL_WIDTHS } from '../components/table/colWidths.js';
-import type { EntityRelation, EntityFieldSpec } from './entityRelations.types.js';
+import type { EntityRelation, EntityFieldSpec, RecordSetSpec } from './entityRelations.types.js';
 
 const productFields: EntityFieldSpec[] = [
   { key: "productRef", title: "产品名", dataIndex: "productRef", renderMode: "picker", minWidth: COL_WIDTHS.NAME_PRODUCT, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 10 },
@@ -22,6 +22,12 @@ const productFields: EntityFieldSpec[] = [
   { key: "remark", title: "备注", dataIndex: "remark", renderMode: "picker", minWidth: COL_WIDTHS.REMARK_S, align: "center", fieldClass: "A", suggestField: "remark", confirmStrategy: "direct", scenes: ["archive"], order: 70 },
   { key: "status", title: "状态", dataIndex: "sku", renderMode: "static", minWidth: COL_WIDTHS.TAG_S, align: "center", scenes: ["archive"], order: 80 },
   { key: "updateTime", title: "更新时间", dataIndex: "sku", renderMode: "static", minWidth: COL_WIDTHS.DATETIME, align: "center", scenes: ["archive"], order: 90 },
+];
+
+const productRecordSets: RecordSetSpec[] = [
+  { key: "units", label: "单位", of: "spec", table: "spec_unit", role: "dimensionAxis", order: 10, scenes: ["archive", "workbench"], unique: ["unitId"], defaultFlag: "isDisplay", keyField: "unitId", display: { mode: "single" }, fallback: [{ kind: "selected" }, { kind: "default" }, { kind: "column", column: "defaultUnitName" }], emptyText: "未设单位" },
+  { key: "salePrices", label: "售价", of: "spec", table: "sale_price", role: "siblingSet", group: "price", order: 20, scenes: ["archive", "workbench"], axes: ["units"], unique: ["priceTypeId", "unitIdx"], defaultFlag: "isDefault", keyField: "priceTypeId", value: { field: "price", kind: "money", semantic: "sale", effective: { expr: "base*factor", base: "price", factor: "point" } }, display: { mode: "single" }, fallback: [{ kind: "selected" }, { kind: "default" }, { kind: "derive", base: "price", factor: "conversionRate", factorRef: "units" }, { kind: "column", column: "retailPrice" }], emptyText: "未定价", panelTitle: "售价明细" },
+  { key: "purchasePrices", label: "进价", of: "spec", table: "purchase_price", role: "siblingSet", group: "price", order: 30, scenes: ["archive", "workbench"], axes: ["units"], unique: ["supplierId", "unitIdx"], defaultFlag: "isDefault", keyField: "supplierId", value: { field: "price", kind: "money", semantic: "purchase", effective: { expr: "base*factor", base: "price", factor: "point" } }, display: { mode: "single" }, fallback: [{ kind: "selected" }, { kind: "default" }, { kind: "derive", base: "price", factor: "conversionRate", factorRef: "units" }, { kind: "column", column: "purchasePriceDefault" }], emptyText: "未设进价", panelTitle: "进价明细" },
 ];
 
 const customerFields: EntityFieldSpec[] = [
@@ -187,6 +193,7 @@ export const entityRelations: Record<string, EntityRelation> = {
     primaryKey: "id",
     fields: productFields,
     relations: [{ field: "brandId", to: "brand", type: "manyToOne" }, { field: "specId", to: "spec", type: "manyToOne" }, { field: "unitId", to: "unit", type: "manyToOne" }, { field: "categoryId", to: "category", type: "manyToOne" }],
+    recordSets: productRecordSets,
   },
   customer: {
     name: "customer",

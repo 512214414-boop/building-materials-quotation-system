@@ -102,6 +102,50 @@ entities:
       - { field: unitId, to: unit, type: manyToOne }
       - { field: categoryId, to: category, type: manyToOne }
 
+    # recordSets —— 挂在本实体展示区间内的「多记录集合」（泛化：单位/售价/进价/联系人/地址同构）
+    # 为什么挂 product 而不是 spec：列声明属于**视图实体**（产品列表要展示它们），
+    #   集合真正挂在谁下面由 `of` 指出（spec）——与「展示区间」同一套思想：
+    #   区间起点=视图实体，区间终点=集合所属父层。框架据此推导列与面板，业务零硬编码。
+    # 推导规则（框架消费，业务不写）：
+    #   role: siblingSet   + 同 group → 面板内平级 Tab（售价/进价）
+    #   role: dimensionAxis           → 集合内切片维度 → 面板内下拉切换（单位）
+    #   fallback                      → 单元格缺省回退链（选中→默认→推算→宽表兜底）
+    #   value.semantic                → 单元格语义色（禁止业务硬编码色值）
+    #   value.effective               → 有效值折算（面价 × 点位 = 实际售价）
+    recordSets:
+      - { key: units, label: 单位, of: spec, table: spec_unit, role: dimensionAxis, order: 10,
+          scenes: [archive, workbench],
+          unique: [unitId], defaultFlag: isDisplay, keyField: unitId,
+          display: { mode: single },
+          fallback: [ { kind: selected }, { kind: default }, { kind: column, column: defaultUnitName } ],
+          emptyText: 未设单位 }
+
+      - { key: salePrices, label: 售价, of: spec, table: sale_price, role: siblingSet, group: price, order: 20,
+          scenes: [archive, workbench],
+          axes: [units], unique: [priceTypeId, unitIdx], defaultFlag: isDefault, keyField: priceTypeId,
+          value: { field: price, kind: money, semantic: sale, effective: { expr: 'base*factor', base: price, factor: point } },
+          display: { mode: single },
+          fallback: [
+            { kind: selected },
+            { kind: default },
+            { kind: derive, base: price, factor: conversionRate, factorRef: units },
+            { kind: column, column: retailPrice },
+          ],
+          emptyText: 未定价, panelTitle: 售价明细 }
+
+      - { key: purchasePrices, label: 进价, of: spec, table: purchase_price, role: siblingSet, group: price, order: 30,
+          scenes: [archive, workbench],
+          axes: [units], unique: [supplierId, unitIdx], defaultFlag: isDefault, keyField: supplierId,
+          value: { field: price, kind: money, semantic: purchase, effective: { expr: 'base*factor', base: price, factor: point } },
+          display: { mode: single },
+          fallback: [
+            { kind: selected },
+            { kind: default },
+            { kind: derive, base: price, factor: conversionRate, factorRef: units },
+            { kind: column, column: purchasePriceDefault },
+          ],
+          emptyText: 未设进价, panelTitle: 进价明细 }
+
   customer:
     label: 客户
     table: customers

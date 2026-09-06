@@ -25,7 +25,9 @@ import { FieldCell } from '../cells/FieldCell.js';
 import EnumPicker from '../EnumPicker.js';
 import UnifiedTable, { type UnifiedTableColumn } from '../UnifiedTable.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
-import { NameLinkCell, StatusTagCell, createRecordFieldColumn } from '../cells/index.js';
+import { createRecordFieldColumn } from '../cells/index.js';
+import { nameLinkColumn } from '../table/compositeColumns.js';
+import StatusTagCell from '../cells/StatusTagCell.js';
 import { usePermission } from '../../hooks/usePermission.js';
 import { useCanvasApp } from '../../hooks/useCanvasApp.js';
 import { useArchiveTableSelection } from '../../hooks/useArchiveTableSelection.js';
@@ -558,50 +560,35 @@ function ArchiveSlotHostInner<T extends { id: string }>({
       if (slot.kind === 'name') {
         const filterOn = slot.filter !== false;
         const facetField = slot.facetField ?? slot.key;
-        cols.push({
-          key: slot.key,
-          title: filterOn ? (
-            <HeaderCascadeFilter
-              field={slot.facetSuggestField}
-              placeholder={slot.placeholder ?? slot.label}
-              selectedName={filters[slot.key]?.value ?? ''}
-              fetcher={(kw) => facetFetcher(facetField, kw)}
-              onSelect={(id, name) => setFilter(slot.key, id || null, name)}
-              onClear={() => clearFilter(slot.key)}
-            />
-          ) : (
-            slot.label
-          ),
-          dataIndex: slot.key,
-          minWidth: slot.minWidth ?? COL_WIDTHS.NAME_S,
-          className: filterOn ? 'ds-cascade-col' : undefined,
-          align: 'center',
-          renderMode: 'custom',
-          render: (_val: unknown, row: T) => {
-            const text = slot.get(row);
-            return (
-              <span
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  justifyContent: 'center',
-                }}
-              >
-                <NameLinkCell
-                  segments={[
-                    {
-                      text: text || slot.placeholder || '未命名',
-                      variant: text ? 'brand' : 'placeholder',
-                    },
-                  ]}
-                  onClick={() => void openEdit(row)}
+        cols.push(
+          nameLinkColumn<T>(
+            {
+              key: slot.key,
+              title: filterOn ? (
+                <HeaderCascadeFilter
+                  field={slot.facetSuggestField}
+                  placeholder={slot.placeholder ?? slot.label}
+                  selectedName={filters[slot.key]?.value ?? ''}
+                  fetcher={(kw) => facetFetcher(facetField, kw)}
+                  onSelect={(id, name) => setFilter(slot.key, id || null, name)}
+                  onClear={() => clearFilter(slot.key)}
                 />
-                {slot.extra?.(row)}
-              </span>
-            );
-          },
-        });
+              ) : (
+                slot.label
+              ),
+              dataIndex: slot.key,
+              minWidth: slot.minWidth ?? COL_WIDTHS.NAME_S,
+              className: filterOn ? 'ds-cascade-col' : undefined,
+              align: 'center',
+            },
+            {
+              textOf: (row) => slot.get(row),
+              placeholder: slot.placeholder ?? '未命名',
+              onClick: (row) => void openEdit(row),
+              extraOf: (row) => slot.extra?.(row),
+            },
+          ),
+        );
         continue;
       }
       if (slot.kind === 'scalar' && slot.list !== false) {
@@ -1206,7 +1193,18 @@ export default function ArchiveSlotHost<T extends { id: string }>({
           </DsButton>
         </div>
       ) : null}
-      <ArchiveSlotHostInner def={activeDef} extraQuery={extraQuery} extraChips={extraChips} />
+      {/*
+        key=mode：视图切换 = 换了一个数据集（分组行 id=产品 id，平铺行 id=SKU id），
+        两者分页基数、筛选语义、行选中、行内编辑态全部不同，必须重新挂载以清空全部内部状态。
+        不加 key 时 React 复用同一实例 → 页码越界空白页 / 筛选残留 / **选中 id 跨语义残留（批量操作会误伤）**。
+        这是 React 官方推荐的「重置组件状态」写法，不是绕过框架。
+      */}
+      <ArchiveSlotHostInner
+        key={mode}
+        def={activeDef}
+        extraQuery={extraQuery}
+        extraChips={extraChips}
+      />
     </div>
   );
 }

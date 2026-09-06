@@ -15,14 +15,81 @@
 //   联系信息  = display(combined)        + panel(矩阵单页)          + select(contactIdx)
 //   分类/枚举 = display(single:name)     + panel(DictListPanel)    + select(可选)
 
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Popover } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
-import type { ReactNode } from 'react';
 import type { UnifiedTableColumn } from '../UnifiedTable.js';
 import { resolveDefaultRecord } from '../../utils/defaultRecord.js';
 import { smartPopupContainer } from '../../utils/smartPopupContainer.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
-import { isPointerOnFloatPanel } from '../PanelTree.js';
+import {
+  allocPanelId,
+  registerPanel,
+  unregisterPanel,
+  getPanelZ,
+  topPanelId,
+  isPointerOnFloatPanel,
+} from '../PanelTree.js';
+
+/**
+ * PanelizedPopover — 接入面板树的 antd Popover（多记录字段展开面板专用外壳）。
+ *
+ * 背景（v13 层级统一）：antd Popover 的 z 是静态 ≈1030，不随「弹窗叠弹窗」递增 ——
+ * 二层弹窗（z=1100）内展开的价格/单位面板会被自家弹窗压住。现在面板打开时注册进
+ * PanelTree（kind: float，自动挂当前 z 最高者之下），z 由统一公式导出，与 Modal/
+ * FloatPanel 同树单调，层级无需调用方关心。
+ */
+function PanelizedPopover({
+  open,
+  onOpenChange,
+  content,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  content: ReactNode;
+  children: ReactNode;
+}) {
+  // @types/react 19 去掉了无参 useRef<T>() 重载（T 无法从实参推断），必须显式给初值
+  const idRef = useRef<string | undefined>(undefined);
+  if (!idRef.current) idRef.current = allocPanelId();
+  const panelId = idRef.current;
+  const [panelZ, setPanelZ] = useState(0);
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+
+  useEffect(() => {
+    if (!open) return;
+    registerPanel({
+      id: panelId,
+      parentId: topPanelId(panelId),
+      kind: 'float',
+      close: () => onOpenChangeRef.current(false),
+    });
+    setPanelZ(getPanelZ(panelId));
+    return () => {
+      unregisterPanel(panelId);
+    };
+  }, [open, panelId]);
+
+  return (
+    <Popover
+      trigger="click"
+      placement="bottomLeft"
+      arrow={false}
+      destroyOnHidden={false}
+      open={open}
+      onOpenChange={onOpenChange}
+      getPopupContainer={smartPopupContainer}
+      autoAdjustOverflow={false}
+      zIndex={panelZ || undefined}
+      styles={{ container: { padding: 0 }, content: { padding: 0 } }}
+      content={content}
+    >
+      {children}
+    </Popover>
+  );
+}
 
 // ============================================================
 // §1 类型定义
@@ -271,21 +338,15 @@ export function createRecordFieldColumn<T = any>(
       });
 
       return (
-        <Popover
-          trigger="click"
-          placement="bottomLeft"
-          arrow={false}
-          destroyOnHidden={false}
-          open={typeof open === 'function' ? open(record) : open}
+        <PanelizedPopover
+          // open 是可选 prop（boolean | (record)=>boolean | undefined），未传即视为关
+          open={(typeof open === 'function' ? open(record) : open) ?? false}
           onOpenChange={(o) => {
             if (!o && isPointerOnFloatPanel()) return;
             onOpenChange?.(o, record);
             if (o) onOpen?.(record);
             else onClose?.(record);
           }}
-          getPopupContainer={smartPopupContainer}
-          autoAdjustOverflow={false}
-          styles={{ container: { padding: 0 }, content: { padding: 0 } }}
           content={panelContent}
         >
           <a
@@ -298,7 +359,7 @@ export function createRecordFieldColumn<T = any>(
               style={{ fontSize: 10, color: 'var(--text-tertiary)' }}
             />
           </a>
-        </Popover>
+        </PanelizedPopover>
       );
     },
   };
