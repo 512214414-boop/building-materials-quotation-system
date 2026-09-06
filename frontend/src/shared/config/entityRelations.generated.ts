@@ -5,23 +5,23 @@ import { COL_WIDTHS } from '../components/table/colWidths.js';
 import type { EntityRelation, EntityFieldSpec } from './entityRelations.types.js';
 
 const productFields: EntityFieldSpec[] = [
-  { key: "productRef", title: "产品名", dataIndex: "productRef", renderMode: "custom", minWidth: COL_WIDTHS.NAME_PRODUCT, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 10 },
-  { key: "brandName", title: "品牌", dataIndex: "brandName", renderMode: "custom", minWidth: COL_WIDTHS.NAME_BRAND, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 20 },
-  { key: "spec", title: "规格", dataIndex: "spec", renderMode: "custom", minWidth: COL_WIDTHS.NAME_SPEC, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 30 },
-  { key: "unit", title: "单位", dataIndex: "unit", renderMode: "custom", minWidth: COL_WIDTHS.TAG_L, align: "center", fieldClass: "A", dictKind: "unit", suggestField: "unit", confirmStrategy: "direct", scenes: ["workbench"], order: 40 },
-  { key: "qty", title: "数量", dataIndex: "qty", renderMode: "custom", minWidth: COL_WIDTHS.AMOUNT, align: "center", confirmStrategy: "direct", scenes: ["workbench"], order: 50 },
-  { key: "unitPrice", title: "单价", dataIndex: "unitPrice", renderMode: "custom", minWidth: COL_WIDTHS.AMOUNT, align: "center", fieldClass: "A", dictKind: "priceType", suggestField: "priceType", confirmStrategy: "direct", scenes: ["workbench"], order: 60 },
+  { key: "productRef", title: "产品名", dataIndex: "productRef", renderMode: "picker", minWidth: COL_WIDTHS.NAME_PRODUCT, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 10 },
+  { key: "brandName", title: "品牌", dataIndex: "brandName", renderMode: "picker", minWidth: COL_WIDTHS.NAME_BRAND, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 20 },
+  { key: "spec", title: "规格", dataIndex: "spec", renderMode: "picker", minWidth: COL_WIDTHS.NAME_SPEC, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["workbench"], pickerGroup: "sku", order: 30 },
+  { key: "unit", title: "单位", dataIndex: "unit", renderMode: "picker", minWidth: COL_WIDTHS.TAG_L, align: "center", fieldClass: "A", dictKind: "unit", suggestField: "unit", confirmStrategy: "direct", scenes: ["workbench"], order: 40 },
+  { key: "qty", title: "数量", dataIndex: "qty", renderMode: "picker", minWidth: COL_WIDTHS.AMOUNT, align: "center", confirmStrategy: "direct", scenes: ["workbench"], order: 50 },
+  { key: "unitPrice", title: "单价", dataIndex: "unitPrice", renderMode: "picker", minWidth: COL_WIDTHS.AMOUNT, align: "center", fieldClass: "A", dictKind: "priceType", suggestField: "priceType", confirmStrategy: "direct", scenes: ["workbench"], order: 60 },
   { key: "amount", title: "金额", renderMode: "static", minWidth: COL_WIDTHS.AMOUNT, align: "center", scenes: ["workbench"], order: 70 },
-  { key: "remark", title: "备注", dataIndex: "remark", renderMode: "custom", minWidth: COL_WIDTHS.REMARK_S, align: "center", fieldClass: "A", suggestField: "remark", confirmStrategy: "direct", scenes: ["workbench"], order: 80 },
-  { key: "categoryName", title: "分类", dataIndex: "categoryName", renderMode: "custom", minWidth: COL_WIDTHS.TAG_L, align: "center", fieldClass: "A", dictKind: "category", suggestField: "category", confirmStrategy: "dialog", scenes: ["archive"], order: 10 },
-  { key: "mainImageUrl", title: "图", dataIndex: "sku", renderMode: "custom", minWidth: COL_WIDTHS.ICON, align: "center", scenes: ["archive"], order: 20 },
-  { key: "productName", title: "产品名", dataIndex: "productName", renderMode: "custom", minWidth: COL_WIDTHS.NAME_QUOTE, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["archive"], order: 30 },
-  { key: "brandName", title: "品牌", dataIndex: "brandName", renderMode: "custom", minWidth: COL_WIDTHS.NAME_S, align: "left", className: "ds-cascade-col", fieldClass: "A", dictKind: "brand", suggestField: "brand", confirmStrategy: "dialog", scenes: ["archive"], order: 40 },
-  { key: "specModel", title: "系列/规格", dataIndex: "specModel", renderMode: "custom", minWidth: COL_WIDTHS.NAME_S, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["archive"], order: 50 },
-  { key: "__skuPriceSlot__", title: "", renderMode: "custom", scenes: ["archive"], slot: "skuPrice", order: 60 },
-  { key: "remark", title: "备注", dataIndex: "remark", renderMode: "custom", minWidth: COL_WIDTHS.REMARK_S, align: "center", fieldClass: "A", suggestField: "remark", confirmStrategy: "direct", scenes: ["archive"], order: 70 },
-  { key: "status", title: "状态", dataIndex: "sku", renderMode: "custom", minWidth: COL_WIDTHS.TAG_S, align: "center", scenes: ["archive"], order: 80 },
-  { key: "updateTime", title: "更新时间", dataIndex: "sku", renderMode: "custom", minWidth: COL_WIDTHS.DATETIME, align: "center", scenes: ["archive"], order: 90 },
+  { key: "remark", title: "备注", dataIndex: "remark", renderMode: "picker", minWidth: COL_WIDTHS.REMARK_S, align: "center", fieldClass: "A", suggestField: "remark", confirmStrategy: "direct", scenes: ["workbench"], order: 80 },
+  { key: "categoryName", title: "分类", dataIndex: "categoryName", renderMode: "picker", minWidth: COL_WIDTHS.TAG_L, align: "center", fieldClass: "A", dictKind: "category", suggestField: "category", confirmStrategy: "dialog", scenes: ["archive"], order: 10 },
+  { key: "mainImageUrl", title: "图", dataIndex: "sku", renderMode: "static", minWidth: COL_WIDTHS.ICON, align: "center", scenes: ["archive"], order: 20 },
+  { key: "productName", title: "产品名", dataIndex: "productName", renderMode: "static", minWidth: COL_WIDTHS.NAME_QUOTE, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["archive"], order: 30 },
+  { key: "brandName", title: "品牌", dataIndex: "brandName", renderMode: "picker", minWidth: COL_WIDTHS.NAME_S, align: "left", className: "ds-cascade-col", fieldClass: "A", dictKind: "brand", suggestField: "brand", confirmStrategy: "dialog", scenes: ["archive"], order: 40 },
+  { key: "specModel", title: "系列/规格", dataIndex: "specModel", renderMode: "picker", minWidth: COL_WIDTHS.NAME_S, align: "left", className: "ds-cascade-col", fieldClass: "B", confirmStrategy: "dialog", scenes: ["archive"], order: 50 },
+  { key: "__skuPriceSlot__", title: "", renderMode: "static", scenes: ["archive"], slot: "skuPrice", order: 60 },
+  { key: "remark", title: "备注", dataIndex: "remark", renderMode: "picker", minWidth: COL_WIDTHS.REMARK_S, align: "center", fieldClass: "A", suggestField: "remark", confirmStrategy: "direct", scenes: ["archive"], order: 70 },
+  { key: "status", title: "状态", dataIndex: "sku", renderMode: "static", minWidth: COL_WIDTHS.TAG_S, align: "center", scenes: ["archive"], order: 80 },
+  { key: "updateTime", title: "更新时间", dataIndex: "sku", renderMode: "static", minWidth: COL_WIDTHS.DATETIME, align: "center", scenes: ["archive"], order: 90 },
 ];
 
 const customerFields: EntityFieldSpec[] = [
@@ -44,20 +44,20 @@ const supplierFields: EntityFieldSpec[] = [
 const inventoryFields: EntityFieldSpec[] = [
   { key: "op", title: "操作", dataIndex: "op", renderMode: "text", minWidth: 120, align: "center", scenes: ["inventory"], order: 0 },
   { key: "product", title: "产品", dataIndex: "productName", renderMode: "text", minWidth: 240, align: "center", scenes: ["inventory"], order: 10 },
-  { key: "unit", title: "单位", dataIndex: "unitName", renderMode: "custom", minWidth: 60, align: "center", scenes: ["inventory"], order: 20 },
+  { key: "unit", title: "单位", dataIndex: "unitName", renderMode: "static", minWidth: 60, align: "center", scenes: ["inventory"], order: 20 },
   { key: "warehouse", title: "仓库", dataIndex: "warehouse_id", renderMode: "text", minWidth: 110, align: "center", scenes: ["inventory"], order: 30 },
-  { key: "qty", title: "库存数量", dataIndex: "qty", renderMode: "custom", minWidth: 100, align: "center", scenes: ["inventory"], order: 40 },
-  { key: "weighted_avg_cost", title: "加权平均进价", dataIndex: "weighted_avg_cost", renderMode: "custom", minWidth: 110, align: "center", scenes: ["inventory"], order: 50 },
-  { key: "last_in_at", title: "最近入库", dataIndex: "last_in_at", renderMode: "custom", minWidth: 150, align: "center", scenes: ["inventory"], order: 60 },
+  { key: "qty", title: "库存数量", dataIndex: "qty", renderMode: "static", minWidth: 100, align: "center", scenes: ["inventory"], order: 40 },
+  { key: "weighted_avg_cost", title: "加权平均进价", dataIndex: "weighted_avg_cost", renderMode: "static", minWidth: 110, align: "center", scenes: ["inventory"], order: 50 },
+  { key: "last_in_at", title: "最近入库", dataIndex: "last_in_at", renderMode: "static", minWidth: 150, align: "center", scenes: ["inventory"], order: 60 },
 ];
 
 const inventory_ledgerFields: EntityFieldSpec[] = [
-  { key: "movement_type", title: "类型", dataIndex: "movement_type", renderMode: "custom", minWidth: 70, align: "center", order: 0 },
-  { key: "qty", title: "数量", dataIndex: "qty", renderMode: "custom", minWidth: 80, align: "center", order: 10 },
-  { key: "unit_cost", title: "单价", dataIndex: "unit_cost", renderMode: "custom", minWidth: 80, align: "center", order: 20 },
-  { key: "biz_no", title: "业务单号", dataIndex: "biz_no", renderMode: "custom", minWidth: 160, align: "center", order: 30 },
-  { key: "balance_qty", title: "结存", dataIndex: "balance_qty", renderMode: "custom", minWidth: 80, align: "center", order: 40 },
-  { key: "created_at", title: "时间", dataIndex: "created_at", renderMode: "custom", minWidth: 160, align: "center", order: 50 },
+  { key: "movement_type", title: "类型", dataIndex: "movement_type", renderMode: "static", minWidth: 70, align: "center", order: 0 },
+  { key: "qty", title: "数量", dataIndex: "qty", renderMode: "static", minWidth: 80, align: "center", order: 10 },
+  { key: "unit_cost", title: "单价", dataIndex: "unit_cost", renderMode: "static", minWidth: 80, align: "center", order: 20 },
+  { key: "biz_no", title: "业务单号", dataIndex: "biz_no", renderMode: "static", minWidth: 160, align: "center", order: 30 },
+  { key: "balance_qty", title: "结存", dataIndex: "balance_qty", renderMode: "static", minWidth: 80, align: "center", order: 40 },
+  { key: "created_at", title: "时间", dataIndex: "created_at", renderMode: "static", minWidth: 160, align: "center", order: 50 },
 ];
 
 const inbound_taskFields: EntityFieldSpec[] = [
@@ -65,8 +65,8 @@ const inbound_taskFields: EntityFieldSpec[] = [
   { key: "supplier", title: "供应商", dataIndex: "supplierName", renderMode: "text", minWidth: 160, align: "center", order: 20 },
   { key: "total_qty", title: "数量", dataIndex: "total_qty", renderMode: "text", minWidth: 80, align: "center", order: 30 },
   { key: "total_amount", title: "金额", dataIndex: "total_amount", renderMode: "text", minWidth: 90, align: "center", order: 40 },
-  { key: "status", title: "状态", dataIndex: "status", renderMode: "custom", minWidth: 80, align: "center", order: 50 },
-  { key: "created_at", title: "生成时间", dataIndex: "created_at", renderMode: "custom", minWidth: 150, align: "center", order: 60 },
+  { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 80, align: "center", order: 50 },
+  { key: "created_at", title: "生成时间", dataIndex: "created_at", renderMode: "static", minWidth: 150, align: "center", order: 60 },
 ];
 
 const inbound_lineFields: EntityFieldSpec[] = [
@@ -82,8 +82,8 @@ const backorderFields: EntityFieldSpec[] = [
   { key: "unit", title: "单位", dataIndex: "unitName", renderMode: "text", minWidth: 60, align: "center", order: 20 },
   { key: "qty", title: "欠库数量", dataIndex: "qty", renderMode: "text", minWidth: 90, align: "center", order: 30 },
   { key: "note", title: "备注", dataIndex: "note", renderMode: "text", minWidth: 120, align: "center", order: 40 },
-  { key: "status", title: "状态", dataIndex: "status", renderMode: "custom", minWidth: 80, align: "center", order: 50 },
-  { key: "created_at", title: "挂欠时间", dataIndex: "created_at", renderMode: "custom", minWidth: 150, align: "center", order: 60 },
+  { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 80, align: "center", order: 50 },
+  { key: "created_at", title: "挂欠时间", dataIndex: "created_at", renderMode: "static", minWidth: 150, align: "center", order: 60 },
 ];
 
 const purchase_inboundFields: EntityFieldSpec[] = [
@@ -92,16 +92,16 @@ const purchase_inboundFields: EntityFieldSpec[] = [
   { key: "warehouseName", title: "仓库", dataIndex: "warehouseName", renderMode: "text", minWidth: 140, align: "center", order: 30 },
   { key: "totalQty", title: "数量", dataIndex: "totalQty", renderMode: "text", minWidth: 90, align: "center", order: 40 },
   { key: "totalAmount", title: "金额", dataIndex: "totalAmount", renderMode: "text", minWidth: 90, align: "center", order: 50 },
-  { key: "status", title: "状态", dataIndex: "status", renderMode: "custom", minWidth: 100, align: "center", order: 60 },
-  { key: "confirmedAt", title: "确认时间", dataIndex: "confirmedAt", renderMode: "custom", minWidth: 150, align: "center", order: 70 },
+  { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 100, align: "center", order: 60 },
+  { key: "confirmedAt", title: "确认时间", dataIndex: "confirmedAt", renderMode: "static", minWidth: 150, align: "center", order: 70 },
 ];
 
 const staff_documentFields: EntityFieldSpec[] = [
   { key: "documentNo", title: "单据号", dataIndex: "documentNo", renderMode: "text", minWidth: 170, align: "left", order: 10 },
   { key: "customer", title: "客户信息", dataIndex: "customerName", renderMode: "text", minWidth: 180, align: "left", order: 30 },
-  { key: "purchaseQuoteStatus", title: "本环节状态", dataIndex: "purchaseQuoteStatus", renderMode: "custom", minWidth: 110, align: "center", order: 40 },
+  { key: "purchaseQuoteStatus", title: "本环节状态", dataIndex: "purchaseQuoteStatus", renderMode: "static", minWidth: 110, align: "center", order: 40 },
   { key: "totalAmount", title: "金额摘要", dataIndex: "totalAmount", renderMode: "text", minWidth: 130, align: "right", order: 60 },
-  { key: "updatedAt", title: "更新时间", dataIndex: "updatedAt", renderMode: "custom", minWidth: 170, align: "left", order: 70 },
+  { key: "updatedAt", title: "更新时间", dataIndex: "updatedAt", renderMode: "static", minWidth: 170, align: "left", order: 70 },
 ];
 
 const audit_logFields: EntityFieldSpec[] = [
@@ -109,22 +109,22 @@ const audit_logFields: EntityFieldSpec[] = [
   { key: "resourceType", title: "资源类型", dataIndex: "resourceType", renderMode: "text", minWidth: 130, align: "left", order: 30 },
   { key: "resourceId", title: "资源 ID", dataIndex: "resourceId", renderMode: "text", minWidth: 160, align: "left", order: 40 },
   { key: "ipAddress", title: "IP 地址", dataIndex: "ipAddress", renderMode: "text", minWidth: 140, align: "left", order: 50 },
-  { key: "createdAt", title: "操作时间", dataIndex: "createdAt", renderMode: "custom", minWidth: 170, align: "left", order: 60 },
+  { key: "createdAt", title: "操作时间", dataIndex: "createdAt", renderMode: "static", minWidth: 170, align: "left", order: 60 },
 ];
 
 const auth_codeFields: EntityFieldSpec[] = [
   { key: "code", title: "授权码", dataIndex: "code", renderMode: "text", minWidth: 200, align: "left", order: 10 },
   { key: "phone", title: "绑定手机", dataIndex: "phone", renderMode: "text", minWidth: 150, align: "left", order: 20 },
-  { key: "createdAt", title: "创建时间", dataIndex: "createdAt", renderMode: "custom", minWidth: 170, align: "left", order: 30 },
-  { key: "expiresAt", title: "过期时间", dataIndex: "expiresAt", renderMode: "custom", minWidth: 170, align: "left", order: 40 },
+  { key: "createdAt", title: "创建时间", dataIndex: "createdAt", renderMode: "static", minWidth: 170, align: "left", order: 30 },
+  { key: "expiresAt", title: "过期时间", dataIndex: "expiresAt", renderMode: "static", minWidth: 170, align: "left", order: 40 },
 ];
 
 const access_requestFields: EntityFieldSpec[] = [
   { key: "phone", title: "登录账号", dataIndex: "phone", renderMode: "text", minWidth: 160, align: "left", order: 10 },
-  { key: "status", title: "状态", dataIndex: "status", renderMode: "custom", minWidth: 110, align: "center", order: 20 },
-  { key: "createdAt", title: "申请时间", dataIndex: "createdAt", renderMode: "custom", minWidth: 170, align: "left", order: 30 },
+  { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 110, align: "center", order: 20 },
+  { key: "createdAt", title: "申请时间", dataIndex: "createdAt", renderMode: "static", minWidth: 170, align: "left", order: 30 },
   { key: "reviewer", title: "审核人", dataIndex: "reviewedBy", renderMode: "text", minWidth: 130, align: "left", order: 40 },
-  { key: "reviewedAt", title: "审核时间", dataIndex: "reviewedAt", renderMode: "custom", minWidth: 170, align: "left", order: 50 },
+  { key: "reviewedAt", title: "审核时间", dataIndex: "reviewedAt", renderMode: "static", minWidth: 170, align: "left", order: 50 },
   { key: "rejectReason", title: "拒绝原因", dataIndex: "rejectReason", renderMode: "text", minWidth: 140, align: "left", order: 60 },
 ];
 
@@ -133,8 +133,8 @@ const admin_userFields: EntityFieldSpec[] = [
   { key: "username", title: "用户名", dataIndex: "username", renderMode: "text", minWidth: 140, align: "left", order: 20 },
   { key: "realName", title: "真实姓名", dataIndex: "realName", renderMode: "text", minWidth: 120, align: "left", order: 30 },
   { key: "phone", title: "手机号", dataIndex: "phone", renderMode: "text", minWidth: 150, align: "left", order: 40 },
-  { key: "status", title: "状态", dataIndex: "status", renderMode: "custom", minWidth: 90, align: "center", order: 50 },
-  { key: "createdAt", title: "创建时间", dataIndex: "createdAt", renderMode: "custom", minWidth: 170, align: "left", order: 60 },
+  { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 90, align: "center", order: 50 },
+  { key: "createdAt", title: "创建时间", dataIndex: "createdAt", renderMode: "static", minWidth: 170, align: "left", order: 60 },
 ];
 
 const supplier_payableFields: EntityFieldSpec[] = [
@@ -142,8 +142,8 @@ const supplier_payableFields: EntityFieldSpec[] = [
   { key: "supplierName", title: "供应商", dataIndex: "supplierName", renderMode: "text", minWidth: 160, align: "center", order: 20 },
   { key: "biz_no", title: "业务单号", dataIndex: "biz_no", renderMode: "text", minWidth: 150, align: "center", order: 30 },
   { key: "amount", title: "应付金额", dataIndex: "amount", renderMode: "text", minWidth: 110, align: "center", order: 40 },
-  { key: "status", title: "状态", dataIndex: "status", renderMode: "custom", minWidth: 90, align: "center", order: 50 },
-  { key: "created_at", title: "生成时间", dataIndex: "created_at", renderMode: "custom", minWidth: 150, align: "center", order: 60 },
+  { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 90, align: "center", order: 50 },
+  { key: "created_at", title: "生成时间", dataIndex: "created_at", renderMode: "static", minWidth: 150, align: "center", order: 60 },
 ];
 
 const report_rangeFields: EntityFieldSpec[] = [

@@ -6,7 +6,9 @@
  * 所以 14 处 custom 逃逸 / HIGH 漂移信号长期躺在报告里无人处理。
  * 本脚本把信号雷达变成**会拦合入的门禁**：
  *   - liveCustom > 0  → 阻断（列逃进 custom = 认输，必须归类到 L4 三维参数）
- *   - 存在 HIGH 信号  → 阻断（门禁漂移 / 资产路径缺失等）
+ *   - 存在 HIGH 信号  → 阻断（资产路径缺失 / 平台层平行实现等）
+ *     （不含"门禁未过"：门禁状态以 verify 自身退出码为唯一权威，
+ *       S9 若再判一遍会与主线重复且自引用死循环，详见下方 HIGH 判定处的注释）
  *
  * 与 verify.mjs 集成：作为独立 stage（建议 S10）加入；退出码 0=放行，1=阻断。
  * 设计原则（对齐 QA 安全网"真实·可机判·非0即失败"）：
@@ -42,12 +44,15 @@ try {
 const liveCustom = report.liveCustom || 0;
 const signals = report.signals || [];
 
-// 排除「verify 门禁漂移类」HIGH（如「门禁 S1 fe-typecheck = FAIL」），原因：
-//   1) 这类信号是 verify 主线的重复判定，S9 不该越俎代庖；
-//   2) 避免自引用死循环——S9 自己失败时 scan-signals 会写一条「门禁 S9 ... = FAIL」HIGH，
-//      下次 S9 又读到它而失败，永红。白名单/真实 HIGH 仍走下方判定。
-const isVerifyDrift = (s) => /^门禁\s+S?\d/i.test(s.title || '') || /verify/i.test(s.title || '');
-const highSignals = signals.filter((s) => s.severity === 'HIGH' && !isVerifyDrift(s));
+// HIGH 信号一律计入，不再开任何"按标题正则排除"的白名单。
+// 此前这里有一条 isVerifyDrift 排除「门禁 S1 fe-typecheck = FAIL」这类 HIGH，
+// 已连同上游发射端（scan-signals 的「漂移：门禁未过」段）一起删除，理由：
+//   1) 门禁状态的权威只有 verify 自身退出码，S9 重复判定属于越俎代庖；
+//   2) 两进程独立 + verify 跑 ~95s，扫描必然读到上一份快照 → 实测误报过
+//      「门禁 S1 = FAIL」为 HIGH，而实测 verify:static 是 12/12 PASS；
+//   3) 存在自引用死循环：S9 失败 → 写入「门禁 S9 FAIL」HIGH → 下次 S9 又读到 → 永红。
+// 现在上游不再发射这类 HIGH，白名单留着只会变成"排除规则的债"，故一并移除。
+const highSignals = signals.filter((s) => s.severity === 'HIGH');
 const highCount = highSignals.length;
 
 // 关键收窄（避免假阳性）：custom 逃逸只拦「业务页手写」这一类。
@@ -96,7 +101,7 @@ if (pageCustomCount > 0) {
   problems.push(`业务页手写 custom 列 ${pageCustomCount} 处未清零（列逃进 custom = 认输，必须归类到 L4 三维参数：display × editEntry × valueState）`);
 }
 if (highCount > 0) {
-  problems.push(`HIGH 信号 ${highCount} 条未处理（门禁漂移 / 资产路径缺失等）`);
+  problems.push(`HIGH 信号 ${highCount} 条未处理（资产路径缺失 / 平台层平行实现等）`);
 }
 
 if (problems.length) {
@@ -107,7 +112,7 @@ if (problems.length) {
     blockingCustom.forEach((s) => console.error('    · ' + s.title));
   }
   if (highCount > 0) {
-    console.error('\n  HIGH 信号清单（已排除 verify 门禁漂移类）：');
+    console.error('\n  HIGH 信号清单：');
     highSignals
       .slice(0, 30)
       .forEach((s) => console.error('    · [' + (s.bucket || '-') + '] ' + s.title));

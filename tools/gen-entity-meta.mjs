@@ -414,10 +414,91 @@ rel += '// 元模型运行时 · 阶段 E：界面列登记表由真相源驱动
 rel += "import { COL_WIDTHS } from '../components/table/colWidths.js';\n";
 rel += "import type { EntityRelation, EntityFieldSpec } from './entityRelations.types.js';\n\n";
 
+// ---------- ③-a legacy renderMode 派生（L4 三维 → legacy 单维） ----------
+/**
+ * 从 L4 三维 cellSpec 派生 legacy 单维 renderMode。
+ *
+ * 为什么必须派生、不能兜底成 'custom'：
+ *   legacy renderMode 与 L4 cellSpec 是同一份 yml 产出的两套列声明（双轨）。
+ *   yml 没显式写 renderMode 时，原实现粗暴兜底成 'custom'（语义 = "无法归类"），
+ *   于是生成物里凭空多出一批「逃进 custom」的列被信号门禁计为治理债——
+ *   而这些列其实就在同一行 yml 里写了 cellSpec 三维声明，行为早就定死了。
+ *   派生让两套声明从同一份真相收敛，而不是各自漂移。
+ *
+ * 映射口径：只取既有取值（static/text/number/picker），不自造新值——
+ *   取值集合见 entityRelations.types.ts 的 FieldRenderMode 与 CellEditor.types.ts 的
+ *   UnifiedTableColumn.renderMode（两者已对齐）。
+ *   editEntry=inline  → number（display=number）否则 text（就地编辑）
+ *   editEntry=confirm → picker（确认层 / 字典检索入口，对应 InteractionLayer 的 picker 编辑器）
+ *   editEntry=link / expand → static（交互体在格内 render 里，不是编辑器，不进 InteractionLayer）
+ *   editEntry=none / 其它 → static
+ *   无 cellSpec → static（兜底）
+ *
+ * 兜底为什么是 static 而不是 custom：UnifiedTable 对这两值的处理逐字相同
+ *   （都不接管单元格、都不进键盘导航，见 UnifiedTable.tsx:509 的 editableCol 判定
+ *   与 :575 的 focusCell 早退），但 static 的语义是「格内自管交互」，是 L4 的合法扩展点；
+ *   custom 的语义是「无法归类」= 认输，用它等于把手写 render 开回后门。
+ */
+function deriveRenderMode(cellSpec) {
+  const cs = cellSpec || {};
+  const display = cs.display || 'text';
+  switch (cs.editEntry || 'none') {
+    case 'inline':
+      return display === 'number' ? 'number' : 'text';
+    case 'confirm':
+      return 'picker';
+    case 'link':
+    case 'expand':
+    case 'none':
+    default:
+      return 'static';
+  }
+}
+
+/** 某列最终生效的 legacy renderMode：yml 显式声明优先，未声明才从 cellSpec 派生。
+ *  显式优先是「yml 是唯一真相源」的应有之义——派生只补缺省，从不覆盖人的判断。 */
+function effectiveRenderMode(col) {
+  return col.renderMode ?? deriveRenderMode(col.cellSpec);
+}
+
+// ---------- ③-c 配置纪律守卫：custom 逃逸即阻断（exit 1） ----------
+// 为什么是硬门禁而不是告警：custom 的语义是「无法归类」，一旦放行进生成物，列行为就脱离
+//   配置驱动、退回手写，而这正是本项目「列行为参数 = 配置」不变量要防的事。
+//   告警等于默许它长期存在——只告警的历史结果就是：44 处 custom 在生成物里躺到被信号门禁点名。
+// 为什么 --check 模式也拦：S0 对拍跑的就是 --check，只让普通模式拦等于留后门。
+// 为什么放在拼接 ③ 段字符串之前：先校验再产出，红了就不写 entityRelations 生成物。
+//   注意「不写盘」只对 ③ 成立——① 前端登记表与 ② 后端登记表在本函数之前已写盘，
+//   但它们的内容不含 renderMode、也不读 columns 段，故不会留下被 custom 污染的产物；
+//   真正会被 custom 污染的 ③ 一定不落地。（另一处 vocabulary/L1 校验同理，在 ① 之前，全量不写盘。）
+function validateRenderModeDiscipline(relEntities) {
+  const escaped = [];
+  let total = 0;
+  for (const [key, ent] of relEntities) {
+    for (const c of ent.columns || []) {
+      total += 1;
+      if (effectiveRenderMode(c) === 'custom') escaped.push(`${key}.${c.key}`);
+    }
+  }
+  if (!escaped.length) {
+    console.log(`✓ 列渲染模式纪律通过：${total} 列全部可归类（custom 逃逸 0 处）`);
+    return;
+  }
+  console.error(`✗ 列渲染模式纪律未通过：${total} 列中 ${escaped.length} 列最终 renderMode 是 'custom'：`);
+  for (const k of escaped) console.error('  - ' + k);
+  console.error('');
+  console.error("  custom 的语义是「无法归类」= 认输，列行为必须由配置说出，不能靠手写。");
+  console.error('  修法（按优先级）：');
+  console.error('    ① 给该列补 cellSpec 三维声明（display × editEntry × valueState），renderMode 由生成器派生；');
+  console.error('    ② 确实无法归入 cellSpec 的，在 yml 里显式写 renderMode（picker / text / number / static 任选），');
+  console.error("       别再写 custom —— 它与 static 渲染完全等价，但 static 才是 L4 的合法扩展点。");
+  console.error('  （改 data-source/entity-meta.yml，不要手改 *.generated.*）');
+  process.exit(1);
+}
+
 const colToTs = (c) => {
   const parts = [`key: ${JSON.stringify(c.key)}`, `title: ${JSON.stringify(c.title ?? '')}`];
   if (c.dataIndex != null) parts.push(`dataIndex: ${JSON.stringify(c.dataIndex)}`);
-  parts.push(`renderMode: ${JSON.stringify(c.renderMode ?? 'custom')}`);
+  parts.push(`renderMode: ${JSON.stringify(effectiveRenderMode(c))}`);
   if (c.minWidth != null) {
     parts.push(`minWidth: ${typeof c.minWidth === 'number' ? String(c.minWidth) : `COL_WIDTHS.${c.minWidth}`}`);
   }
@@ -436,6 +517,8 @@ const colToTs = (c) => {
 };
 
 const relEntities = Object.entries(entities).filter(([, e]) => e.columns?.length);
+validateRenderModeDiscipline(relEntities);
+
 for (const [key, ent] of relEntities) {
   rel += `const ${key}Fields: EntityFieldSpec[] = [\n`;
   for (const c of ent.columns) rel += `  ${colToTs(c)},\n`;
@@ -500,22 +583,6 @@ for (const [key, ent] of relEntities) {
   }
 }
 rel += '};\n\n';
-
-// ③-c 配置纪律自检（开发期）：yml 声明了 renderMode:custom 的列，必须同时登记 cellSpec，
-// 否则等于「框架开后门手写」，与「列只由配置+注册组件产出」原则冲突。仅告警，不阻断其余页面生成。
-const customWithoutSpec = [];
-for (const [key, ent] of relEntities) {
-  for (const c of ent.columns || []) {
-    if (c.renderMode === 'custom' && !c.cellSpec) {
-      customWithoutSpec.push(`${key}.${c.key}`);
-    }
-  }
-}
-if (customWithoutSpec.length && !CHECK) {
-  console.warn(
-    `⚠ 配置纪律：以下列仍是 renderMode:custom 且未登记 cellSpec（应迁移到配置驱动）：\n   - ${customWithoutSpec.join('\n   - ')}`,
-  );
-}
 
 emit(relOut, rel);
 

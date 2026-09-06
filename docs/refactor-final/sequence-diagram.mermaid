@@ -1,0 +1,54 @@
+sequenceDiagram
+    autonumber
+    participant Dev as 工程师
+    participant YML as data-source/entity-meta.yml
+    participant GEN as tools/gen-entity-meta.mjs
+    participant REL as entityRelations.generated.ts
+    participant PAGE as 业务页
+    participant COMP as compositeColumns.tsx
+    participant REG as editorRegistry.tsx
+    participant HOST as ArchiveSlotHost
+    participant VERIFY as tools/verify.mjs
+    participant SCAN as tools/scan-signals.mjs
+    participant GATE as tools/check-signal-gate.mjs
+
+    Note over Dev,GATE: ① T02 · B-类1：生成物 44 处归零（真相源唯一）
+    Dev->>YML: 7 处 product/workbench 列补显式 renderMode: picker
+    Dev->>GEN: colToTs 改由 deriveRenderMode(cellSpec) 派生
+    Dev->>GEN: ③-c 自检升级：yml 再写 renderMode:custom 即 exit 1
+    Dev->>GEN: node tools/gen-entity-meta.mjs
+    GEN->>REL: 重写（禁手改）
+    Dev->>VERIFY: npm run verify:static
+    VERIFY->>GEN: S0 --check 对拍（yml ↔ generated）
+    GEN-->>VERIFY: 一致 ✓
+
+    Note over Dev,GATE: ② T03 · B-类2/3：平台层 7 + 业务页 16 归零
+    Dev->>COMP: 新增 7 个复合列工厂（统一 renderMode:'static'）
+    Dev->>REG: 平台层 name/scalar 槽改走 cellSpecToColumnWithEditor
+    Dev->>HOST: readonly/childLevels/status → static / panelColumn / tagColumn
+    Dev->>PAGE: 16 处改用工厂或直接 static
+    Dev->>VERIFY: npm run verify:static
+    VERIFY->>VERIFY: S0b arch-lint（apps → shared 单向）
+    VERIFY->>VERIFY: S3c cell-layer（禁止新增对外 *Cell 导出）
+    VERIFY->>VERIFY: S3b vitest（含新增工厂单测 + 变异验证）
+
+    Note over Dev,GATE: ③ T01 · A 项：取消信号雷达的重复判定链
+    Dev->>SCAN: 删除「漂移：门禁未过」整段（L116-126）
+    Dev->>SCAN: 加 stripComments + freshness 元数据
+    Dev->>GATE: 删除 isVerifyDrift 白名单（L45-51）
+    Dev->>VERIFY: npm run verify:static
+    VERIFY->>GATE: S9 signal-gate（spawn scan-signals）
+    GATE-->>VERIFY: liveCustom=0 且 HIGH=0 → PASS
+
+    Note over Dev,VERIFY: ④ T04 · C 项：product 统一化收口
+    Dev->>PAGE: productEditSlots 5 个 custom 槽 → cascade/matrix/scalar
+    Dev->>COMP: 复用 T03 的工厂
+    Dev->>PAGE: 抽 productArchiveDef.tsx，ProductManage 降到 <200 行
+    Dev->>VERIFY: 分组/平铺双模式 e2e + 弹窗五区块回归
+
+    Note over Dev,VERIFY: ⑤ T05 · F/G 项：FK 漂移 + S8/S12（与前端全程并行）
+    Dev->>VERIFY: 注册 S8(migrate-replay) / S12(golden-e2e)
+    VERIFY->>VERIFY: S8：空库 migrate deploy → schema 哈希 → FK diff（仅拦 DROP+ADD 同名）
+    VERIFY->>VERIFY: S12：TenantContext A/B 在真 MySQL 上互不可见
+    VERIFY-->>Dev: FK 漂移权威清单（v11.0 解耦项由白名单吸收）
+    Dev->>YML: schema.prisma 8 处 onDelete/onUpdate 对齐 DB（默认改声明不改库）

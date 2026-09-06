@@ -1,0 +1,176 @@
+classDiagram
+    class UnifiedTableColumn {
+        +string key
+        +ReactNode title
+        +string dataIndex
+        +'static'|'text'|'number'|'picker'|'custom' renderMode
+        +render(value, record, rowIndex) ReactNode
+        +number minWidth
+        +align
+        +fitContent
+        +getFitText(record) string
+    }
+
+    class CellSpec {
+        +string key
+        +CellDisplay display
+        +CellEditEntry editEntry
+        +CellValueState valueState
+        +value(record) string
+        +color(record) string
+        +disabledReason(record) string
+        +CellGateSpec gate
+    }
+    class CellDisplay
+    class CellEditEntry
+    CellSpec --> CellDisplay
+    CellSpec --> CellEditEntry
+
+    class ArchiveSlotHost {
+        +ArchiveEntityDef def
+        +buildColumns() UnifiedTableColumn[]
+        -renderSlot(slot) UnifiedTableColumn[]
+    }
+    class ArchiveEntityDef {
+        +displayLevel 'entity'|'parent'
+        +ArchiveChildLevel[] childLevels
+        +ArchiveEntityDef flatView
+        +ArchiveSlot[] slots
+        +status
+        +list(q)
+        +facets(field,kw,q)
+    }
+    class ArchiveSlot
+    class ArchiveNameSlot
+    class ArchiveScalarSlot
+    class ArchiveEnumSlot
+    class ArchiveMatrixSlot
+    class ArchiveToggleSlot
+    class ArchiveReadonlySlot
+    class ArchiveCascadeSlot
+    class ArchiveCustomSlot
+    class ArchiveColumnsSlot {
+        +'columns' kind
+        +columns(ctx) UnifiedTableColumn[]
+    }
+    class ArchiveChildLevel {
+        +string key
+        +childApi(parent,q)
+        +childColumns(ctx)
+        +summary(parent)
+        +childRender
+    }
+
+    ArchiveSlotHost --> ArchiveEntityDef : 消费
+    ArchiveEntityDef --> ArchiveSlot : slots[]
+    ArchiveEntityDef --> ArchiveChildLevel : childLevels[]
+    ArchiveEntityDef --> ArchiveEntityDef : flatView
+    ArchiveSlot <|-- ArchiveNameSlot
+    ArchiveSlot <|-- ArchiveScalarSlot
+    ArchiveSlot <|-- ArchiveEnumSlot
+    ArchiveSlot <|-- ArchiveMatrixSlot
+    ArchiveSlot <|-- ArchiveToggleSlot
+    ArchiveSlot <|-- ArchiveReadonlySlot
+    ArchiveSlot <|-- ArchiveCascadeSlot
+    ArchiveSlot <|-- ArchiveCustomSlot
+    ArchiveSlot <|-- ArchiveColumnsSlot
+
+    class CompositeColumns {
+        <<module>>
+        +tagColumn(layout, statusOf)
+        +labelColumn(layout, textOf)
+        +timeColumn(layout, getTime)
+        +panelColumn(layout, opts)
+        +multiTagColumn(layout, tagsOf)
+        +actionsColumn(layout, opts) NEW
+        +refTagColumn(layout, opts) NEW
+        +nameLinkColumn(layout, opts) NEW
+        +numberToneColumn(layout, opts) NEW
+        +boolTagColumn(layout, opts) NEW
+        +copyTextColumn(layout, opts) NEW
+        +imageNameColumn(layout, opts) NEW
+    }
+    CompositeColumns --> UnifiedTableColumn : 产出 renderMode='static'
+
+    class EditorRegistry {
+        <<module>>
+        +cellSpecToColumnWithEditor(spec, handlers, layout)
+        +editableColumn(spec, handlers, layout)
+        +cellSpecsWithEditorsToColumns(specs, h, l)
+    }
+    EditorRegistry --> CellSpec : 消费 GeneratedCellSpec
+    EditorRegistry --> UnifiedTableColumn : 产出 renderMode='static'
+
+    class ProductArchiveDef {
+        <<module>>
+        +buildProductArchiveDefs(ctx) ProductDefs
+    }
+    class ProductDefs {
+        +ArchiveEntityDef parentDef
+        +ArchiveEntityDef flatDef
+    }
+    class ProductEditSlots {
+        <<module>>
+        +buildProductEditDialogParts() Parts
+    }
+    class Parts {
+        +ArchiveSlot[] editSlots
+        +create(payload)
+        +update(id,payload)
+        +seed(row)
+        +loadSeed(row)
+        +beforeSave(ctx)
+        +collectPayload(...)
+        +validate(...)
+        +afterSave(...)
+    }
+    ProductArchiveDef --> ProductDefs
+    ProductArchiveDef --> ProductEditSlots : 取 editSlots
+    ProductArchiveDef --> CompositeColumns : 用工厂
+    ProductEditSlots --> Parts
+    Parts --> ArchiveSlot : editSlots[]
+
+    class ScanSignals {
+        <<script>>
+        +stripComments(src) string
+        +countCustom(src) number
+        +freshnessOf(report) Freshness
+        -verifyStageSignals() REMOVED
+    }
+    class CheckSignalGate {
+        <<script>>
+        +blocking: pageCustom > 0
+        +blocking: HIGH > 0
+        -isVerifyDrift() REMOVED
+    }
+    class GenEntityMeta {
+        <<script>>
+        +deriveRenderMode(col) string
+        +colToTs(col) string
+        +checkCustomDiscipline() exit1
+    }
+    GenEntityMeta --> UnifiedTableColumn : 产出列骨架 renderMode
+    ScanSignals --> CheckSignalGate : signal-report.json
+
+    class VerifyRunner {
+        <<script>>
+        +STAGES[]
+        +S8 migrate-replay NEW
+        +S12 golden-e2e NEW
+    }
+    class MigrateReplay {
+        <<script>>
+        +run() ReplayReport
+    }
+    class TenantIsolationE2E {
+        <<test>>
+        +run() void
+    }
+    VerifyRunner --> MigrateReplay : 子进程
+    VerifyRunner --> TenantIsolationE2E : 子进程
+    MigrateReplay --> CheckFkDrift : 内嵌 FK 漂移断言
+    class CheckFkDrift {
+        <<script>>
+        +diffFk() FkDiff[]
+        +V11_ALLOWLIST Set
+    }

@@ -466,7 +466,7 @@ npm run verify:static   # 服务没起时只跑静态部分 —— 此时不得�
 | 只读 / 门禁占位格 | `DisplayCell` · shared/components/product-picker/PickerInlineCells.tsx（-）· text/placeholder/rejectReason（门禁提示） |
 | 多记录状态机（空行晋升/追加/默认互斥） | `useMatrixRecords` · shared/hooks/useMatrixRecords.ts（-）· value/isDataRow/blank/normalize/onDirty |
 | 枚举记录矩阵（单位 + 换算率，列表侧） | `UnitManagePanel` · shared/components/UnitManagePanel.tsx（C19）· units/conversions/extensions{showBase,onSetBase,priceColumns}（编辑矩阵内的单位区已改用 MatrixTable，本组件用于列表侧独立单位管理） |
-| 集合编辑矩阵（集合体编辑弹窗统一形态：§A 根实体信息 → 中间层切换行 → 叶子挂载子表矩阵 → 价格展开面板） | `集合编辑矩阵（实例：ProductEditDialog）` · apps/staff/pages/product-manage/ProductEditDialog.tsx（-）· 描述时加集合体前缀（产品集合编辑矩阵 / 供应商集合编辑矩阵）；组装式：CascadeSwitchRow（中间层）+ MatrixTable（叶子挂载子表）+ ArchiveFieldCell（确认层格）+ UnitPriceExpandPanel（价格展开面板） |
+| 集合编辑矩阵（集合体编辑弹窗统一形态：§A 根实体信息 → 中间层切换行 → 叶子挂载子表矩阵 → 价格展开面板） | `集合编辑矩阵（宿主：ArchiveSlotHost）` · shared/components/archive/ArchiveSlotHost.tsx（-）· 描述时加集合体前缀（产品集合编辑矩阵 / 供应商集合编辑矩阵）；组装式：CascadeSwitchRow（中间层）+ MatrixTable（叶子挂载子表）+ ArchiveFieldCell（确认层格）+ UnitPriceExpandPanel（价格展开面板）；业务实例（产品集合编辑矩阵）在 apps/staff/pages/product-manage/productEditSlots.tsx，它以 slot 方式挂到本宿主上（原 ProductEditDialog.tsx 已删除，形态没消失、承载者换了） |
 | 中间层级联切换行（品牌/规格：下挂子记录 → 行切换） | `CascadeSwitchRow` · shared/components/CascadeSwitchRow.tsx（-）· label/options{key,label,active,editCell}/onSelect/addCell/editRow（仅中间层用；叶子挂载子表一律 MatrixTable，禁止误用行切换） |
 | 模态框（三载体之一） | `DsDialog` · shared/components/DsDialog.tsx（C07）· 相对 1200px 画布居中；max-width:none，容不下走 wrap 横滚 |
 | 悬浮定位框唯一基座（三载体之一） | `FloatPanel` · shared/components/FloatPanel.tsx（C60）· 锚定触发元素；title/children/footer 三段，确认取消钉底栏；画布内水平锚点；失焦/移动画布不关、点空白才关 |

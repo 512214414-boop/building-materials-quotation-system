@@ -17,7 +17,10 @@
  *
  * 信号桶（机械可判的部分；绕行/解释/冻结-人为类由 AI 每轮从对话捕获）：
  *   重复  同一关注点在平台层多出平行实现（比对唯一真相源目录 + 资产 params 签名）
- *   漂移  资产 path 缺失 / 门禁未过 / 现状数字与实测不符
+ *   漂移  资产 path 缺失 / 现状数字与实测不符
+ *         （**不含**"门禁未过"：门禁状态的权威只有 verify 自身退出码，S9 越俎代庖
+ *           不但重复判定，还会自引用死循环——S9 失败 → 写「门禁 S9 FAIL」HIGH →
+ *           下次 S9 读到又失败 → 永红。故该条已删除，见 git 历史与 signal-lib.mjs 注释）
  *   待补  仍逃在 custom 里的列（live 计数 vs 声称）
  *   冻结  平台层文件超 180 天未动（疑似无人敢改）
  *
@@ -27,6 +30,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripComments, freshnessMeta } from './signal-lib.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const METH = path.join(root, '文档可视化', 'data-source', 'methodology');
@@ -91,8 +95,23 @@ function parseAssets(text) {
 const assets = parseAssets(read(path.join(METH, '_assets.yml')));
 const uiDoc = read(path.join(METH, 'items', 'ui-layer-model.yml'));
 const claimedCustom = (uiDoc.match(/(\d+)\s*处\s*(?:列|custom)/g) || []).join(' / ') || '（未在 ui-layer-model.yml 找到声称数）';
+const verifyPath = path.join(root, 'verify-report.json');
 let verify = {};
-try { verify = JSON.parse(read(path.join(root, 'verify-report.json'))); } catch {}
+try { verify = JSON.parse(read(verifyPath)); } catch {}
+// freshness 只记录、不判定：不据此发射任何信号（理由见 signal-lib.mjs 的 freshnessMeta 注释）。
+// scan 与 verify 是两个独立进程（verify 跑 ~95s），"扫描读到比自己新的 verify 报告"在物理上
+// 不可能靠刷新频率消除；把这份年龄写进报告，是让读报告的人/AI 自己判断要不要重跑。
+const verifyFreshness = freshnessMeta(verifyPath);
+// 退一步：verify-report.json 没写 generatedAt 时，用文件 mtime 兜底，避免"未知"被当成"新鲜"
+if (!verifyFreshness.generatedAt) {
+  try {
+    const mtime = fs.statSync(verifyPath).mtimeMs;
+    verifyFreshness.generatedAt = new Date(mtime).toISOString();
+    verifyFreshness.ageMs = Date.now() - mtime;
+    verifyFreshness.stale = verifyFreshness.ageMs > 24 * 3600 * 1000;
+    verifyFreshness.error = `${verifyFreshness.error || '缺少 generatedAt'}（已用文件 mtime 兜底）`;
+  } catch { /* 连文件都没有：保持 stale=true + error */ }
+}
 
 const allFiles = walk(FE);
 const sharedFiles = allFiles.filter((f) => f.split(path.sep).includes('shared'));
@@ -109,18 +128,6 @@ for (const a of assets) {
       title: `资产 ${a.name} 路径缺失`, detail: a.path,
       files: [a.path], suggestedAction: '核对资产路径或回写 _assets.yml',
       targetState: '_assets.yml 与代码一致（每资产唯一 path）',
-    });
-  }
-}
-
-// ---------- 漂移：门禁未过 ----------
-for (const st of verify.stages || []) {
-  if (st.status !== 'PASS') {
-    signals.push({
-      bucket: '漂移', severity: 'HIGH', rule: '漂移信号：架构/验收门禁未过',
-      title: `门禁 ${st.id} ${st.name} = ${st.status}`, detail: st.why || '',
-      files: ['verify-report.json'], suggestedAction: '先修门禁再继续功能开发',
-      targetState: 'verify 全绿',
     });
   }
 }
@@ -163,11 +170,15 @@ for (const f of sharedFiles) {
 }
 
 // ---------- 待补：仍逃在 custom 的列（live 计数 vs 声称）----------
+// 先剥离注释再计数：注释里的示例文本不是真代码。已实测抓到 2 处纯误判——
+//   shared/components/table/editorRegistry.tsx  「页面不再出现 renderMode:'custom'…」
+//   apps/staff/pages/workbench/views/PurchaseQuote.tsx 「页面不再手写 renderMode:'custom' 的 render…」
+// 这两句恰恰是**描述治理成果的注释**，却被计成"逃逸"，属于自相矛盾的噪声。
 const customRe = /renderMode:\s*['"]custom['"]/g;
 let liveCustom = 0;
 const customFiles = {};
 for (const f of allFiles) {
-  const c = read(f).match(customRe);
+  const c = stripComments(read(f)).match(customRe);
   if (c) { customFiles[rel(f)] = c.length; liveCustom += c.length; }
 }
 for (const [f, n] of Object.entries(customFiles)) {
@@ -211,6 +222,18 @@ const report = {
   liveCustom,
   claimedCustom,
   frozenCount: frozen,
+  // freshness：仅元数据，供人/AI 判断"要不要重跑一次 verify 再看"。不参与信号判定。
+  reportAgeMs: verifyFreshness.ageMs,
+  staleAfterMs: 24 * 3600 * 1000,
+  inputs: {
+    'verify-report': {
+      generatedAt: verifyFreshness.generatedAt,
+      ageMs: verifyFreshness.ageMs,
+      stale: verifyFreshness.stale,
+      note: verifyFreshness.error,
+      ok: verify.ok === true,
+    },
+  },
   summary: { total: signals.length, byBucket },
   signals,
 };
@@ -221,6 +244,9 @@ fs.writeFileSync(path.join(root, 'signal-report.json'), JSON.stringify(report, n
 const line = (s) => `  [${s.severity}] ${s.bucket} · ${s.title}`;
 console.log(`\n📡 信号雷达 ${rel(root)}  ${new Date().toISOString().slice(0, 19)}`);
 console.log(`资产 ${assets.length} 项 · custom live=${liveCustom}（声称 ${claimedCustom}）· 冻结平台文件 ${frozen} 个`);
+console.log(`输入新鲜度：verify-report.json 生成于 ${verifyFreshness.generatedAt || '（未知）'}，距今 ${
+  verifyFreshness.ageMs === null ? '未知' : Math.round(verifyFreshness.ageMs / 1000) + 's'
+}${verifyFreshness.stale ? '（stale，建议重跑 verify 后再读本报告的门禁相关结论）' : ''}`);
 console.log(`信号 ${signals.length} 条：${Object.entries(byBucket).map(([k, v]) => `${k}:${v}`).join('  ')}\n`);
 for (const s of signals) {
   console.log(line(s));

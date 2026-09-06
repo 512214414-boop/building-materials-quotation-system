@@ -79,23 +79,23 @@ entities:
       specModel: { label: 规格型号, dataType: string, gate: { requires: brand, reason: 请先选择品牌 } }
       remark: { label: 规格备注, dataType: string, gate: { requires: specModel, reason: 请先选规格 } }
     columns:
-      - { key: productRef, title: 产品名, dataIndex: productRef, renderMode: custom, minWidth: NAME_PRODUCT, align: left, className: ds-cascade-col, order: 10, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
-      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: custom, minWidth: NAME_BRAND, align: left, className: ds-cascade-col, order: 20, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
-      - { key: spec, title: 规格, dataIndex: spec, renderMode: custom, minWidth: NAME_SPEC, align: left, className: ds-cascade-col, order: 30, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
-      - { key: unit, title: 单位, dataIndex: unit, renderMode: custom, minWidth: TAG_L, align: center, order: 40, scenes: [workbench], fieldClass: A, dictKind: unit, suggestField: unit, confirmStrategy: direct }
-      - { key: qty, title: 数量, dataIndex: qty, renderMode: custom, minWidth: AMOUNT, align: center, order: 50, scenes: [workbench], confirmStrategy: direct }
-      - { key: unitPrice, title: 单价, dataIndex: unitPrice, renderMode: custom, minWidth: AMOUNT, align: center, order: 60, scenes: [workbench], fieldClass: A, dictKind: priceType, suggestField: priceType, confirmStrategy: direct }
+      - { key: productRef, title: 产品名, dataIndex: productRef, renderMode: picker, minWidth: NAME_PRODUCT, align: left, className: ds-cascade-col, order: 10, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
+      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: picker, minWidth: NAME_BRAND, align: left, className: ds-cascade-col, order: 20, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
+      - { key: spec, title: 规格, dataIndex: spec, renderMode: picker, minWidth: NAME_SPEC, align: left, className: ds-cascade-col, order: 30, scenes: [workbench], fieldClass: B, confirmStrategy: dialog, pickerGroup: sku }
+      - { key: unit, title: 单位, dataIndex: unit, renderMode: picker, minWidth: TAG_L, align: center, order: 40, scenes: [workbench], fieldClass: A, dictKind: unit, suggestField: unit, confirmStrategy: direct }
+      - { key: qty, title: 数量, dataIndex: qty, renderMode: picker, minWidth: AMOUNT, align: center, order: 50, scenes: [workbench], confirmStrategy: direct }
+      - { key: unitPrice, title: 单价, dataIndex: unitPrice, renderMode: picker, minWidth: AMOUNT, align: center, order: 60, scenes: [workbench], fieldClass: A, dictKind: priceType, suggestField: priceType, confirmStrategy: direct }
       - { key: amount, title: 金额, renderMode: static, minWidth: AMOUNT, align: center, order: 70, scenes: [workbench] }
-      - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 80, scenes: [workbench], fieldClass: A, suggestField: remark, confirmStrategy: direct }
-      - { key: categoryName, title: 分类, dataIndex: categoryName, renderMode: custom, minWidth: TAG_L, align: center, order: 10, scenes: [archive], fieldClass: A, dictKind: category, suggestField: category, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: category } } } }
-      - { key: mainImageUrl, title: 图, dataIndex: sku, renderMode: custom, minWidth: ICON, align: center, order: 20, scenes: [archive], cellSpec: { display: image, editEntry: none } }
-      - { key: productName, title: 产品名, dataIndex: productName, renderMode: custom, minWidth: NAME_QUOTE, align: left, className: ds-cascade-col, order: 30, scenes: [archive], fieldClass: B, confirmStrategy: dialog, cellSpec: { display: link, editEntry: link } }
-      - { key: brandName, title: 品牌, dataIndex: brandName, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 40, scenes: [archive], fieldClass: A, dictKind: brand, suggestField: brand, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: brand } } } }
-      - { key: specModel, title: 系列/规格, dataIndex: specModel, renderMode: custom, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 50, scenes: [archive], fieldClass: B, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: spec } } } }
-      - { key: __skuPriceSlot__, title: '', renderMode: custom, order: 60, scenes: [archive], slot: skuPrice, cellSpec: { display: multi-record, editEntry: expand } }
-      - { key: remark, title: 备注, dataIndex: remark, renderMode: custom, minWidth: REMARK_S, align: center, order: 70, scenes: [archive], fieldClass: A, suggestField: remark, confirmStrategy: direct, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: none }, disabledReason: 请先选规格 } } }
-      - { key: status, title: 状态, dataIndex: sku, renderMode: custom, minWidth: TAG_S, align: center, order: 80, scenes: [archive], cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: updateTime, title: 更新时间, dataIndex: sku, renderMode: custom, minWidth: DATETIME, align: center, order: 90, scenes: [archive], cellSpec: { display: date, editEntry: none } }
+      - { key: remark, title: 备注, dataIndex: remark, renderMode: picker, minWidth: REMARK_S, align: center, order: 80, scenes: [workbench], fieldClass: A, suggestField: remark, confirmStrategy: direct }
+      - { key: categoryName, title: 分类, dataIndex: categoryName, minWidth: TAG_L, align: center, order: 10, scenes: [archive], fieldClass: A, dictKind: category, suggestField: category, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: category } } } }
+      - { key: mainImageUrl, title: 图, dataIndex: sku, minWidth: ICON, align: center, order: 20, scenes: [archive], cellSpec: { display: image, editEntry: none } }
+      - { key: productName, title: 产品名, dataIndex: productName, minWidth: NAME_QUOTE, align: left, className: ds-cascade-col, order: 30, scenes: [archive], fieldClass: B, confirmStrategy: dialog, cellSpec: { display: link, editEntry: link } }
+      - { key: brandName, title: 品牌, dataIndex: brandName, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 40, scenes: [archive], fieldClass: A, dictKind: brand, suggestField: brand, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: brand } } } }
+      - { key: specModel, title: 系列/规格, dataIndex: specModel, minWidth: NAME_S, align: left, className: ds-cascade-col, order: 50, scenes: [archive], fieldClass: B, confirmStrategy: dialog, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: dict, dictField: spec } } } }
+      - { key: __skuPriceSlot__, title: '', order: 60, scenes: [archive], slot: skuPrice, cellSpec: { display: multi-record, editEntry: expand } }
+      - { key: remark, title: 备注, dataIndex: remark, minWidth: REMARK_S, align: center, order: 70, scenes: [archive], fieldClass: A, suggestField: remark, confirmStrategy: direct, cellSpec: { display: text, editEntry: confirm, gate: { input: text, search: { kind: none }, disabledReason: 请先选规格 } } }
+      - { key: status, title: 状态, dataIndex: sku, minWidth: TAG_S, align: center, order: 80, scenes: [archive], cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: updateTime, title: 更新时间, dataIndex: sku, minWidth: DATETIME, align: center, order: 90, scenes: [archive], cellSpec: { display: date, editEntry: none } }
     relations:
       - { field: brandId, to: brand, type: manyToOne }
       - { field: specId, to: spec, type: manyToOne }
@@ -139,11 +139,11 @@ entities:
     columns:
       - { key: op, title: 操作, dataIndex: op, renderMode: text, minWidth: 120, align: center, order: 0, scenes: [inventory] }
       - { key: product, title: 产品, dataIndex: productName, renderMode: text, minWidth: 240, align: center, order: 10, scenes: [inventory] }
-      - { key: unit, title: 单位, dataIndex: unitName, renderMode: custom, minWidth: 60, align: center, order: 20, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: unit, title: 单位, dataIndex: unitName, minWidth: 60, align: center, order: 20, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
       - { key: warehouse, title: 仓库, dataIndex: warehouse_id, renderMode: text, minWidth: 110, align: center, order: 30, scenes: [inventory] }
-      - { key: qty, title: 库存数量, dataIndex: qty, renderMode: custom, minWidth: 100, align: center, order: 40, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
-      - { key: weighted_avg_cost, title: 加权平均进价, dataIndex: weighted_avg_cost, renderMode: custom, minWidth: 110, align: center, order: 50, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
-      - { key: last_in_at, title: 最近入库, dataIndex: last_in_at, renderMode: custom, minWidth: 150, align: center, order: 60, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: qty, title: 库存数量, dataIndex: qty, minWidth: 100, align: center, order: 40, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: weighted_avg_cost, title: 加权平均进价, dataIndex: weighted_avg_cost, minWidth: 110, align: center, order: 50, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
+      - { key: last_in_at, title: 最近入库, dataIndex: last_in_at, minWidth: 150, align: center, order: 60, scenes: [inventory], cellSpec: { display: text, editEntry: none } }
     relations:
       - { field: productId, to: product, type: manyToOne }
       - { field: warehouseId, to: warehouse, type: manyToOne }
@@ -154,12 +154,12 @@ entities:
     layer: row
     primaryKey: id
     columns:
-      - { key: movement_type, title: 类型, dataIndex: movement_type, renderMode: custom, minWidth: 70, align: center, order: 0, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: qty, title: 数量, dataIndex: qty, renderMode: custom, minWidth: 80, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
-      - { key: unit_cost, title: 单价, dataIndex: unit_cost, renderMode: custom, minWidth: 80, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
-      - { key: biz_no, title: 业务单号, dataIndex: biz_no, renderMode: custom, minWidth: 160, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
-      - { key: balance_qty, title: 结存, dataIndex: balance_qty, renderMode: custom, minWidth: 80, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
-      - { key: created_at, title: 时间, dataIndex: created_at, renderMode: custom, minWidth: 160, align: center, order: 50, cellSpec: { display: text, editEntry: none } }
+      - { key: movement_type, title: 类型, dataIndex: movement_type, minWidth: 70, align: center, order: 0, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: qty, title: 数量, dataIndex: qty, minWidth: 80, align: center, order: 10, cellSpec: { display: text, editEntry: none } }
+      - { key: unit_cost, title: 单价, dataIndex: unit_cost, minWidth: 80, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
+      - { key: biz_no, title: 业务单号, dataIndex: biz_no, minWidth: 160, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: balance_qty, title: 结存, dataIndex: balance_qty, minWidth: 80, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: created_at, title: 时间, dataIndex: created_at, minWidth: 160, align: center, order: 50, cellSpec: { display: text, editEntry: none } }
 
   inbound_task:
     label: 待入库单
@@ -171,8 +171,8 @@ entities:
       - { key: supplier, title: 供应商, dataIndex: supplierName, renderMode: text, minWidth: 160, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
       - { key: total_qty, title: 数量, dataIndex: total_qty, renderMode: text, minWidth: 80, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: total_amount, title: 金额, dataIndex: total_amount, renderMode: text, minWidth: 90, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
-      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 80, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: created_at, title: 生成时间, dataIndex: created_at, renderMode: custom, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, minWidth: 80, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: created_at, title: 生成时间, dataIndex: created_at, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
 
   inbound_line:
     label: 待入库明细
@@ -196,8 +196,8 @@ entities:
       - { key: unit, title: 单位, dataIndex: unitName, renderMode: text, minWidth: 60, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
       - { key: qty, title: 欠库数量, dataIndex: qty, renderMode: text, minWidth: 90, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: note, title: 备注, dataIndex: note, renderMode: text, minWidth: 120, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
-      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 80, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: created_at, title: 挂欠时间, dataIndex: created_at, renderMode: custom, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, minWidth: 80, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: created_at, title: 挂欠时间, dataIndex: created_at, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
 
   purchase_inbound:
     label: 采购入库单
@@ -210,8 +210,8 @@ entities:
       - { key: warehouseName, title: 仓库, dataIndex: warehouseName, renderMode: text, minWidth: 140, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: totalQty, title: 数量, dataIndex: totalQty, renderMode: text, minWidth: 90, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
       - { key: totalAmount, title: 金额, dataIndex: totalAmount, renderMode: text, minWidth: 90, align: center, order: 50, cellSpec: { display: text, editEntry: none } }
-      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 100, align: center, order: 60, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: confirmedAt, title: 确认时间, dataIndex: confirmedAt, renderMode: custom, minWidth: 150, align: center, order: 70, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, minWidth: 100, align: center, order: 60, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: confirmedAt, title: 确认时间, dataIndex: confirmedAt, minWidth: 150, align: center, order: 70, cellSpec: { display: text, editEntry: none } }
 
   staff_document:
     label: 员工端单据列表
@@ -221,9 +221,9 @@ entities:
     columns:
       - { key: documentNo, title: 单据号, dataIndex: documentNo, renderMode: text, minWidth: 170, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
       - { key: customer, title: 客户信息, dataIndex: customerName, renderMode: text, minWidth: 180, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
-      - { key: purchaseQuoteStatus, title: 本环节状态, dataIndex: purchaseQuoteStatus, renderMode: custom, minWidth: 110, align: center, order: 40, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: purchaseQuoteStatus, title: 本环节状态, dataIndex: purchaseQuoteStatus, minWidth: 110, align: center, order: 40, cellSpec: { display: enum-tag, editEntry: none } }
       - { key: totalAmount, title: 金额摘要, dataIndex: totalAmount, renderMode: text, minWidth: 130, align: right, order: 60, cellSpec: { display: text, editEntry: none } }
-      - { key: updatedAt, title: 更新时间, dataIndex: updatedAt, renderMode: custom, minWidth: 170, align: left, order: 70, cellSpec: { display: text, editEntry: none } }
+      - { key: updatedAt, title: 更新时间, dataIndex: updatedAt, minWidth: 170, align: left, order: 70, cellSpec: { display: text, editEntry: none } }
 
   audit_log:
     label: 审计日志
@@ -235,7 +235,7 @@ entities:
       - { key: resourceType, title: 资源类型, dataIndex: resourceType, renderMode: text, minWidth: 130, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: resourceId, title: 资源 ID, dataIndex: resourceId, renderMode: text, minWidth: 160, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
       - { key: ipAddress, title: IP 地址, dataIndex: ipAddress, renderMode: text, minWidth: 140, align: left, order: 50, cellSpec: { display: text, editEntry: none } }
-      - { key: createdAt, title: 操作时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
+      - { key: createdAt, title: 操作时间, dataIndex: createdAt, minWidth: 170, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
 
   auth_code:
     label: 授权码
@@ -245,8 +245,8 @@ entities:
     columns:
       - { key: code, title: 授权码, dataIndex: code, renderMode: text, minWidth: 200, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
       - { key: phone, title: 绑定手机, dataIndex: phone, renderMode: text, minWidth: 150, align: left, order: 20, cellSpec: { display: text, editEntry: none } }
-      - { key: createdAt, title: 创建时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
-      - { key: expiresAt, title: 过期时间, dataIndex: expiresAt, renderMode: custom, minWidth: 170, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
+      - { key: createdAt, title: 创建时间, dataIndex: createdAt, minWidth: 170, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: expiresAt, title: 过期时间, dataIndex: expiresAt, minWidth: 170, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
 
   access_request:
     label: 访问申请
@@ -255,10 +255,10 @@ entities:
     primaryKey: id
     columns:
       - { key: phone, title: 登录账号, dataIndex: phone, renderMode: text, minWidth: 160, align: left, order: 10, cellSpec: { display: text, editEntry: none } }
-      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 110, align: center, order: 20, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: createdAt, title: 申请时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, minWidth: 110, align: center, order: 20, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: createdAt, title: 申请时间, dataIndex: createdAt, minWidth: 170, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: reviewer, title: 审核人, dataIndex: reviewedBy, renderMode: text, minWidth: 130, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
-      - { key: reviewedAt, title: 审核时间, dataIndex: reviewedAt, renderMode: custom, minWidth: 170, align: left, order: 50, cellSpec: { display: text, editEntry: none } }
+      - { key: reviewedAt, title: 审核时间, dataIndex: reviewedAt, minWidth: 170, align: left, order: 50, cellSpec: { display: text, editEntry: none } }
       - { key: rejectReason, title: 拒绝原因, dataIndex: rejectReason, renderMode: text, minWidth: 140, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
 
   admin_user:
@@ -271,8 +271,8 @@ entities:
       - { key: username, title: 用户名, dataIndex: username, renderMode: text, minWidth: 140, align: left, order: 20, cellSpec: { display: text, editEntry: none } }
       - { key: realName, title: 真实姓名, dataIndex: realName, renderMode: text, minWidth: 120, align: left, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: phone, title: 手机号, dataIndex: phone, renderMode: text, minWidth: 150, align: left, order: 40, cellSpec: { display: text, editEntry: none } }
-      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 90, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: createdAt, title: 创建时间, dataIndex: createdAt, renderMode: custom, minWidth: 170, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, minWidth: 90, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: createdAt, title: 创建时间, dataIndex: createdAt, minWidth: 170, align: left, order: 60, cellSpec: { display: text, editEntry: none } }
 
   supplier_payable:
     label: 供应商应付
@@ -284,8 +284,8 @@ entities:
       - { key: supplierName, title: 供应商, dataIndex: supplierName, renderMode: text, minWidth: 160, align: center, order: 20, cellSpec: { display: text, editEntry: none } }
       - { key: biz_no, title: 业务单号, dataIndex: biz_no, renderMode: text, minWidth: 150, align: center, order: 30, cellSpec: { display: text, editEntry: none } }
       - { key: amount, title: 应付金额, dataIndex: amount, renderMode: text, minWidth: 110, align: center, order: 40, cellSpec: { display: text, editEntry: none } }
-      - { key: status, title: 状态, dataIndex: status, renderMode: custom, minWidth: 90, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
-      - { key: created_at, title: 生成时间, dataIndex: created_at, renderMode: custom, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
+      - { key: status, title: 状态, dataIndex: status, minWidth: 90, align: center, order: 50, cellSpec: { display: enum-tag, editEntry: none } }
+      - { key: created_at, title: 生成时间, dataIndex: created_at, minWidth: 150, align: center, order: 60, cellSpec: { display: text, editEntry: none } }
 
   report_range:
     label: 经营报表-区间单据
