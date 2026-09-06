@@ -21,6 +21,23 @@
 //   closePanelWithDescendants(id);  // 自动关闭所有子面板
 //   unregisterPanel(id);
 
+/**
+ * 面板种类 —— 决定 z 落在哪条层带上。
+ * - modal：模态弹窗（Modal / Drawer / DsDialog），独占一层带，彼此按栈序递增
+ * - float：非模态浮层（下拉 / popover / 内联展开面板），挂在所属模态层带之上 50px 的子带内
+ *
+ * 背景（v13 层级统一）：此前 DsDialog 未注册进本树，z 恒为 antd 静态 1000，
+ * 与 FloatPanel 的动态 1050+depth 分属两套基数 —— FloatPanel 恒压 Modal、
+ * Modal 之间只靠 DOM 顺序，层级无法自动正确。现在两者同树、同一公式导出 z。
+ */
+export type PanelKind = 'modal' | 'float';
+
+/** 模态层带：第 0 层 = 1000，每层 +100（层间留出 100 的余量给该层内的浮层） */
+export const MODAL_Z_BASE = 1000;
+export const MODAL_Z_STEP = 100;
+/** 浮层子带：挂在所属模态层之上 50px 起（浮层之间 +1） */
+export const FLOAT_Z_OFFSET = 50;
+
 /** 面板节点 */
 export interface PanelNode {
   /** 面板唯一 id */
@@ -29,6 +46,8 @@ export interface PanelNode {
   parentId: string | null;
   /** 层级深度（z-index = depth + 1，在 float 叠加层内） */
   depth: number;
+  /** 面板种类，决定 z 层带（modal 独占层带，float 挂在所属模态层之上） */
+  kind: PanelKind;
   /** 关闭函数（调用后触发面板关闭） */
   close: () => void;
   /**
@@ -70,20 +89,90 @@ export function registerPanel(options: {
   id?: string;
   parentId?: string | null;
   close: () => void;
+  /** 面板种类（缺省 float，保持既有行为） */
+  kind?: PanelKind;
+  /**
+   * 同级互斥（缺省 true）。
+   * 模态弹窗传 false —— 弹窗叠弹窗（编辑框上开确认框）是合法栈式场景，不能互斥关闭。
+   */
+  exclusive?: boolean;
 }): string {
   const id = options.id ?? generatePanelId();
   const parentId = options.parentId ?? null;
+  const kind = options.kind ?? 'float';
+  const exclusive = options.exclusive ?? true;
   const depth = parentId ? (panelRegistry.get(parentId)?.depth ?? 0) + 1 : 0;
 
   // 同级互斥：关闭相同 parentId 的其他面板（跳过已在关闭流程中的面板，防重复触发）
-  for (const [existingId, existing] of panelRegistry) {
-    if (existing.parentId === parentId && existingId !== id && !existing.closing) {
-      existing.close();
+  if (exclusive) {
+    for (const [existingId, existing] of panelRegistry) {
+      if (existing.parentId === parentId && existingId !== id && !existing.closing) {
+        existing.close();
+      }
     }
   }
 
-  panelRegistry.set(id, { id, parentId, depth, close: options.close });
+  panelRegistry.set(id, { id, parentId, depth, kind, close: options.close });
   return id;
+}
+
+/**
+ * 统一 z-index 公式（全应用唯一真相）：z 由「面板树深度 + 种类层带」导出，任何面板都不写死数字。
+ *
+ *   modal 节点：MODAL_Z_BASE + depth * MODAL_Z_STEP            （1000 / 1100 / 1200 …）
+ *   float 节点：所属模态祖先的 z + FLOAT_Z_OFFSET + 层内相对深度（1050 / 1150 …）
+ *   无模态祖先的 float：depth + 1（落在 float 叠加层容器内，容器本身在 modal 容器之下）
+ *
+ * 单调性保证：新面板的 parentId 恒指向当前 z 最高者（见 topPanelId），故后开的永远在最上。
+ */
+export function getPanelZ(id: string): number {
+  const node = panelRegistry.get(id);
+  if (!node) return 0;
+  if (node.kind === 'modal') return MODAL_Z_BASE + node.depth * MODAL_Z_STEP;
+
+  // 沿父链找**最近的**模态祖先（决定挂在哪个层带上）。
+  // chain 的构造顺序是 [自身, 父, 祖父, …, 最外层]，所以必须由 i=0 起由近及远扫。
+  // 早期版本从末尾倒着扫（由最外层向内），命中的是**最外层**模态而非最近的那个：
+  //   二层弹窗内展开的浮层会被算成 1000+0*100+50=1051，而它的宿主弹窗是 1100
+  //   → 浮层照样被自家弹窗压住，正是 v13 要修的那个缺陷，修复形同未修。
+  // 回归防线见 frontend/tests/panelTree.test.ts「v13 核心场景」两条用例。
+  let modalDepth = -1;
+  let cursor: PanelNode | undefined = node;
+  const chain: PanelNode[] = [];
+  while (cursor) {
+    chain.push(cursor);
+    cursor = cursor.parentId ? panelRegistry.get(cursor.parentId) : undefined;
+  }
+  for (let i = 0; i < chain.length; i += 1) {
+    if (chain[i].kind === 'modal') {
+      modalDepth = chain[i].depth;
+      break;
+    }
+  }
+  // 无模态祖先：落在 float 叠加层容器内，容器本身在 modal 容器之下
+  if (modalDepth < 0) {
+    return node.depth + 1;
+  }
+  // 层内相对深度 = node.depth - modalDepth - 1：
+  //   -1 是因为浮层自己占了 depth 上的一格，**直属**浮层的相对深度必须是 0，
+  //     这样该层第一个浮层正好落在「宿主弹窗 z + FLOAT_Z_OFFSET」（1050 / 1150 …），
+  //     与上方文档注释举的例子一致。去掉 -1 会整体偏 1（1051），且挤占下一层带。
+  const bandBase = MODAL_Z_BASE + modalDepth * MODAL_Z_STEP + FLOAT_Z_OFFSET;
+  const depthWithinBand = node.depth - modalDepth - 1;
+  return bandBase + depthWithinBand;
+}
+
+/**
+ * 当前 z 最高的面板 id —— 新面板应挂在它之下（parentId 指向它），
+ * 这样 z 天然单调递增，无需调用方手传 parentId，也不会出现层级倒挂。
+ */
+export function topPanelId(excludeId?: string): string | null {
+  let top: PanelNode | null = null;
+  for (const node of panelRegistry.values()) {
+    if (node.id === excludeId || node.closing) continue;
+    if (!top || getPanelZ(node.id) > getPanelZ(top.id)) top = node;
+  }
+  return top?.id ?? null;
 }
 
 /** 注销面板（从注册表移除，不触发关闭） */

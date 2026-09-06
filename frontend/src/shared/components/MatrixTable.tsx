@@ -213,9 +213,18 @@ export default function MatrixTable({
   const rowCells = (row: MatrixRowConfig): React.ReactNode[] => {
     const cells: React.ReactNode[] = [];
     cells.push(<Fragment key="name">{row.nameCell}</Fragment>);
-    row.midCells?.forEach((cell, i) => (
-      cells.push(<div key={`mid_${i}`} style={{ display: 'flex', justifyContent: 'center' }}>{cell}</div>)
-    ));
+    // v2.1：中间列格数由本组件保证 = midCols 声明数，调用方某行少给一格时补空位，不再整体错位
+    const midCount = Math.max(midCols?.length ?? 0, row.midCells?.length ?? 0);
+    for (let i = 0; i < midCount; i++) {
+      const cell = row.midCells?.[i];
+      cells.push(
+        cell != null ? (
+          <div key={`mid_${i}`} style={{ display: 'flex', justifyContent: 'center' }}>{cell}</div>
+        ) : (
+          <span key={`mid_pad_${i}`} />
+        ),
+      );
+    }
     if (showPrice) {
       cells.push(
         <Fragment key="price">
@@ -242,14 +251,23 @@ export default function MatrixTable({
   };
 
   // 末尾空行
+  // v2.1 修复【共享组件级缺陷】：空行格数由本组件保证 = 表头格数。
+  //   此前 addMidCells 有值就按它的数量渲染——调用方少给一格（售价/进价面板只给了面价、
+  //   没给点位），空行整体左移一列，与表头/数据行错位。现在不足 midCols 数量自动补空位，
+  //   调用方无法再把格子填错（与 §A「禁止调用方用更少列硬套」同一防线）。
   const addCells: React.ReactNode[] = [];
   addCells.push(<Fragment key="name">{addNameCell}</Fragment>);
-  if (addMidCells?.length) {
-    addMidCells.forEach((cell, i) => (
-      addCells.push(<div key={`mid_${i}`} style={{ display: 'flex', justifyContent: 'center' }}>{cell}</div>)
-    ));
-  } else {
-    midCols?.forEach((h) => addCells.push(<span key={h} />));
+  // 格数取 max(midCols, addMidCells)：不足的中间列补空位；无 midCols 时保留旧路径按 addMidCells 渲染
+  const midCount = Math.max(midCols?.length ?? 0, addMidCells?.length ?? 0);
+  for (let i = 0; i < midCount; i++) {
+    const cell = addMidCells?.[i];
+    addCells.push(
+      cell != null ? (
+        <div key={`mid_${i}`} style={{ display: 'flex', justifyContent: 'center' }}>{cell}</div>
+      ) : (
+        <span key={`mid_pad_${i}`} />
+      ),
+    );
   }
   if (showPrice) {
     addCells.push(<Fragment key="price">{addPriceCell ?? <span />}</Fragment>);

@@ -73,6 +73,75 @@ describe('PanelTree · 级联关闭', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// v13 层级统一：z 由「面板树深度 + 种类层带」统一导出，任何面板都不写死数字。
+//
+// 这批用例对准的正是 v13 声称要修掉的两个缺陷：
+//   (a) 弹窗之间只靠 DOM 顺序 —— 现在同树后开必在最上（z 严格单调递增）；
+//   (b) FloatPanel 恒压 Modal / 弹窗压自家浮层 —— 现在浮层挂在所属模态层带之上。
+// 其中「二层弹窗内展开的浮层」是最容易写错的一条：浮层要压的是**自家（第二层）**
+// 弹窗，不是最外层弹窗。找模态祖先必须沿父链由近及远，找反了就会算成 1051 < 1100，
+// 浮层照样被自家弹窗压住 —— v13 的动机落空，且类型检查和 lint 都查不出来。
+// ---------------------------------------------------------------------------
+describe('PanelTree · v13 层级统一（z 由面板树唯一导出）', () => {
+  it('modal 层带：z = MODAL_Z_BASE + depth * MODAL_Z_STEP；未注册 id 返回 0', () => {
+    const m0 = pt.registerPanel({ id: 'm0', parentId: null, kind: 'modal', exclusive: false, close: () => {} });
+    const m1 = pt.registerPanel({ id: 'm1', parentId: m0, kind: 'modal', exclusive: false, close: () => {} });
+    const m2 = pt.registerPanel({ id: 'm2', parentId: m1, kind: 'modal', exclusive: false, close: () => {} });
+    expect(pt.getPanelZ(m0)).toBe(pt.MODAL_Z_BASE);
+    expect(pt.getPanelZ(m1)).toBe(pt.MODAL_Z_BASE + pt.MODAL_Z_STEP);
+    expect(pt.getPanelZ(m2)).toBe(pt.MODAL_Z_BASE + 2 * pt.MODAL_Z_STEP);
+    expect(pt.getPanelZ('未注册的 id')).toBe(0);
+  });
+
+  it('单调性：叠开的弹窗依次挂在当前 z 最高者之下 → z 严格递增（(a) 不再靠 DOM 顺序）', () => {
+    const a = pt.registerPanel({ id: 'a', parentId: null, kind: 'modal', exclusive: false, close: () => {} });
+    const b = pt.registerPanel({ id: 'b', parentId: pt.topPanelId('b'), kind: 'modal', exclusive: false, close: () => {} });
+    const c = pt.registerPanel({ id: 'c', parentId: pt.topPanelId('c'), kind: 'modal', exclusive: false, close: () => {} });
+    expect(pt.getPanelZ(a)).toBeLessThan(pt.getPanelZ(b));
+    expect(pt.getPanelZ(b)).toBeLessThan(pt.getPanelZ(c));
+  });
+
+  it('浮层挂在所属模态层带之上（+FLOAT_Z_OFFSET）且高于自家弹窗', () => {
+    const m = pt.registerPanel({ id: 'm', parentId: null, kind: 'modal', exclusive: false, close: () => {} });
+    const f = pt.registerPanel({ id: 'f', parentId: m, kind: 'float', close: () => {} });
+    expect(pt.getPanelZ(f)).toBe(pt.getPanelZ(m) + pt.FLOAT_Z_OFFSET);
+    expect(pt.getPanelZ(f)).toBeGreaterThan(pt.getPanelZ(m));
+  });
+
+  it('【v13 核心场景】二层弹窗内展开的浮层必须压在自家（第二层）弹窗之上', () => {
+    const m1 = pt.registerPanel({ id: 'm1', parentId: null, kind: 'modal', exclusive: false, close: () => {} });
+    const m2 = pt.registerPanel({ id: 'm2', parentId: pt.topPanelId('m2'), kind: 'modal', exclusive: false, close: () => {} });
+    const f = pt.registerPanel({ id: 'f', parentId: pt.topPanelId('f'), kind: 'float', exclusive: false, close: () => {} });
+    // 浮层挂在 m2 之下 → 必须高于 m2，否则「二层弹窗内的价格/单位面板被自家弹窗压住」
+    expect(pt.getPanelZ(f)).toBeGreaterThan(pt.getPanelZ(m2));
+    expect(pt.getPanelZ(f)).toBeGreaterThan(pt.getPanelZ(m1));
+  });
+
+  it('三层弹窗：每层浮层都压在各自的那一层之上，互不串层带', () => {
+    const m1 = pt.registerPanel({ id: 'm1', parentId: null, kind: 'modal', exclusive: false, close: () => {} });
+    const f1 = pt.registerPanel({ id: 'f1', parentId: pt.topPanelId('f1'), kind: 'float', exclusive: false, close: () => {} });
+    const m2 = pt.registerPanel({ id: 'm2', parentId: pt.topPanelId('m2'), kind: 'modal', exclusive: false, close: () => {} });
+    const f2 = pt.registerPanel({ id: 'f2', parentId: pt.topPanelId('f2'), kind: 'float', exclusive: false, close: () => {} });
+    expect(pt.getPanelZ(f1)).toBeGreaterThan(pt.getPanelZ(m1));
+    expect(pt.getPanelZ(m2)).toBeGreaterThan(pt.getPanelZ(f1));
+    expect(pt.getPanelZ(f2)).toBeGreaterThan(pt.getPanelZ(m2));
+  });
+
+  it('无模态祖先的浮层：z = depth + 1（落在 float 叠加层容器内）', () => {
+    const f0 = pt.registerPanel({ id: 'f0', parentId: null, kind: 'float', close: () => {} });
+    expect(pt.getPanelZ(f0)).toBe(1);
+  });
+
+  it('topPanelId 返回当前 z 最高者，可排除自身；空注册表返回 null', () => {
+    expect(pt.topPanelId()).toBeNull();
+    const m1 = pt.registerPanel({ id: 'm1', parentId: null, kind: 'modal', exclusive: false, close: () => {} });
+    const m2 = pt.registerPanel({ id: 'm2', parentId: pt.topPanelId('m2'), kind: 'modal', exclusive: false, close: () => {} });
+    expect(pt.topPanelId()).toBe(m2);
+    expect(pt.topPanelId(m2)).toBe(m1);
+  });
+});
+
 describe('PanelTree · 祖先判断与注销', () => {
   it('isAncestorPanel 能识别跨级祖先', () => {
     const a = pt.registerPanel({ id: 'a', parentId: null, close: () => {} });

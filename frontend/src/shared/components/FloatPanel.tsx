@@ -28,7 +28,8 @@ import {
   registerPanel,
   unregisterPanel,
   closePanelWithDescendants,
-  getPanelDepth,
+  getPanelZ,
+  topPanelId,
   isClickOnRelatedPanel,
 } from './PanelTree.js';
 import { attachOutsideTapGuard } from '../utils/outsideTapGuard.js';
@@ -163,7 +164,7 @@ export function FloatPanel({
   const [ready, setReady] = useState(false);
   const scrollParentsRef = useRef<HTMLElement[]>([]);
   const rafRef = useRef<number>(0);
-  const [stackDepth, setStackDepth] = useState(0);
+  const [panelZ, setPanelZ] = useState(1);
   const [portalLayer, setPortalLayer] = useState<OverlayLayer>('float');
   const portalLayerRef = useRef(portalLayer);
   portalLayerRef.current = portalLayer;
@@ -199,13 +200,15 @@ export function FloatPanel({
     setPortalLayer(resolveOverlayLayer(anchorRef.current));
     registerPanel({
       id: panelId,
-      parentId,
+      // 未显式指定父面板时，自动挂到当前 z 最高者之下：后开的永远在最上，层级无需手传
+      parentId: parentId ?? topPanelId(panelId),
+      kind: 'float',
       close: () => {
         closePanelWithDescendants(panelId);
         onCloseRef.current();
       },
     });
-    setStackDepth(getPanelDepth(panelId));
+    setPanelZ(getPanelZ(panelId));
     return () => {
       unregisterPanel(panelId);
     };
@@ -324,13 +327,13 @@ export function FloatPanel({
 
   if (!isVisible) return null;
 
-  // modal 层内 ant-modal-wrap 默认 z-index≈1000；float 层仍用 depth+1
-  const depth = Math.max(stackDepth, getPanelDepth(panelIdRef.current));
-  const panelZ = portalLayer === 'modal' ? 1050 + depth : Math.max(1, depth + 1);
+  // z 由面板树统一导出（PanelTree.getPanelZ）：模态层带 1000+n*100，浮层挂在其上 +50+k。
+  // 不再在此处写死 1050 —— 那正是「FloatPanel 恒压 Modal」层级倒挂的根因。
+  const effectiveZ = Math.max(1, panelZ);
 
   const panelStyle: CSSProperties = {
     position: 'absolute',
-    zIndex: panelZ,
+    zIndex: effectiveZ,
     background: 'var(--bg-menu)',
     border: '1px solid var(--border-brand)',
     borderRadius: 'var(--radius-4)',
