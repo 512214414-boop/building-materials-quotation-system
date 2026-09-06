@@ -412,7 +412,8 @@ const relOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityRel
 let rel = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
 rel += '// 元模型运行时 · 阶段 E：界面列登记表由真相源驱动，手写 entityRelations.ts 已改为 re-export。\n\n';
 rel += "import { COL_WIDTHS } from '../components/table/colWidths.js';\n";
-rel += "import type { EntityRelation, EntityFieldSpec } from './entityRelations.types.js';\n\n";
+rel +=
+  "import type { EntityRelation, EntityFieldSpec, RecordSetSpec } from './entityRelations.types.js';\n\n";
 
 // ---------- ③-a legacy renderMode 派生（L4 三维 → legacy 单维） ----------
 /**
@@ -516,6 +517,18 @@ const colToTs = (c) => {
   return `{ ${parts.join(', ')} }`;
 };
 
+/** 任意 yml 值 → TS 字面量（recordSets 有嵌套结构，不能像列那样平铺拼接） */
+const toTsLiteral = (v) => {
+  if (v == null) return 'undefined';
+  if (typeof v === 'string') return JSON.stringify(v);
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return `[${v.map(toTsLiteral).join(', ')}]`;
+  const parts = Object.entries(v)
+    .filter(([, val]) => val != null)
+    .map(([k, val]) => `${/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : JSON.stringify(k)}: ${toTsLiteral(val)}`);
+  return `{ ${parts.join(', ')} }`;
+};
+
 const relEntities = Object.entries(entities).filter(([, e]) => e.columns?.length);
 validateRenderModeDiscipline(relEntities);
 
@@ -523,6 +536,11 @@ for (const [key, ent] of relEntities) {
   rel += `const ${key}Fields: EntityFieldSpec[] = [\n`;
   for (const c of ent.columns) rel += `  ${colToTs(c)},\n`;
   rel += '];\n\n';
+  if (ent.recordSets?.length) {
+    rel += `const ${key}RecordSets: RecordSetSpec[] = [\n`;
+    for (const rs of ent.recordSets) rel += `  ${toTsLiteral(rs)},\n`;
+    rel += '];\n\n';
+  }
 }
 rel += 'export const entityRelations: Record<string, EntityRelation> = {\n';
 for (const [key, ent] of relEntities) {
@@ -535,6 +553,8 @@ for (const [key, ent] of relEntities) {
   rel += `    primaryKey: ${JSON.stringify(ent.primaryKey ?? 'id')},\n`;
   rel += `    fields: ${key}Fields,\n`;
   rel += `    relations: [${rels}],\n`;
+  // 多记录集合声明：加法产出，未声明的实体不进此字段（零回归）
+  if (ent.recordSets?.length) rel += `    recordSets: ${key}RecordSets,\n`;
   rel += '  },\n';
 }
 rel += '};\n';

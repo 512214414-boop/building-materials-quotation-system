@@ -3,7 +3,7 @@
  * verify.mjs — G1 门禁串联器（架构蓝图 §4.1）
  *
  * 用法：
- *   npm run verify                 # 完整门禁 S0–S6：含浏览器冒烟，需 8080 / 3000 在线
+ *   npm run verify                 # 完整门禁：静态 stage + 浏览器冒烟，需 8080 / 3000 在线
  *   npm run verify:static          # 静态门禁 S0–S5：服务不在线时用这个
  *   npm run verify -- --only=S0    # 只跑指定阶段（逗号分隔，如 --only=S0,S4）
  *   npm run verify -- --full       # 关闭变更感知子集，强制全跑（默认是智能子集）
@@ -55,7 +55,7 @@ if (help) {
   console.log(`G1 门禁串联器
 
 用法：
-  npm run verify                完整门禁 S0–S6（含浏览器冒烟，需 8080/3000 在线）
+  npm run verify                完整门禁（静态 stage + 浏览器冒烟，需 8080/3000 在线）
   npm run verify:static         静态门禁 S0–S5（服务不在线时用）
   npm run verify -- --only=S0   只跑指定阶段（逗号分隔）
   npm run verify -- --full      关闭变更感知子集，强制全跑
@@ -92,8 +92,19 @@ const STAGES = [
   { id: 'S5', name: 'be-lint', area: 'backend', cwd: be, cmd: 'npm', args: ['run', 'lint'], why: '后端类型检查' },
   // ── P0 安全网新增门禁（2026-09-05 重构蓝图）─────────────────────────────
   { id: 'S7', name: 'sqlite-residual', area: 'meta', cwd: root, cmd: 'node', args: ['tools/check-sqlite-residual.mjs'], why: 'SQLite 残留门禁（dev.db / *.sqlite / provider=sqlite 不得存在，生产库为 MySQL）' },
+  // ── S8 / S12 编号说明（2026-09-06）────────────────────────────────────────
+  // 不重编号既有 stage：S7 已被 sqlite-residual 占用、S9 已被 signal-gate 占用，
+  // 顺延会把历史报告（含已交付的 12 项）的编号全部错位，破坏跨时间段可比性。
+  // 因此本次两项新门禁取未被占用的号：
+  //   · S8  = migrate-replay（结构层迁移回放：schema 哈希 + 表/列对拍 + 外键漂移）
+  //     —— 之所以不顺延成 S7，是因为 S7 已被 sqlite-residual 占用（Edward 方案里
+  //        S7 是空的，与本项目现状不符，故按现状取号）。
+  //   · S12 = golden-e2e（真库端到端租户隔离）
+  //   · 另：Edward 方案里的 perf-gate 与现有 S9 重号，将来落位用 S13，本次不做。
+  { id: 'S8', name: 'migrate-replay', area: 'meta', cwd: root, cmd: 'node', args: ['tools/migrate-replay.mjs'], why: '迁移回放（结构层）：schema 哈希基线 + 表/列对拍 + 外键属性漂移（真漂移必须为 0；v11.0 解耦的 18 个外键永久豁免）' },
   { id: 'S9', name: 'signal-gate', area: 'meta', cwd: root, cmd: 'node', args: ['tools/check-signal-gate.mjs'], why: '信号门禁（custom 逃逸 >0 或 HIGH 信号即阻断合入）' },
   { id: 'S11', name: 'contract-gate', area: 'e2e', cwd: root, cmd: 'node', args: ['tools/check-contract.mjs'], why: '前后端接口契约门禁（后端启用 Swagger 后生效，当前放行不静默）' },
+  { id: 'S12', name: 'golden-e2e', area: 'backend', cwd: be, cmd: 'npm', args: ['run', 'test:e2e'], why: '黄金 e2e：真库租户隔离（租户 A 在 DB 层看不见租户 B；withTenant 扩展的唯一端到端验证，写独立租户 + 严格清理）' },
 ];
 
 if (!skipSmoke) {

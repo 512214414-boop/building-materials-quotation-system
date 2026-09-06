@@ -1,0 +1,8 @@
+{
+  "hash": "5a6f757f53157ee2c1f18cdbe419951b46f938a8a24b7c26e0c7e34f7d0ddc78",
+  "algorithm": "sha256",
+  "normalized": "comments-stripped+whitespace-collapsed+tables-sorted",
+  "generatedAt": "2026-09-06T02:59:51.918Z",
+  "dbSchema": "bm_quotation",
+  "tables": 63
+}
