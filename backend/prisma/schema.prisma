@@ -438,7 +438,11 @@ model product {
   updatedAt  DateTime @updatedAt
 
   /// v8.0：分类归属（扁平，v15.3 统一引用类：分类空输入由应用层按 name ensure「未分类」记录）
-  category category @relation(fields: [categoryId], references: [id])
+  /// 2026-09-06 外键漂移对齐：真实库该 FK 为 ON DELETE NO ACTION ON UPDATE CASCADE
+  /// （功能等价于 Restrict，但 MySQL information_schema 记录为 NO ACTION；
+  ///   Prisma 的 Restrict 会生成 ON DELETE RESTRICT，与库不一致而产生 DROP+ADD 同名漂移）。
+  /// 真实库是真相源 → 声明对齐为 NoAction/Cascade，处置为「改声明不改库」。
+  category category @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: Cascade)
   /// v22.0：规格变体（产品 → 品牌 → 规格）
   specs         spec[]
   /// v22.0：产品×品牌关联
@@ -497,7 +501,8 @@ model product_brand {
   tenantId   BigInt   @default(1) @db.UnsignedBigInt
   legacyCode String?  @db.VarChar(64)
   productId  BigInt @db.UnsignedBigInt
-  brandId    BigInt
+  /// 2026-09-06 外键漂移对齐：真实库为 bigint unsigned（声明漏标 UnsignedBigInt 导致 FK 被 DROP+ADD 重建）
+  brandId    BigInt @db.UnsignedBigInt
   sortOrder  Int      @default(0)
   status     Int      @default(1)
   createdAt  DateTime @default(now())
@@ -859,7 +864,8 @@ model supplier_address {
   tenantId   BigInt   @default(1) @db.UnsignedBigInt
   legacyCode String?  @db.VarChar(64)
   supplierId    BigInt @db.UnsignedBigInt
-  addressTypeId BigInt?
+  /// 2026-09-06 外键漂移对齐：真实库为 bigint unsigned NULL
+  addressTypeId BigInt? @db.UnsignedBigInt
   addressText   String        @db.VarChar(500)
   lng           Decimal?      @db.Decimal(10, 7)
   lat           Decimal?      @db.Decimal(10, 7)
@@ -904,7 +910,8 @@ model supplier_business_brand {
   tenantId   BigInt   @default(1) @db.UnsignedBigInt
   legacyCode String?  @db.VarChar(64)
   supplierId BigInt @db.UnsignedBigInt
-  brandId    BigInt
+  /// 2026-09-06 外键漂移对齐：真实库为 bigint unsigned
+  brandId    BigInt @db.UnsignedBigInt
   createdAt  DateTime @default(now())
 
   supplier supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
@@ -972,7 +979,8 @@ model sale_spec_point {
   tenantId   BigInt   @default(1) @db.UnsignedBigInt
   legacyCode String?  @db.VarChar(64)
   specId      BigInt @db.UnsignedBigInt
-  priceTypeId BigInt
+  /// 2026-09-06 外键漂移对齐：真实库为 bigint unsigned
+  priceTypeId BigInt @db.UnsignedBigInt
   point       Decimal  @db.Decimal(10, 4)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1836,7 +1844,8 @@ model archived_orders {
   revoked_at           DateTime?
   archive_remark       String?        @db.VarChar(500)
 
-  original_document    documents              @relation(fields: [original_document_id], references: [id])
+  /// 2026-09-06 外键漂移对齐：真实库为 ON DELETE NO ACTION ON UPDATE CASCADE（等价 Restrict，MySQL 记为 NO ACTION）
+  original_document    documents              @relation(fields: [original_document_id], references: [id], onDelete: NoAction, onUpdate: Cascade)
   archived_order_lines archived_order_lines[]
 
   @@index([original_document_id])
@@ -1890,7 +1899,8 @@ model archived_logistics {
   revoked_at           DateTime?
   archive_remark       String?        @db.VarChar(500)
 
-  original_document documents @relation(fields: [original_document_id], references: [id])
+  /// 2026-09-06 外键漂移对齐：真实库为 ON DELETE NO ACTION ON UPDATE CASCADE（等价 Restrict，MySQL 记为 NO ACTION）
+  original_document documents @relation(fields: [original_document_id], references: [id], onDelete: NoAction, onUpdate: Cascade)
 
   @@index([original_document_id])
   @@index([archive_status])
@@ -1915,7 +1925,8 @@ model archived_costs {
   revoked_at           DateTime?
   archive_remark       String?        @db.VarChar(500)
 
-  original_document documents @relation(fields: [original_document_id], references: [id])
+  /// 2026-09-06 外键漂移对齐：真实库为 ON DELETE NO ACTION ON UPDATE CASCADE（等价 Restrict，MySQL 记为 NO ACTION）
+  original_document documents @relation(fields: [original_document_id], references: [id], onDelete: NoAction, onUpdate: Cascade)
 
   @@index([original_document_id])
   @@index([archive_status])
@@ -1999,6 +2010,24 @@ model reimbursement_bill_lines {
 
   @@index([bill_id])
   @@map("reimbursement_bill_lines")
+}
+
+// v11.0 事件总线 outbox 表（P4 可靠投递：业务事务与事件发布同库原子写入，由投递器异步发 MQ）。
+// 真实库已有此表，此前 schema 未建模（S8 结构层回放曾报为「历史遗留表」），现补模型使 schema/库表对齐。
+model Outbox {
+  id            BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  eventId       String     @map("event_id") @db.VarChar(64)
+  aggregateType String     @map("aggregate_type") @db.VarChar(64)
+  aggregateId   String     @map("aggregate_id") @db.VarChar(64)
+  eventType     String     @map("event_type") @db.VarChar(128)
+  payload       Json       @db.Json
+  status        Int        @default(0) @db.TinyInt
+  createdAt     DateTime   @default(now()) @db.DateTime(3) @map("created_at")
+  publishedAt   DateTime?  @db.DateTime(3) @map("published_at")
+
+  @@unique([eventId], map: "uq_outbox_event_id")
+  @@index([status, createdAt], map: "ix_outbox_status_created")
+  @@map("outbox")
 }
 
 // ============================================================

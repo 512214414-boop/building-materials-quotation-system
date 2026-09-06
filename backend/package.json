@@ -15,7 +15,8 @@
     "prisma:seed": "prisma db seed",
     "gen:openapi": "tsx src/docs/generate.ts",
     "lint": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "tsx --test tests/e2e/*.e2e.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

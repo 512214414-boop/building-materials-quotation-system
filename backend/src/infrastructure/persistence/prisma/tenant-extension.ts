@@ -71,6 +71,13 @@ export function applyTenantToArgs(
 }
 
 /** 在单一 prisma 实例上套租户扩展，返回类型保持 PrismaClient。 */
+// ⚠ 调用方纪律（2026-09-06 真库 e2e 实测确认）：Prisma 查询是惰性 PrismaPromise，
+//   真正的请求在 .then()（即 await）时才发起。因此必须写成
+//     TenantContext.run(T, async () => { return await prisma.x.findMany(...) })
+//   若写成 `TenantContext.run(T, () => prisma.x.findMany(...))`（回调非 async），
+//   promise 在 run 内创建、却在 run 返回后才被 await，此时 AsyncLocalStorage 上下文已退出，
+//   扩展里 TenantContext.current() 会回退成默认租户 1 —— 隔离静默失效且不报错。
+//   反例与正例见 backend/tests/e2e/tenant-isolation.e2e.test.ts。
 export function withTenant(prisma: PrismaClient): PrismaClient {
   return (prisma as any).$extends({
     query: {
