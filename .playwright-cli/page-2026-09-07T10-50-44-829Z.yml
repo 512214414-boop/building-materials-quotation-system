@@ -1,0 +1,3145 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - heading "三层配置预览 真源可视化 · 实时读源 · 零生成器" [level=1] [ref=f1e3]:
+      - text: 三层配置预览
+      - generic [ref=f1e4]: 真源可视化 · 实时读源 · 零生成器
+    - generic [ref=f1e5]:
+      - text: 独立文件夹
+      - code [ref=f1e6]: 配置预览/config-layer/
+      - text: （物理层 / 关系层 / 差异层 yml + 分层契约 + 概念纲领）。这些文件是唯一真相源；本页是一套固定的显示渲染框架——表格、列宽、分组、中文映射规则全部预置，只把真源数据套进去出视图，不改、不写、不产生任何配置数据。打开时一次性读取真源；改完文件刷新浏览器即最新（无监听、无轮询）。每块解读下面都能展开「📄 真实配置原文」对照验收。
+  - generic [ref=f1e7]:
+    - generic [ref=f1e8]:
+      - generic [ref=f1e9] [cursor=pointer]:
+        - generic [ref=f1e10]: 物理层
+        - code [ref=f1e11]: physical-layer.yml
+        - generic [ref=f1e12]: 客观全部原材料：34 张表（4 域：产品管理、供应商管理、客户管理、库存管理，其余域验证后接入）。表级配置（唯一/全文/索引）固定四键；字段级只留 检索.级别、缺省值。不表达业务组织。
+      - generic [ref=f1e13] [cursor=pointer]:
+        - generic [ref=f1e14]: 关系层
+        - code [ref=f1e15]: relation-layer.yml
+        - generic [ref=f1e16]:
+          - text: 按场景串通路：4 个关系体（
+          - generic [ref=f1e17]: 总览
+          - text: "=所有关系体通路一览；点关系体卡片再按层级分级查看）。每层 检索{模式,主字段}；通路位次由序号推导。"
+      - generic [ref=f1e18] [cursor=pointer]:
+        - generic [ref=f1e19]: 差异层
+        - code [ref=f1e20]: difference-layer.yml
+        - generic [ref=f1e21]: 仅 2 处有意偏离（补丁本，不是垃圾桶）。各条同时出现在所属表所在的关系体分级视图里。
+      - generic [ref=f1e22] [cursor=pointer]:
+        - generic [ref=f1e23]: 解释器覆盖
+        - code [ref=f1e24]: 概念纲领.md · §4.3/§5
+        - generic [ref=f1e25]: 哪些解释器解决了哪些方面的问题、哪些还没解决（消费端派生矩阵 + 诚实清单）。
+      - generic [ref=f1e26] [cursor=pointer]:
+        - generic [ref=f1e27]: 推导规则
+        - code [ref=f1e28]: 分层契约.md · §8.5
+        - generic [ref=f1e29]: 引擎该推导的全部规则（组合/补齐/关系层推导/多源推导，共 14 条）——做解释器时的逐条对账清单，防止漏、防止误加键。
+      - generic [ref=f1e30] [cursor=pointer]:
+        - generic [ref=f1e31]: 体检
+        - code [ref=f1e32]: 防污染 · 0 红门禁
+        - generic [ref=f1e33]: 机器语法 / 标记 / 引用存在性 实时校验，随真源刷新（原 gen-layer-map 能力折入）。
+    - navigation [ref=f1e34]
+    - generic [ref=f1e35]:
+      - heading "物理层（原材料 · 全部 34 张表）" [level=2] [ref=f1e36]
+      - generic [ref=f1e37]: 物理层=客观全部原材料，不按关系体切、集中展示（按场景看请切「关系层」页签）。下方横向导航按域直达：总览=所有表依次铺开；各域=表卡片切换逐表细看。每张表 = 属性独立区（表名+表级配置四行：唯一键/全文/索引）+ 纯字段表（字段中文+标识一格、类型、检索.级别、缺省值）——表级/字段属性分层，不混排。
+      - generic [ref=f1e38]:
+        - button "总览 34" [ref=f1e39] [cursor=pointer]
+        - button "产品 11" [ref=f1e40] [cursor=pointer]
+        - button "供应商 8" [ref=f1e41] [cursor=pointer]
+        - button "客户 5" [ref=f1e42] [cursor=pointer]
+        - button "库存 10" [ref=f1e43] [cursor=pointer]
+      - generic [ref=f1e44]:
+        - table [ref=f1e46]:
+          - rowgroup [ref=f1e54]:
+            - row [ref=f1e55]:
+              - columnheader "表(业务/物理)" [ref=f1e56]
+              - columnheader "表级配置" [ref=f1e57]
+              - columnheader "字段" [ref=f1e58]
+              - columnheader "类型" [ref=f1e59]
+              - columnheader "检索.级别" [ref=f1e60]
+              - columnheader "缺省值" [ref=f1e61]
+            - row [ref=f1e62]:
+              - cell [ref=f1e63]:
+                - text: 分类
+                - code [ref=f1e64]: category
+              - cell [ref=f1e65]:
+                - generic [ref=f1e66]:
+                  - code [ref=f1e67]: "独立去重:"
+                  - text: "[分类名称]"
+                - generic [ref=f1e68]:
+                  - code [ref=f1e69]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e70]:
+                  - code [ref=f1e71]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e72]:
+                  - code [ref=f1e73]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e74]:
+                - text: 编号
+                - code [ref=f1e75]: id
+              - cell "主键(整数)" [ref=f1e76]
+              - cell "级索引" [ref=f1e77]
+              - cell "—" [ref=f1e79]
+            - row [ref=f1e80]:
+              - cell [ref=f1e81]:
+                - text: 分类名称
+                - code [ref=f1e82]: name
+              - cell "文本(100)" [ref=f1e83]
+              - cell "1级索引 · 主" [ref=f1e84]
+              - cell "未分类" [ref=f1e86]
+            - row [ref=f1e88]:
+              - cell [ref=f1e89]:
+                - text: 排序
+                - code [ref=f1e90]: sortOrder
+              - cell "整数" [ref=f1e91]
+              - cell "级索引" [ref=f1e92]
+              - cell "—" [ref=f1e94]
+            - row [ref=f1e95]:
+              - cell [ref=f1e96]:
+                - text: 状态
+                - code [ref=f1e97]: status
+              - cell "枚举" [ref=f1e98]
+              - cell "级索引" [ref=f1e99]
+              - cell "—" [ref=f1e101]
+        - group [ref=f1e102]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 分类 · 点开看 yml 原文" [ref=f1e103] [cursor=pointer]
+        - table [ref=f1e105]:
+          - rowgroup [ref=f1e113]:
+            - row [ref=f1e114]:
+              - columnheader "表(业务/物理)" [ref=f1e115]
+              - columnheader "表级配置" [ref=f1e116]
+              - columnheader "字段" [ref=f1e117]
+              - columnheader "类型" [ref=f1e118]
+              - columnheader "检索.级别" [ref=f1e119]
+              - columnheader "缺省值" [ref=f1e120]
+            - row [ref=f1e121]:
+              - cell [ref=f1e122]:
+                - text: 产品
+                - code [ref=f1e123]: product
+              - cell [ref=f1e124]:
+                - generic [ref=f1e125]:
+                  - code [ref=f1e126]: "独立去重:"
+                  - text: "[产品名称]"
+                - generic [ref=f1e127]:
+                  - code [ref=f1e128]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e129]:
+                  - code [ref=f1e130]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e131]:
+                  - code [ref=f1e132]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e133]:
+                - text: 编号
+                - code [ref=f1e134]: id
+              - cell "主键" [ref=f1e135]
+              - cell "级索引" [ref=f1e136]
+              - cell "—" [ref=f1e138]
+            - row [ref=f1e139]:
+              - cell [ref=f1e140]:
+                - text: 产品名称
+                - code [ref=f1e141]: name
+              - cell "文本(200)" [ref=f1e142]
+              - cell "1级索引 · 主" [ref=f1e143]
+              - cell "—" [ref=f1e145]
+            - row [ref=f1e146]:
+              - cell [ref=f1e147]:
+                - text: 外键分类
+                - code [ref=f1e148]: categoryId
+              - cell "外键→分类.编号" [ref=f1e149]
+              - cell "级索引" [ref=f1e150]
+              - cell "—" [ref=f1e152]
+            - row [ref=f1e153]:
+              - cell [ref=f1e154]:
+                - text: 备注
+                - code [ref=f1e155]: remark
+              - cell "文本(500)" [ref=f1e156]
+              - cell "2级索引 · 子" [ref=f1e157]
+              - cell "—" [ref=f1e159]
+            - row [ref=f1e160]:
+              - cell [ref=f1e161]:
+                - text: 状态
+                - code [ref=f1e162]: status
+              - cell "枚举" [ref=f1e163]
+              - cell "级索引" [ref=f1e164]
+              - cell "—" [ref=f1e166]
+        - group [ref=f1e167]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 产品 · 点开看 yml 原文" [ref=f1e168] [cursor=pointer]
+        - table [ref=f1e170]:
+          - rowgroup [ref=f1e178]:
+            - row [ref=f1e179]:
+              - columnheader "表(业务/物理)" [ref=f1e180]
+              - columnheader "表级配置" [ref=f1e181]
+              - columnheader "字段" [ref=f1e182]
+              - columnheader "类型" [ref=f1e183]
+              - columnheader "检索.级别" [ref=f1e184]
+              - columnheader "缺省值" [ref=f1e185]
+            - row [ref=f1e186]:
+              - cell [ref=f1e187]:
+                - text: 品牌
+                - code [ref=f1e188]: brand
+              - cell [ref=f1e189]:
+                - generic [ref=f1e190]:
+                  - code [ref=f1e191]: "独立去重:"
+                  - text: "[品牌名称]"
+                - generic [ref=f1e192]:
+                  - code [ref=f1e193]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e194]:
+                  - code [ref=f1e195]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e196]:
+                  - code [ref=f1e197]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e198]:
+                - text: 编号
+                - code [ref=f1e199]: id
+              - cell "主键" [ref=f1e200]
+              - cell "级索引" [ref=f1e201]
+              - cell "—" [ref=f1e203]
+            - row [ref=f1e204]:
+              - cell [ref=f1e205]:
+                - text: 品牌名称
+                - code [ref=f1e206]: name
+              - cell "文本(100)" [ref=f1e207]
+              - cell "1级索引 · 主" [ref=f1e208]
+              - cell "普通品牌" [ref=f1e210]
+            - row [ref=f1e212]:
+              - cell [ref=f1e213]:
+                - text: 状态
+                - code [ref=f1e214]: status
+              - cell "枚举" [ref=f1e215]
+              - cell "级索引" [ref=f1e216]
+              - cell "—" [ref=f1e218]
+        - group [ref=f1e219]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 品牌 · 点开看 yml 原文" [ref=f1e220] [cursor=pointer]
+        - table [ref=f1e222]:
+          - rowgroup [ref=f1e230]:
+            - row [ref=f1e231]:
+              - columnheader "表(业务/物理)" [ref=f1e232]
+              - columnheader "表级配置" [ref=f1e233]
+              - columnheader "字段" [ref=f1e234]
+              - columnheader "类型" [ref=f1e235]
+              - columnheader "检索.级别" [ref=f1e236]
+              - columnheader "缺省值" [ref=f1e237]
+            - row [ref=f1e238]:
+              - cell [ref=f1e239]:
+                - text: 单位
+                - code [ref=f1e240]: unit
+              - cell [ref=f1e241]:
+                - generic [ref=f1e242]:
+                  - code [ref=f1e243]: "独立去重:"
+                  - text: "[单位名]"
+                - generic [ref=f1e244]:
+                  - code [ref=f1e245]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e246]:
+                  - code [ref=f1e247]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e248]:
+                  - code [ref=f1e249]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e250]:
+                - text: 编号
+                - code [ref=f1e251]: id
+              - cell "主键" [ref=f1e252]
+              - cell "级索引" [ref=f1e253]
+              - cell "—" [ref=f1e255]
+            - row [ref=f1e256]:
+              - cell [ref=f1e257]:
+                - text: 单位名
+                - code [ref=f1e258]: unitName
+              - cell "文本(50)" [ref=f1e259]
+              - cell "1级索引 · 主" [ref=f1e260]
+              - cell "—" [ref=f1e262]
+            - row [ref=f1e263]:
+              - cell [ref=f1e264]:
+                - text: 状态
+                - code [ref=f1e265]: status
+              - cell "枚举" [ref=f1e266]
+              - cell "级索引" [ref=f1e267]
+              - cell "—" [ref=f1e269]
+        - group [ref=f1e270]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 单位 · 点开看 yml 原文" [ref=f1e271] [cursor=pointer]
+        - table [ref=f1e273]:
+          - rowgroup [ref=f1e281]:
+            - row [ref=f1e282]:
+              - columnheader "表(业务/物理)" [ref=f1e283]
+              - columnheader "表级配置" [ref=f1e284]
+              - columnheader "字段" [ref=f1e285]
+              - columnheader "类型" [ref=f1e286]
+              - columnheader "检索.级别" [ref=f1e287]
+              - columnheader "缺省值" [ref=f1e288]
+            - row [ref=f1e289]:
+              - cell [ref=f1e290]:
+                - text: 价格类型
+                - code [ref=f1e291]: price_type
+              - cell [ref=f1e292]:
+                - generic [ref=f1e293]:
+                  - code [ref=f1e294]: "独立去重:"
+                  - text: "[类型名]"
+                - generic [ref=f1e295]:
+                  - code [ref=f1e296]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e297]:
+                  - code [ref=f1e298]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e299]:
+                  - code [ref=f1e300]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e301]:
+                - text: 编号
+                - code [ref=f1e302]: id
+              - cell "主键" [ref=f1e303]
+              - cell "级索引" [ref=f1e304]
+              - cell "—" [ref=f1e306]
+            - row [ref=f1e307]:
+              - cell [ref=f1e308]:
+                - text: 类型名
+                - code [ref=f1e309]: name
+              - cell "文本(50)" [ref=f1e310]
+              - cell "1级索引 · 主" [ref=f1e311]
+              - cell "零售价" [ref=f1e313]
+            - row [ref=f1e315]:
+              - cell [ref=f1e316]:
+                - text: 排序
+                - code [ref=f1e317]: sortOrder
+              - cell "整数" [ref=f1e318]
+              - cell "级索引" [ref=f1e319]
+              - cell "—" [ref=f1e321]
+            - row [ref=f1e322]:
+              - cell [ref=f1e323]:
+                - text: 状态
+                - code [ref=f1e324]: status
+              - cell "枚举" [ref=f1e325]
+              - cell "级索引" [ref=f1e326]
+              - cell "—" [ref=f1e328]
+        - group [ref=f1e329]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 价格类型 · 点开看 yml 原文" [ref=f1e330] [cursor=pointer]
+        - table [ref=f1e332]:
+          - rowgroup [ref=f1e340]:
+            - row [ref=f1e341]:
+              - columnheader "表(业务/物理)" [ref=f1e342]
+              - columnheader "表级配置" [ref=f1e343]
+              - columnheader "字段" [ref=f1e344]
+              - columnheader "类型" [ref=f1e345]
+              - columnheader "检索.级别" [ref=f1e346]
+              - columnheader "缺省值" [ref=f1e347]
+            - row [ref=f1e348]:
+              - cell [ref=f1e349]:
+                - text: 产品×品牌
+                - code [ref=f1e350]: product_brand
+              - cell [ref=f1e351]:
+                - generic [ref=f1e352]:
+                  - code [ref=f1e353]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e354]:
+                  - code [ref=f1e355]: "联合去重:"
+                  - text: "[[外键产品, 外键品牌]]"
+                - generic [ref=f1e356]:
+                  - code [ref=f1e357]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e358]:
+                  - code [ref=f1e359]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e360]:
+                - text: 外键产品
+                - code [ref=f1e361]: productId
+              - cell "外键→产品.编号" [ref=f1e362]
+              - cell "级索引" [ref=f1e363]
+              - cell "—" [ref=f1e365]
+            - row [ref=f1e366]:
+              - cell [ref=f1e367]:
+                - text: 外键品牌
+                - code [ref=f1e368]: brandId
+              - cell "外键→品牌.编号" [ref=f1e369]
+              - cell "级索引" [ref=f1e370]
+              - cell "—" [ref=f1e372]
+            - row [ref=f1e373]:
+              - cell [ref=f1e374]:
+                - text: 排序
+                - code [ref=f1e375]: sortOrder
+              - cell "整数" [ref=f1e376]
+              - cell "级索引" [ref=f1e377]
+              - cell "—" [ref=f1e379]
+            - row [ref=f1e380]:
+              - cell [ref=f1e381]:
+                - text: 状态
+                - code [ref=f1e382]: status
+              - cell "枚举" [ref=f1e383]
+              - cell "级索引" [ref=f1e384]
+              - cell "—" [ref=f1e386]
+        - group [ref=f1e387]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 产品×品牌 · 点开看 yml 原文" [ref=f1e388] [cursor=pointer]
+        - table [ref=f1e390]:
+          - rowgroup [ref=f1e398]:
+            - row [ref=f1e399]:
+              - columnheader "表(业务/物理)" [ref=f1e400]
+              - columnheader "表级配置" [ref=f1e401]
+              - columnheader "字段" [ref=f1e402]
+              - columnheader "类型" [ref=f1e403]
+              - columnheader "检索.级别" [ref=f1e404]
+              - columnheader "缺省值" [ref=f1e405]
+            - row [ref=f1e406]:
+              - cell [ref=f1e407]:
+                - text: 品牌规格
+                - code [ref=f1e408]: spec
+              - cell [ref=f1e409]:
+                - generic [ref=f1e410]:
+                  - code [ref=f1e411]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e412]:
+                  - code [ref=f1e413]: "联合去重:"
+                  - text: "[[外键产品×品牌, 规格名称]]"
+                - generic [ref=f1e414]:
+                  - code [ref=f1e415]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e416]:
+                  - code [ref=f1e417]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e418]:
+                - text: 外键产品×品牌
+                - code [ref=f1e419]: productBrandId
+              - cell "外键→产品×品牌.编号" [ref=f1e420]
+              - cell "级索引" [ref=f1e421]
+              - cell "—" [ref=f1e423]
+            - row [ref=f1e424]:
+              - cell [ref=f1e425]:
+                - text: 规格名称
+                - code [ref=f1e426]: specModel
+              - cell "文本(200)" [ref=f1e427]
+              - cell "1级索引 · 主" [ref=f1e428]
+              - cell "—" [ref=f1e430]
+            - row [ref=f1e431]:
+              - cell [ref=f1e432]:
+                - text: 规格备注
+                - code [ref=f1e433]: remark
+              - cell "文本(500)" [ref=f1e434]
+              - cell "2级索引 · 子" [ref=f1e435]
+              - cell "—" [ref=f1e437]
+            - row [ref=f1e438]:
+              - cell [ref=f1e439]:
+                - text: 排序
+                - code [ref=f1e440]: sortOrder
+              - cell "整数" [ref=f1e441]
+              - cell "级索引" [ref=f1e442]
+              - cell "—" [ref=f1e444]
+            - row [ref=f1e445]:
+              - cell [ref=f1e446]:
+                - text: 状态
+                - code [ref=f1e447]: status
+              - cell "枚举" [ref=f1e448]
+              - cell "级索引" [ref=f1e449]
+              - cell "—" [ref=f1e451]
+        - group [ref=f1e452]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 品牌规格 · 点开看 yml 原文" [ref=f1e453] [cursor=pointer]
+        - table [ref=f1e455]:
+          - rowgroup [ref=f1e463]:
+            - row [ref=f1e464]:
+              - columnheader "表(业务/物理)" [ref=f1e465]
+              - columnheader "表级配置" [ref=f1e466]
+              - columnheader "字段" [ref=f1e467]
+              - columnheader "类型" [ref=f1e468]
+              - columnheader "检索.级别" [ref=f1e469]
+              - columnheader "缺省值" [ref=f1e470]
+            - row [ref=f1e471]:
+              - cell [ref=f1e472]:
+                - text: 单位换算
+                - code [ref=f1e473]: spec_unit
+              - cell [ref=f1e474]:
+                - generic [ref=f1e475]:
+                  - code [ref=f1e476]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e477]:
+                  - code [ref=f1e478]: "联合去重:"
+                  - text: "[[外键规格, 外键单位]]"
+                - generic [ref=f1e479]:
+                  - code [ref=f1e480]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e481]:
+                  - code [ref=f1e482]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e483]:
+                - text: 外键规格
+                - code [ref=f1e484]: specId
+              - cell "外键→品牌规格.编号" [ref=f1e485]
+              - cell "级索引" [ref=f1e486]
+              - cell "—" [ref=f1e488]
+            - row [ref=f1e489]:
+              - cell [ref=f1e490]:
+                - text: 外键单位
+                - code [ref=f1e491]: unitId
+              - cell "外键→单位.编号" [ref=f1e492]
+              - cell "级索引" [ref=f1e493]
+              - cell "—" [ref=f1e495]
+            - row [ref=f1e496]:
+              - cell [ref=f1e497]:
+                - text: 是否基准
+                - code [ref=f1e498]: isBase
+              - cell "布尔" [ref=f1e499]
+              - cell "级索引" [ref=f1e500]
+              - cell "—" [ref=f1e502]
+            - row [ref=f1e503]:
+              - cell [ref=f1e504]:
+                - text: 是否展示
+                - code [ref=f1e505]: isDisplay
+              - cell "布尔" [ref=f1e506]
+              - cell "级索引" [ref=f1e507]
+              - cell "—" [ref=f1e509]
+            - row [ref=f1e510]:
+              - cell [ref=f1e511]:
+                - text: 换算率
+                - code [ref=f1e512]: conversionRate
+              - cell "小数(10，4)" [ref=f1e513]
+              - cell "级索引" [ref=f1e514]
+              - cell "—" [ref=f1e516]
+        - group [ref=f1e517]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 单位换算 · 点开看 yml 原文" [ref=f1e518] [cursor=pointer]
+        - table [ref=f1e520]:
+          - rowgroup [ref=f1e528]:
+            - row [ref=f1e529]:
+              - columnheader "表(业务/物理)" [ref=f1e530]
+              - columnheader "表级配置" [ref=f1e531]
+              - columnheader "字段" [ref=f1e532]
+              - columnheader "类型" [ref=f1e533]
+              - columnheader "检索.级别" [ref=f1e534]
+              - columnheader "缺省值" [ref=f1e535]
+            - row [ref=f1e536]:
+              - cell [ref=f1e537]:
+                - text: 售价
+                - code [ref=f1e538]: sale_price
+              - cell [ref=f1e539]:
+                - generic [ref=f1e540]:
+                  - code [ref=f1e541]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e542]:
+                  - code [ref=f1e543]: "联合去重:"
+                  - text: "[[外键单位换算, 外键价格类型]]"
+                - generic [ref=f1e544]:
+                  - code [ref=f1e545]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e546]:
+                  - code [ref=f1e547]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e548]:
+                - text: 外键单位换算
+                - code [ref=f1e549]: specUnitId
+              - cell "外键→单位换算.编号" [ref=f1e550]
+              - cell "级索引" [ref=f1e551]
+              - cell "—" [ref=f1e553]
+            - row [ref=f1e554]:
+              - cell [ref=f1e555]:
+                - text: 外键价格类型
+                - code [ref=f1e556]: priceTypeId
+              - cell "外键→价格类型.编号" [ref=f1e557]
+              - cell "级索引" [ref=f1e558]
+              - cell "—" [ref=f1e560]
+            - row [ref=f1e561]:
+              - cell [ref=f1e562]:
+                - text: 单价
+                - code [ref=f1e563]: price
+              - cell "小数(10，2)" [ref=f1e564]
+              - cell "级索引" [ref=f1e565]
+              - cell "—" [ref=f1e567]
+            - row [ref=f1e568]:
+              - cell [ref=f1e569]:
+                - text: 状态
+                - code [ref=f1e570]: status
+              - cell "枚举" [ref=f1e571]
+              - cell "级索引" [ref=f1e572]
+              - cell "—" [ref=f1e574]
+            - row [ref=f1e575]:
+              - cell [ref=f1e576]:
+                - text: 是否默认
+                - code [ref=f1e577]: isDefault
+              - cell "布尔" [ref=f1e578]
+              - cell "级索引" [ref=f1e579]
+              - cell "—" [ref=f1e581]
+        - group [ref=f1e582]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 售价 · 点开看 yml 原文" [ref=f1e583] [cursor=pointer]
+        - table [ref=f1e585]:
+          - rowgroup [ref=f1e593]:
+            - row [ref=f1e594]:
+              - columnheader "表(业务/物理)" [ref=f1e595]
+              - columnheader "表级配置" [ref=f1e596]
+              - columnheader "字段" [ref=f1e597]
+              - columnheader "类型" [ref=f1e598]
+              - columnheader "检索.级别" [ref=f1e599]
+              - columnheader "缺省值" [ref=f1e600]
+            - row [ref=f1e601]:
+              - cell [ref=f1e602]:
+                - text: 进价
+                - code [ref=f1e603]: purchase_price
+              - cell [ref=f1e604]:
+                - generic [ref=f1e605]:
+                  - code [ref=f1e606]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e607]:
+                  - code [ref=f1e608]: "联合去重:"
+                  - text: "[[外键单位换算, 采购渠道]]"
+                - generic [ref=f1e609]:
+                  - code [ref=f1e610]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e611]:
+                  - code [ref=f1e612]: "索引:"
+                  - text: "[采购渠道]"
+              - cell [ref=f1e613]:
+                - text: 外键单位换算
+                - code [ref=f1e614]: specUnitId
+              - cell "外键→单位换算.编号" [ref=f1e615]
+              - cell "级索引" [ref=f1e616]
+              - cell "—" [ref=f1e618]
+            - row [ref=f1e619]:
+              - cell [ref=f1e620]:
+                - text: 采购渠道
+                - code [ref=f1e621]: supplierId
+              - cell "外键→供应商.编号(逻辑)" [ref=f1e622]
+              - cell "级索引" [ref=f1e623]
+              - cell "—" [ref=f1e625]
+            - row [ref=f1e626]:
+              - cell [ref=f1e627]:
+                - text: 进价
+                - code [ref=f1e628]: price
+              - cell "小数(10，2)" [ref=f1e629]
+              - cell "级索引" [ref=f1e630]
+              - cell "—" [ref=f1e632]
+            - row [ref=f1e633]:
+              - cell [ref=f1e634]:
+                - text: 状态
+                - code [ref=f1e635]: status
+              - cell "枚举" [ref=f1e636]
+              - cell "级索引" [ref=f1e637]
+              - cell "—" [ref=f1e639]
+            - row [ref=f1e640]:
+              - cell [ref=f1e641]:
+                - text: 是否默认
+                - code [ref=f1e642]: isDefault
+              - cell "布尔" [ref=f1e643]
+              - cell "级索引" [ref=f1e644]
+              - cell "—" [ref=f1e646]
+        - group [ref=f1e647]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 进价 · 点开看 yml 原文" [ref=f1e648] [cursor=pointer]
+        - table [ref=f1e650]:
+          - rowgroup [ref=f1e658]:
+            - row [ref=f1e659]:
+              - columnheader "表(业务/物理)" [ref=f1e660]
+              - columnheader "表级配置" [ref=f1e661]
+              - columnheader "字段" [ref=f1e662]
+              - columnheader "类型" [ref=f1e663]
+              - columnheader "检索.级别" [ref=f1e664]
+              - columnheader "缺省值" [ref=f1e665]
+            - row [ref=f1e666]:
+              - cell [ref=f1e667]:
+                - text: 产品图片
+                - code [ref=f1e668]: product_image
+              - cell [ref=f1e669]:
+                - generic [ref=f1e670]:
+                  - code [ref=f1e671]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e672]:
+                  - code [ref=f1e673]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e674]:
+                  - code [ref=f1e675]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e676]:
+                  - code [ref=f1e677]: "索引:"
+                  - text: "[内容哈希]"
+              - cell [ref=f1e678]:
+                - text: 外键规格
+                - code [ref=f1e679]: specId
+              - cell "外键→品牌规格.编号" [ref=f1e680]
+              - cell "级索引" [ref=f1e681]
+              - cell "—" [ref=f1e683]
+            - row [ref=f1e684]:
+              - cell [ref=f1e685]:
+                - text: 主图URL
+                - code [ref=f1e686]: imageUrl
+              - cell "文本(500)" [ref=f1e687]
+              - cell "级索引" [ref=f1e688]
+              - cell "—" [ref=f1e690]
+            - row [ref=f1e691]:
+              - cell [ref=f1e692]:
+                - text: 中图URL
+                - code [ref=f1e693]: mediumUrl
+              - cell "文本(500)" [ref=f1e694]
+              - cell "级索引" [ref=f1e695]
+              - cell "—" [ref=f1e697]
+            - row [ref=f1e698]:
+              - cell [ref=f1e699]:
+                - text: 缩略图URL
+                - code [ref=f1e700]: thumbnailUrl
+              - cell "文本(500)" [ref=f1e701]
+              - cell "级索引" [ref=f1e702]
+              - cell "—" [ref=f1e704]
+            - row [ref=f1e705]:
+              - cell [ref=f1e706]:
+                - text: 原图宽
+                - code [ref=f1e707]: width
+              - cell "整数" [ref=f1e708]
+              - cell "级索引" [ref=f1e709]
+              - cell "—" [ref=f1e711]
+            - row [ref=f1e712]:
+              - cell [ref=f1e713]:
+                - text: 原图高
+                - code [ref=f1e714]: height
+              - cell "整数" [ref=f1e715]
+              - cell "级索引" [ref=f1e716]
+              - cell "—" [ref=f1e718]
+            - row [ref=f1e719]:
+              - cell [ref=f1e720]:
+                - text: 字节数
+                - code [ref=f1e721]: size
+              - cell "整数" [ref=f1e722]
+              - cell "级索引" [ref=f1e723]
+              - cell "—" [ref=f1e725]
+            - row [ref=f1e726]:
+              - cell [ref=f1e727]:
+                - text: 内容哈希
+                - code [ref=f1e728]: hash
+              - cell "文本(64)" [ref=f1e729]
+              - cell "级索引" [ref=f1e730]
+              - cell "—" [ref=f1e732]
+            - row [ref=f1e733]:
+              - cell [ref=f1e734]:
+                - text: 排序
+                - code [ref=f1e735]: sortOrder
+              - cell "整数" [ref=f1e736]
+              - cell "级索引" [ref=f1e737]
+              - cell "—" [ref=f1e739]
+            - row [ref=f1e740]:
+              - cell [ref=f1e741]:
+                - text: 是否主图
+                - code [ref=f1e742]: isMain
+              - cell "整数" [ref=f1e743]
+              - cell "级索引" [ref=f1e744]
+              - cell "—" [ref=f1e746]
+        - group [ref=f1e747]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 产品图片 · 点开看 yml 原文" [ref=f1e748] [cursor=pointer]
+        - table [ref=f1e750]:
+          - rowgroup [ref=f1e758]:
+            - row [ref=f1e759]:
+              - columnheader "表(业务/物理)" [ref=f1e760]
+              - columnheader "表级配置" [ref=f1e761]
+              - columnheader "字段" [ref=f1e762]
+              - columnheader "类型" [ref=f1e763]
+              - columnheader "检索.级别" [ref=f1e764]
+              - columnheader "缺省值" [ref=f1e765]
+            - row [ref=f1e766]:
+              - cell [ref=f1e767]:
+                - text: 供应商
+                - code [ref=f1e768]: supplier
+              - cell [ref=f1e769]:
+                - generic [ref=f1e770]:
+                  - code [ref=f1e771]: "独立去重:"
+                  - text: "[供应商名称]"
+                - generic [ref=f1e772]:
+                  - code [ref=f1e773]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e774]:
+                  - code [ref=f1e775]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e776]:
+                  - code [ref=f1e777]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e778]:
+                - text: 编号
+                - code [ref=f1e779]: id
+              - cell "主键" [ref=f1e780]
+              - cell "级索引" [ref=f1e781]
+              - cell "—" [ref=f1e783]
+            - row [ref=f1e784]:
+              - cell [ref=f1e785]:
+                - text: 供应商名称
+                - code [ref=f1e786]: name
+              - cell "文本(200)" [ref=f1e787]
+              - cell "1级索引 · 主" [ref=f1e788]
+              - cell "待指定渠道" [ref=f1e790]
+            - row [ref=f1e792]:
+              - cell [ref=f1e793]:
+                - text: 备注
+                - code [ref=f1e794]: remark
+              - cell "文本(不限)" [ref=f1e795]
+              - cell "2级索引 · 子" [ref=f1e796]
+              - cell "—" [ref=f1e798]
+            - row [ref=f1e799]:
+              - cell [ref=f1e800]:
+                - text: 状态
+                - code [ref=f1e801]: status
+              - cell "枚举" [ref=f1e802]
+              - cell "级索引" [ref=f1e803]
+              - cell "—" [ref=f1e805]
+        - group [ref=f1e806]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 供应商 · 点开看 yml 原文" [ref=f1e807] [cursor=pointer]
+        - table [ref=f1e809]:
+          - rowgroup [ref=f1e817]:
+            - row [ref=f1e818]:
+              - columnheader "表(业务/物理)" [ref=f1e819]
+              - columnheader "表级配置" [ref=f1e820]
+              - columnheader "字段" [ref=f1e821]
+              - columnheader "类型" [ref=f1e822]
+              - columnheader "检索.级别" [ref=f1e823]
+              - columnheader "缺省值" [ref=f1e824]
+            - row [ref=f1e825]:
+              - cell [ref=f1e826]:
+                - text: 联系方式类型
+                - code [ref=f1e827]: contact_method
+              - cell [ref=f1e828]:
+                - generic [ref=f1e829]:
+                  - code [ref=f1e830]: "独立去重:"
+                  - text: "[方式名称]"
+                - generic [ref=f1e831]:
+                  - code [ref=f1e832]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e833]:
+                  - code [ref=f1e834]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e835]:
+                  - code [ref=f1e836]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e837]:
+                - text: 编号
+                - code [ref=f1e838]: id
+              - cell "主键" [ref=f1e839]
+              - cell "级索引" [ref=f1e840]
+              - cell "—" [ref=f1e842]
+            - row [ref=f1e843]:
+              - cell [ref=f1e844]:
+                - text: 方式名称
+                - code [ref=f1e845]: name
+              - cell "文本(50)" [ref=f1e846]
+              - cell "1级索引 · 主" [ref=f1e847]
+              - cell "电话" [ref=f1e849]
+            - row [ref=f1e851]:
+              - cell [ref=f1e852]:
+                - text: 排序
+                - code [ref=f1e853]: sortOrder
+              - cell "整数" [ref=f1e854]
+              - cell "级索引" [ref=f1e855]
+              - cell "—" [ref=f1e857]
+            - row [ref=f1e858]:
+              - cell [ref=f1e859]:
+                - text: 状态
+                - code [ref=f1e860]: status
+              - cell "枚举" [ref=f1e861]
+              - cell "级索引" [ref=f1e862]
+              - cell "—" [ref=f1e864]
+        - group [ref=f1e865]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 联系方式类型 · 点开看 yml 原文" [ref=f1e866] [cursor=pointer]
+        - table [ref=f1e868]:
+          - rowgroup [ref=f1e876]:
+            - row [ref=f1e877]:
+              - columnheader "表(业务/物理)" [ref=f1e878]
+              - columnheader "表级配置" [ref=f1e879]
+              - columnheader "字段" [ref=f1e880]
+              - columnheader "类型" [ref=f1e881]
+              - columnheader "检索.级别" [ref=f1e882]
+              - columnheader "缺省值" [ref=f1e883]
+            - row [ref=f1e884]:
+              - cell [ref=f1e885]:
+                - text: 地址类型
+                - code [ref=f1e886]: address_type
+              - cell [ref=f1e887]:
+                - generic [ref=f1e888]:
+                  - code [ref=f1e889]: "独立去重:"
+                  - text: "[地址类型名]"
+                - generic [ref=f1e890]:
+                  - code [ref=f1e891]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e892]:
+                  - code [ref=f1e893]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e894]:
+                  - code [ref=f1e895]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e896]:
+                - text: 编号
+                - code [ref=f1e897]: id
+              - cell "主键" [ref=f1e898]
+              - cell "级索引" [ref=f1e899]
+              - cell "—" [ref=f1e901]
+            - row [ref=f1e902]:
+              - cell [ref=f1e903]:
+                - text: 地址类型名
+                - code [ref=f1e904]: name
+              - cell "文本(50)" [ref=f1e905]
+              - cell "1级索引 · 主" [ref=f1e906]
+              - cell "—" [ref=f1e908]
+            - row [ref=f1e909]:
+              - cell [ref=f1e910]:
+                - text: 排序
+                - code [ref=f1e911]: sortOrder
+              - cell "整数" [ref=f1e912]
+              - cell "级索引" [ref=f1e913]
+              - cell "—" [ref=f1e915]
+            - row [ref=f1e916]:
+              - cell [ref=f1e917]:
+                - text: 状态
+                - code [ref=f1e918]: status
+              - cell "枚举" [ref=f1e919]
+              - cell "级索引" [ref=f1e920]
+              - cell "—" [ref=f1e922]
+        - group [ref=f1e923]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 地址类型 · 点开看 yml 原文" [ref=f1e924] [cursor=pointer]
+        - table [ref=f1e926]:
+          - rowgroup [ref=f1e934]:
+            - row [ref=f1e935]:
+              - columnheader "表(业务/物理)" [ref=f1e936]
+              - columnheader "表级配置" [ref=f1e937]
+              - columnheader "字段" [ref=f1e938]
+              - columnheader "类型" [ref=f1e939]
+              - columnheader "检索.级别" [ref=f1e940]
+              - columnheader "缺省值" [ref=f1e941]
+            - row [ref=f1e942]:
+              - cell [ref=f1e943]:
+                - text: 供应商联系人
+                - code [ref=f1e944]: supplier_contact
+              - cell [ref=f1e945]:
+                - generic [ref=f1e946]:
+                  - code [ref=f1e947]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e948]:
+                  - code [ref=f1e949]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e950]:
+                  - code [ref=f1e951]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e952]:
+                  - code [ref=f1e953]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e954]:
+                - text: 外键供应商
+                - code [ref=f1e955]: supplierId
+              - cell "外键→供应商.编号" [ref=f1e956]
+              - cell "级索引" [ref=f1e957]
+              - cell "—" [ref=f1e959]
+            - row [ref=f1e960]:
+              - cell [ref=f1e961]:
+                - text: 联系人姓名
+                - code [ref=f1e962]: name
+              - cell "文本(100)" [ref=f1e963]
+              - cell "1级索引 · 主" [ref=f1e964]
+              - cell "—" [ref=f1e966]
+            - row [ref=f1e967]:
+              - cell [ref=f1e968]:
+                - text: 外键联系方式
+                - code [ref=f1e969]: methodId
+              - cell "外键→联系方式类型.编号" [ref=f1e970]
+              - cell "级索引" [ref=f1e971]
+              - cell "—" [ref=f1e973]
+            - row [ref=f1e974]:
+              - cell [ref=f1e975]:
+                - text: 联系值
+                - code [ref=f1e976]: value
+              - cell "文本(200)" [ref=f1e977]
+              - cell "级索引" [ref=f1e978]
+              - cell "—" [ref=f1e980]
+            - row [ref=f1e981]:
+              - cell [ref=f1e982]:
+                - text: 是否默认
+                - code [ref=f1e983]: isDefault
+              - cell "布尔" [ref=f1e984]
+              - cell "级索引" [ref=f1e985]
+              - cell "—" [ref=f1e987]
+            - row [ref=f1e988]:
+              - cell [ref=f1e989]:
+                - text: 排序
+                - code [ref=f1e990]: sortOrder
+              - cell "整数" [ref=f1e991]
+              - cell "级索引" [ref=f1e992]
+              - cell "—" [ref=f1e994]
+        - group [ref=f1e995]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 供应商联系人 · 点开看 yml 原文" [ref=f1e996] [cursor=pointer]
+        - table [ref=f1e998]:
+          - rowgroup [ref=f1e1006]:
+            - row [ref=f1e1007]:
+              - columnheader "表(业务/物理)" [ref=f1e1008]
+              - columnheader "表级配置" [ref=f1e1009]
+              - columnheader "字段" [ref=f1e1010]
+              - columnheader "类型" [ref=f1e1011]
+              - columnheader "检索.级别" [ref=f1e1012]
+              - columnheader "缺省值" [ref=f1e1013]
+            - row [ref=f1e1014]:
+              - cell [ref=f1e1015]:
+                - text: 供应商地址
+                - code [ref=f1e1016]: supplier_address
+              - cell [ref=f1e1017]:
+                - generic [ref=f1e1018]:
+                  - code [ref=f1e1019]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1020]:
+                  - code [ref=f1e1021]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1022]:
+                  - code [ref=f1e1023]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1024]:
+                  - code [ref=f1e1025]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1026]:
+                - text: 外键供应商
+                - code [ref=f1e1027]: supplierId
+              - cell "外键→供应商.编号" [ref=f1e1028]
+              - cell "级索引" [ref=f1e1029]
+              - cell "—" [ref=f1e1031]
+            - row [ref=f1e1032]:
+              - cell [ref=f1e1033]:
+                - text: 外键地址类型
+                - code [ref=f1e1034]: addressTypeId
+              - cell "外键→地址类型.编号" [ref=f1e1035]
+              - cell "级索引" [ref=f1e1036]
+              - cell "—" [ref=f1e1038]
+            - row [ref=f1e1039]:
+              - cell [ref=f1e1040]:
+                - text: 地址文本
+                - code [ref=f1e1041]: addressText
+              - cell "文本(500)" [ref=f1e1042]
+              - cell "2级索引 · 子" [ref=f1e1043]
+              - cell "—" [ref=f1e1045]
+            - row [ref=f1e1046]:
+              - cell [ref=f1e1047]:
+                - text: 经度
+                - code [ref=f1e1048]: lng
+              - cell "小数(10，7)" [ref=f1e1049]
+              - cell "级索引" [ref=f1e1050]
+              - cell "—" [ref=f1e1052]
+            - row [ref=f1e1053]:
+              - cell [ref=f1e1054]:
+                - text: 纬度
+                - code [ref=f1e1055]: lat
+              - cell "小数(10，7)" [ref=f1e1056]
+              - cell "级索引" [ref=f1e1057]
+              - cell "—" [ref=f1e1059]
+            - row [ref=f1e1060]:
+              - cell [ref=f1e1061]:
+                - text: 坐标来源
+                - code [ref=f1e1062]: coordSource
+              - cell "枚举" [ref=f1e1063]
+              - cell "级索引" [ref=f1e1064]
+              - cell "—" [ref=f1e1066]
+            - row [ref=f1e1067]:
+              - cell [ref=f1e1068]:
+                - text: 是否默认
+                - code [ref=f1e1069]: isDefault
+              - cell "布尔" [ref=f1e1070]
+              - cell "级索引" [ref=f1e1071]
+              - cell "—" [ref=f1e1073]
+            - row [ref=f1e1074]:
+              - cell [ref=f1e1075]:
+                - text: 排序
+                - code [ref=f1e1076]: sortOrder
+              - cell "整数" [ref=f1e1077]
+              - cell "级索引" [ref=f1e1078]
+              - cell "—" [ref=f1e1080]
+            - row [ref=f1e1081]:
+              - cell [ref=f1e1082]:
+                - text: 备注
+                - code [ref=f1e1083]: remark
+              - cell "文本(200)" [ref=f1e1084]
+              - cell "级索引" [ref=f1e1085]
+              - cell "—" [ref=f1e1087]
+        - group [ref=f1e1088]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 供应商地址 · 点开看 yml 原文" [ref=f1e1089] [cursor=pointer]
+        - table [ref=f1e1091]:
+          - rowgroup [ref=f1e1099]:
+            - row [ref=f1e1100]:
+              - columnheader "表(业务/物理)" [ref=f1e1101]
+              - columnheader "表级配置" [ref=f1e1102]
+              - columnheader "字段" [ref=f1e1103]
+              - columnheader "类型" [ref=f1e1104]
+              - columnheader "检索.级别" [ref=f1e1105]
+              - columnheader "缺省值" [ref=f1e1106]
+            - row [ref=f1e1107]:
+              - cell [ref=f1e1108]:
+                - text: 供应商经营品类
+                - code [ref=f1e1109]: supplier_business_category
+              - cell [ref=f1e1110]:
+                - generic [ref=f1e1111]:
+                  - code [ref=f1e1112]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1113]:
+                  - code [ref=f1e1114]: "联合去重:"
+                  - text: "[[外键供应商, 外键分类]]"
+                - generic [ref=f1e1115]:
+                  - code [ref=f1e1116]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1117]:
+                  - code [ref=f1e1118]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1119]:
+                - text: 外键供应商
+                - code [ref=f1e1120]: supplierId
+              - cell "外键→供应商.编号" [ref=f1e1121]
+              - cell "级索引" [ref=f1e1122]
+              - cell "—" [ref=f1e1124]
+            - row [ref=f1e1125]:
+              - cell [ref=f1e1126]:
+                - text: 外键分类
+                - code [ref=f1e1127]: categoryId
+              - cell "外键→分类.编号" [ref=f1e1128]
+              - cell "1级索引 · 主" [ref=f1e1129]
+              - cell "—" [ref=f1e1131]
+        - group [ref=f1e1132]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 供应商经营品类 · 点开看 yml 原文" [ref=f1e1133] [cursor=pointer]
+        - table [ref=f1e1135]:
+          - rowgroup [ref=f1e1143]:
+            - row [ref=f1e1144]:
+              - columnheader "表(业务/物理)" [ref=f1e1145]
+              - columnheader "表级配置" [ref=f1e1146]
+              - columnheader "字段" [ref=f1e1147]
+              - columnheader "类型" [ref=f1e1148]
+              - columnheader "检索.级别" [ref=f1e1149]
+              - columnheader "缺省值" [ref=f1e1150]
+            - row [ref=f1e1151]:
+              - cell [ref=f1e1152]:
+                - text: 供应商经营品牌
+                - code [ref=f1e1153]: supplier_business_brand
+              - cell [ref=f1e1154]:
+                - generic [ref=f1e1155]:
+                  - code [ref=f1e1156]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1157]:
+                  - code [ref=f1e1158]: "联合去重:"
+                  - text: "[[外键供应商, 外键品牌]]"
+                - generic [ref=f1e1159]:
+                  - code [ref=f1e1160]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1161]:
+                  - code [ref=f1e1162]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1163]:
+                - text: 外键供应商
+                - code [ref=f1e1164]: supplierId
+              - cell "外键→供应商.编号" [ref=f1e1165]
+              - cell "级索引" [ref=f1e1166]
+              - cell "—" [ref=f1e1168]
+            - row [ref=f1e1169]:
+              - cell [ref=f1e1170]:
+                - text: 外键品牌
+                - code [ref=f1e1171]: brandId
+              - cell "外键→品牌.编号" [ref=f1e1172]
+              - cell "级索引" [ref=f1e1173]
+              - cell "—" [ref=f1e1175]
+        - group [ref=f1e1176]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 供应商经营品牌 · 点开看 yml 原文" [ref=f1e1177] [cursor=pointer]
+        - table [ref=f1e1179]:
+          - rowgroup [ref=f1e1187]:
+            - row [ref=f1e1188]:
+              - columnheader "表(业务/物理)" [ref=f1e1189]
+              - columnheader "表级配置" [ref=f1e1190]
+              - columnheader "字段" [ref=f1e1191]
+              - columnheader "类型" [ref=f1e1192]
+              - columnheader "检索.级别" [ref=f1e1193]
+              - columnheader "缺省值" [ref=f1e1194]
+            - row [ref=f1e1195]:
+              - cell [ref=f1e1196]:
+                - text: 供应商点位规则
+                - code [ref=f1e1197]: supplier_point_rule
+              - cell [ref=f1e1198]:
+                - generic [ref=f1e1199]:
+                  - code [ref=f1e1200]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1201]:
+                  - code [ref=f1e1202]: "联合去重:"
+                  - text: "[[外键供应商, 品牌名, 分类名]]"
+                - generic [ref=f1e1203]:
+                  - code [ref=f1e1204]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1205]:
+                  - code [ref=f1e1206]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1207]:
+                - text: 外键供应商
+                - code [ref=f1e1208]: supplierId
+              - cell "外键→供应商.编号(逻辑)" [ref=f1e1209]
+              - cell "级索引" [ref=f1e1210]
+              - cell "—" [ref=f1e1212]
+            - row [ref=f1e1213]:
+              - cell [ref=f1e1214]:
+                - text: 品牌名
+                - code [ref=f1e1215]: brandName
+              - cell "文本(100)" [ref=f1e1216]
+              - cell "1级索引 · 主" [ref=f1e1217]
+              - cell "—" [ref=f1e1219]
+            - row [ref=f1e1220]:
+              - cell [ref=f1e1221]:
+                - text: 分类名
+                - code [ref=f1e1222]: categoryName
+              - cell "文本(100)" [ref=f1e1223]
+              - cell "级索引" [ref=f1e1224]
+              - cell "—" [ref=f1e1226]
+            - row [ref=f1e1227]:
+              - cell [ref=f1e1228]:
+                - text: 点位
+                - code [ref=f1e1229]: point
+              - cell "小数(10，4)" [ref=f1e1230]
+              - cell "级索引" [ref=f1e1231]
+              - cell "—" [ref=f1e1233]
+        - group [ref=f1e1234]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 供应商点位规则 · 点开看 yml 原文" [ref=f1e1235] [cursor=pointer]
+        - table [ref=f1e1237]:
+          - rowgroup [ref=f1e1245]:
+            - row [ref=f1e1246]:
+              - columnheader "表(业务/物理)" [ref=f1e1247]
+              - columnheader "表级配置" [ref=f1e1248]
+              - columnheader "字段" [ref=f1e1249]
+              - columnheader "类型" [ref=f1e1250]
+              - columnheader "检索.级别" [ref=f1e1251]
+              - columnheader "缺省值" [ref=f1e1252]
+            - row [ref=f1e1253]:
+              - cell [ref=f1e1254]:
+                - text: 客户
+                - code [ref=f1e1255]: customers
+              - cell [ref=f1e1256]:
+                - generic [ref=f1e1257]:
+                  - code [ref=f1e1258]: "独立去重:"
+                  - text: "[客户编码, 客户名称]"
+                - generic [ref=f1e1259]:
+                  - code [ref=f1e1260]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1261]:
+                  - code [ref=f1e1262]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1263]:
+                  - code [ref=f1e1264]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1265]:
+                - text: 编号
+                - code [ref=f1e1266]: id
+              - cell "主键" [ref=f1e1267]
+              - cell "级索引" [ref=f1e1268]
+              - cell "—" [ref=f1e1270]
+            - row [ref=f1e1271]:
+              - cell [ref=f1e1272]:
+                - text: 客户编码
+                - code [ref=f1e1273]: customerCode
+              - cell "文本(30)" [ref=f1e1274]
+              - cell "级索引" [ref=f1e1275]
+              - cell "—" [ref=f1e1277]
+            - row [ref=f1e1278]:
+              - cell [ref=f1e1279]:
+                - text: 客户名称
+                - code [ref=f1e1280]: name
+              - cell "文本(100)" [ref=f1e1281]
+              - cell "1级索引 · 主" [ref=f1e1282]
+              - cell "散客" [ref=f1e1284]
+            - row [ref=f1e1286]:
+              - cell [ref=f1e1287]:
+                - text: 公司名称
+                - code [ref=f1e1288]: company
+              - cell "文本(200)" [ref=f1e1289]
+              - cell "级索引" [ref=f1e1290]
+              - cell "—" [ref=f1e1292]
+            - row [ref=f1e1293]:
+              - cell [ref=f1e1294]:
+                - text: 备注
+                - code [ref=f1e1295]: note
+              - cell "文本(不限)" [ref=f1e1296]
+              - cell "2级索引 · 子" [ref=f1e1297]
+              - cell "—" [ref=f1e1299]
+            - row [ref=f1e1300]:
+              - cell [ref=f1e1301]:
+                - text: 外键客户类型
+                - code [ref=f1e1302]: customerTypeId
+              - cell "外键→客户类型.编号" [ref=f1e1303]
+              - cell "级索引" [ref=f1e1304]
+              - cell "—" [ref=f1e1306]
+            - row [ref=f1e1307]:
+              - cell [ref=f1e1308]:
+                - text: 状态
+                - code [ref=f1e1309]: status
+              - cell "枚举" [ref=f1e1310]
+              - cell "级索引" [ref=f1e1311]
+              - cell "—" [ref=f1e1313]
+        - group [ref=f1e1314]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 客户 · 点开看 yml 原文" [ref=f1e1315] [cursor=pointer]
+        - table [ref=f1e1317]:
+          - rowgroup [ref=f1e1325]:
+            - row [ref=f1e1326]:
+              - columnheader "表(业务/物理)" [ref=f1e1327]
+              - columnheader "表级配置" [ref=f1e1328]
+              - columnheader "字段" [ref=f1e1329]
+              - columnheader "类型" [ref=f1e1330]
+              - columnheader "检索.级别" [ref=f1e1331]
+              - columnheader "缺省值" [ref=f1e1332]
+            - row [ref=f1e1333]:
+              - cell [ref=f1e1334]:
+                - text: 客户类型
+                - code [ref=f1e1335]: customer_type
+              - cell [ref=f1e1336]:
+                - generic [ref=f1e1337]:
+                  - code [ref=f1e1338]: "独立去重:"
+                  - text: "[类型名]"
+                - generic [ref=f1e1339]:
+                  - code [ref=f1e1340]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1341]:
+                  - code [ref=f1e1342]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1343]:
+                  - code [ref=f1e1344]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1345]:
+                - text: 编号
+                - code [ref=f1e1346]: id
+              - cell "主键" [ref=f1e1347]
+              - cell "级索引" [ref=f1e1348]
+              - cell "—" [ref=f1e1350]
+            - row [ref=f1e1351]:
+              - cell [ref=f1e1352]:
+                - text: 类型名
+                - code [ref=f1e1353]: name
+              - cell "文本(50)" [ref=f1e1354]
+              - cell "1级索引 · 主" [ref=f1e1355]
+              - cell "个人业主" [ref=f1e1357]
+            - row [ref=f1e1359]:
+              - cell [ref=f1e1360]:
+                - text: 排序
+                - code [ref=f1e1361]: sortOrder
+              - cell "整数" [ref=f1e1362]
+              - cell "级索引" [ref=f1e1363]
+              - cell "—" [ref=f1e1365]
+            - row [ref=f1e1366]:
+              - cell [ref=f1e1367]:
+                - text: 状态
+                - code [ref=f1e1368]: status
+              - cell "枚举" [ref=f1e1369]
+              - cell "级索引" [ref=f1e1370]
+              - cell "—" [ref=f1e1372]
+        - group [ref=f1e1373]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 客户类型 · 点开看 yml 原文" [ref=f1e1374] [cursor=pointer]
+        - table [ref=f1e1376]:
+          - rowgroup [ref=f1e1384]:
+            - row [ref=f1e1385]:
+              - columnheader "表(业务/物理)" [ref=f1e1386]
+              - columnheader "表级配置" [ref=f1e1387]
+              - columnheader "字段" [ref=f1e1388]
+              - columnheader "类型" [ref=f1e1389]
+              - columnheader "检索.级别" [ref=f1e1390]
+              - columnheader "缺省值" [ref=f1e1391]
+            - row [ref=f1e1392]:
+              - cell [ref=f1e1393]:
+                - text: 客户联系人
+                - code [ref=f1e1394]: customer_contact
+              - cell [ref=f1e1395]:
+                - generic [ref=f1e1396]:
+                  - code [ref=f1e1397]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1398]:
+                  - code [ref=f1e1399]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1400]:
+                  - code [ref=f1e1401]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1402]:
+                  - code [ref=f1e1403]: "索引:"
+                  - text: "[联系值]"
+              - cell [ref=f1e1404]:
+                - text: 外键客户
+                - code [ref=f1e1405]: customerId
+              - cell "外键→客户.编号" [ref=f1e1406]
+              - cell "级索引" [ref=f1e1407]
+              - cell "—" [ref=f1e1409]
+            - row [ref=f1e1410]:
+              - cell [ref=f1e1411]:
+                - text: 联系人姓名
+                - code [ref=f1e1412]: name
+              - cell "文本(100)" [ref=f1e1413]
+              - cell "1级索引 · 主" [ref=f1e1414]
+              - cell "—" [ref=f1e1416]
+            - row [ref=f1e1417]:
+              - cell [ref=f1e1418]:
+                - text: 外键联系方式
+                - code [ref=f1e1419]: methodId
+              - cell "外键→联系方式类型.编号" [ref=f1e1420]
+              - cell "级索引" [ref=f1e1421]
+              - cell "—" [ref=f1e1423]
+            - row [ref=f1e1424]:
+              - cell [ref=f1e1425]:
+                - text: 联系值
+                - code [ref=f1e1426]: value
+              - cell "文本(200)" [ref=f1e1427]
+              - cell "1级索引 · 主" [ref=f1e1428]
+              - cell "—" [ref=f1e1430]
+            - row [ref=f1e1431]:
+              - cell [ref=f1e1432]:
+                - text: 是否默认
+                - code [ref=f1e1433]: isDefault
+              - cell "布尔" [ref=f1e1434]
+              - cell "级索引" [ref=f1e1435]
+              - cell "—" [ref=f1e1437]
+            - row [ref=f1e1438]:
+              - cell [ref=f1e1439]:
+                - text: 排序
+                - code [ref=f1e1440]: sortOrder
+              - cell "整数" [ref=f1e1441]
+              - cell "级索引" [ref=f1e1442]
+              - cell "—" [ref=f1e1444]
+        - group [ref=f1e1445]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 客户联系人 · 点开看 yml 原文" [ref=f1e1446] [cursor=pointer]
+        - table [ref=f1e1448]:
+          - rowgroup [ref=f1e1456]:
+            - row [ref=f1e1457]:
+              - columnheader "表(业务/物理)" [ref=f1e1458]
+              - columnheader "表级配置" [ref=f1e1459]
+              - columnheader "字段" [ref=f1e1460]
+              - columnheader "类型" [ref=f1e1461]
+              - columnheader "检索.级别" [ref=f1e1462]
+              - columnheader "缺省值" [ref=f1e1463]
+            - row [ref=f1e1464]:
+              - cell [ref=f1e1465]:
+                - text: 客户地址
+                - code [ref=f1e1466]: customer_addresses
+              - cell [ref=f1e1467]:
+                - generic [ref=f1e1468]:
+                  - code [ref=f1e1469]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1470]:
+                  - code [ref=f1e1471]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1472]:
+                  - code [ref=f1e1473]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1474]:
+                  - code [ref=f1e1475]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1476]:
+                - text: 外键客户
+                - code [ref=f1e1477]: customerId
+              - cell "外键→客户.编号" [ref=f1e1478]
+              - cell "级索引" [ref=f1e1479]
+              - cell "—" [ref=f1e1481]
+            - row [ref=f1e1482]:
+              - cell [ref=f1e1483]:
+                - text: 地址标签
+                - code [ref=f1e1484]: label
+              - cell "文本(50)" [ref=f1e1485]
+              - cell "级索引" [ref=f1e1486]
+              - cell "—" [ref=f1e1488]
+            - row [ref=f1e1489]:
+              - cell [ref=f1e1490]:
+                - text: 联系人
+                - code [ref=f1e1491]: contact
+              - cell "文本(100)" [ref=f1e1492]
+              - cell "级索引" [ref=f1e1493]
+              - cell "—" [ref=f1e1495]
+            - row [ref=f1e1496]:
+              - cell [ref=f1e1497]:
+                - text: 联系电话
+                - code [ref=f1e1498]: phone
+              - cell "文本(20)" [ref=f1e1499]
+              - cell "级索引" [ref=f1e1500]
+              - cell "—" [ref=f1e1502]
+            - row [ref=f1e1503]:
+              - cell [ref=f1e1504]:
+                - text: 省
+                - code [ref=f1e1505]: province
+              - cell "文本(50)" [ref=f1e1506]
+              - cell "级索引" [ref=f1e1507]
+              - cell "—" [ref=f1e1509]
+            - row [ref=f1e1510]:
+              - cell [ref=f1e1511]:
+                - text: 市
+                - code [ref=f1e1512]: city
+              - cell "文本(50)" [ref=f1e1513]
+              - cell "级索引" [ref=f1e1514]
+              - cell "—" [ref=f1e1516]
+            - row [ref=f1e1517]:
+              - cell [ref=f1e1518]:
+                - text: 区
+                - code [ref=f1e1519]: district
+              - cell "文本(50)" [ref=f1e1520]
+              - cell "级索引" [ref=f1e1521]
+              - cell "—" [ref=f1e1523]
+            - row [ref=f1e1524]:
+              - cell [ref=f1e1525]:
+                - text: 详细地址
+                - code [ref=f1e1526]: detail
+              - cell "文本(500)" [ref=f1e1527]
+              - cell "级索引" [ref=f1e1528]
+              - cell "—" [ref=f1e1530]
+            - row [ref=f1e1531]:
+              - cell [ref=f1e1532]:
+                - text: 是否默认
+                - code [ref=f1e1533]: isDefault
+              - cell "布尔" [ref=f1e1534]
+              - cell "级索引" [ref=f1e1535]
+              - cell "—" [ref=f1e1537]
+        - group [ref=f1e1538]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 客户地址 · 点开看 yml 原文" [ref=f1e1539] [cursor=pointer]
+        - table [ref=f1e1541]:
+          - rowgroup [ref=f1e1549]:
+            - row [ref=f1e1550]:
+              - columnheader "表(业务/物理)" [ref=f1e1551]
+              - columnheader "表级配置" [ref=f1e1552]
+              - columnheader "字段" [ref=f1e1553]
+              - columnheader "类型" [ref=f1e1554]
+              - columnheader "检索.级别" [ref=f1e1555]
+              - columnheader "缺省值" [ref=f1e1556]
+            - row [ref=f1e1557]:
+              - cell [ref=f1e1558]:
+                - text: 客户开票信息
+                - code [ref=f1e1559]: customer_invoice
+              - cell [ref=f1e1560]:
+                - generic [ref=f1e1561]:
+                  - code [ref=f1e1562]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1563]:
+                  - code [ref=f1e1564]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1565]:
+                  - code [ref=f1e1566]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1567]:
+                  - code [ref=f1e1568]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1569]:
+                - text: 外键客户
+                - code [ref=f1e1570]: customerId
+              - cell "外键→客户.编号" [ref=f1e1571]
+              - cell "级索引" [ref=f1e1572]
+              - cell "—" [ref=f1e1574]
+            - row [ref=f1e1575]:
+              - cell [ref=f1e1576]:
+                - text: 开票抬头
+                - code [ref=f1e1577]: invoiceTitle
+              - cell "文本(200)" [ref=f1e1578]
+              - cell "1级索引 · 主" [ref=f1e1579]
+              - cell "—" [ref=f1e1581]
+            - row [ref=f1e1582]:
+              - cell [ref=f1e1583]:
+                - text: 税号
+                - code [ref=f1e1584]: taxNumber
+              - cell "文本(50)" [ref=f1e1585]
+              - cell "级索引" [ref=f1e1586]
+              - cell "—" [ref=f1e1588]
+            - row [ref=f1e1589]:
+              - cell [ref=f1e1590]:
+                - text: 开户银行
+                - code [ref=f1e1591]: bankName
+              - cell "文本(100)" [ref=f1e1592]
+              - cell "级索引" [ref=f1e1593]
+              - cell "—" [ref=f1e1595]
+            - row [ref=f1e1596]:
+              - cell [ref=f1e1597]:
+                - text: 银行账号
+                - code [ref=f1e1598]: bankAccount
+              - cell "文本(50)" [ref=f1e1599]
+              - cell "级索引" [ref=f1e1600]
+              - cell "—" [ref=f1e1602]
+            - row [ref=f1e1603]:
+              - cell [ref=f1e1604]:
+                - text: 开票地址
+                - code [ref=f1e1605]: address
+              - cell "文本(500)" [ref=f1e1606]
+              - cell "级索引" [ref=f1e1607]
+              - cell "—" [ref=f1e1609]
+            - row [ref=f1e1610]:
+              - cell [ref=f1e1611]:
+                - text: 开票电话
+                - code [ref=f1e1612]: phone
+              - cell "文本(30)" [ref=f1e1613]
+              - cell "级索引" [ref=f1e1614]
+              - cell "—" [ref=f1e1616]
+            - row [ref=f1e1617]:
+              - cell [ref=f1e1618]:
+                - text: 是否默认
+                - code [ref=f1e1619]: isDefault
+              - cell "布尔" [ref=f1e1620]
+              - cell "级索引" [ref=f1e1621]
+              - cell "—" [ref=f1e1623]
+            - row [ref=f1e1624]:
+              - cell [ref=f1e1625]:
+                - text: 排序
+                - code [ref=f1e1626]: sortOrder
+              - cell "整数" [ref=f1e1627]
+              - cell "级索引" [ref=f1e1628]
+              - cell "—" [ref=f1e1630]
+        - group [ref=f1e1631]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 客户开票信息 · 点开看 yml 原文" [ref=f1e1632] [cursor=pointer]
+        - table [ref=f1e1634]:
+          - rowgroup [ref=f1e1642]:
+            - row [ref=f1e1643]:
+              - columnheader "表(业务/物理)" [ref=f1e1644]
+              - columnheader "表级配置" [ref=f1e1645]
+              - columnheader "字段" [ref=f1e1646]
+              - columnheader "类型" [ref=f1e1647]
+              - columnheader "检索.级别" [ref=f1e1648]
+              - columnheader "缺省值" [ref=f1e1649]
+            - row [ref=f1e1650]:
+              - cell [ref=f1e1651]:
+                - text: 仓库
+                - code [ref=f1e1652]: warehouse
+              - cell [ref=f1e1653]:
+                - generic [ref=f1e1654]:
+                  - code [ref=f1e1655]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1656]:
+                  - code [ref=f1e1657]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1658]:
+                  - code [ref=f1e1659]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1660]:
+                  - code [ref=f1e1661]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1662]:
+                - text: 编号
+                - code [ref=f1e1663]: id
+              - cell "主键" [ref=f1e1664]
+              - cell "级索引" [ref=f1e1665]
+              - cell "—" [ref=f1e1667]
+            - row [ref=f1e1668]:
+              - cell [ref=f1e1669]:
+                - text: 仓库名称
+                - code [ref=f1e1670]: name
+              - cell "文本(200)" [ref=f1e1671]
+              - cell "1级索引 · 主" [ref=f1e1672]
+              - cell "—" [ref=f1e1674]
+            - row [ref=f1e1675]:
+              - cell [ref=f1e1676]:
+                - text: 主地址
+                - code [ref=f1e1677]: address
+              - cell "文本(500)" [ref=f1e1678]
+              - cell "级索引" [ref=f1e1679]
+              - cell "—" [ref=f1e1681]
+            - row [ref=f1e1682]:
+              - cell [ref=f1e1683]:
+                - text: 经度
+                - code [ref=f1e1684]: lng
+              - cell "小数(10，7)" [ref=f1e1685]
+              - cell "级索引" [ref=f1e1686]
+              - cell "—" [ref=f1e1688]
+            - row [ref=f1e1689]:
+              - cell [ref=f1e1690]:
+                - text: 纬度
+                - code [ref=f1e1691]: lat
+              - cell "小数(10，7)" [ref=f1e1692]
+              - cell "级索引" [ref=f1e1693]
+              - cell "—" [ref=f1e1695]
+            - row [ref=f1e1696]:
+              - cell [ref=f1e1697]:
+                - text: 坐标来源
+                - code [ref=f1e1698]: coordSource
+              - cell "枚举" [ref=f1e1699]
+              - cell "级索引" [ref=f1e1700]
+              - cell "—" [ref=f1e1702]
+            - row [ref=f1e1703]:
+              - cell [ref=f1e1704]:
+                - text: 是否主库房
+                - code [ref=f1e1705]: isMain
+              - cell "布尔" [ref=f1e1706]
+              - cell "级索引" [ref=f1e1707]
+              - cell "—" [ref=f1e1709]
+            - row [ref=f1e1710]:
+              - cell [ref=f1e1711]:
+                - text: 排序
+                - code [ref=f1e1712]: sortOrder
+              - cell "整数" [ref=f1e1713]
+              - cell "级索引" [ref=f1e1714]
+              - cell "—" [ref=f1e1716]
+            - row [ref=f1e1717]:
+              - cell [ref=f1e1718]:
+                - text: 状态
+                - code [ref=f1e1719]: status
+              - cell "枚举" [ref=f1e1720]
+              - cell "级索引" [ref=f1e1721]
+              - cell "—" [ref=f1e1723]
+        - group [ref=f1e1724]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 仓库 · 点开看 yml 原文" [ref=f1e1725] [cursor=pointer]
+        - table [ref=f1e1727]:
+          - rowgroup [ref=f1e1735]:
+            - row [ref=f1e1736]:
+              - columnheader "表(业务/物理)" [ref=f1e1737]
+              - columnheader "表级配置" [ref=f1e1738]
+              - columnheader "字段" [ref=f1e1739]
+              - columnheader "类型" [ref=f1e1740]
+              - columnheader "检索.级别" [ref=f1e1741]
+              - columnheader "缺省值" [ref=f1e1742]
+            - row [ref=f1e1743]:
+              - cell [ref=f1e1744]:
+                - text: 库区
+                - code [ref=f1e1745]: warehouse_zone
+              - cell [ref=f1e1746]:
+                - generic [ref=f1e1747]:
+                  - code [ref=f1e1748]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1749]:
+                  - code [ref=f1e1750]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1751]:
+                  - code [ref=f1e1752]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1753]:
+                  - code [ref=f1e1754]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1755]:
+                - text: 外键仓库
+                - code [ref=f1e1756]: warehouseId
+              - cell "外键→仓库.编号" [ref=f1e1757]
+              - cell "级索引" [ref=f1e1758]
+              - cell "—" [ref=f1e1760]
+            - row [ref=f1e1761]:
+              - cell [ref=f1e1762]:
+                - text: 区位名称
+                - code [ref=f1e1763]: name
+              - cell "文本(100)" [ref=f1e1764]
+              - cell "1级索引 · 主" [ref=f1e1765]
+              - cell "—" [ref=f1e1767]
+            - row [ref=f1e1768]:
+              - cell [ref=f1e1769]:
+                - text: 排序
+                - code [ref=f1e1770]: sortOrder
+              - cell "整数" [ref=f1e1771]
+              - cell "级索引" [ref=f1e1772]
+              - cell "—" [ref=f1e1774]
+        - group [ref=f1e1775]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 库区 · 点开看 yml 原文" [ref=f1e1776] [cursor=pointer]
+        - table [ref=f1e1778]:
+          - rowgroup [ref=f1e1786]:
+            - row [ref=f1e1787]:
+              - columnheader "表(业务/物理)" [ref=f1e1788]
+              - columnheader "表级配置" [ref=f1e1789]
+              - columnheader "字段" [ref=f1e1790]
+              - columnheader "类型" [ref=f1e1791]
+              - columnheader "检索.级别" [ref=f1e1792]
+              - columnheader "缺省值" [ref=f1e1793]
+            - row [ref=f1e1794]:
+              - cell [ref=f1e1795]:
+                - text: 库房联系人
+                - code [ref=f1e1796]: warehouse_contact
+              - cell [ref=f1e1797]:
+                - generic [ref=f1e1798]:
+                  - code [ref=f1e1799]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1800]:
+                  - code [ref=f1e1801]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1802]:
+                  - code [ref=f1e1803]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1804]:
+                  - code [ref=f1e1805]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e1806]:
+                - text: 外键仓库
+                - code [ref=f1e1807]: warehouseId
+              - cell "外键→仓库.编号" [ref=f1e1808]
+              - cell "级索引" [ref=f1e1809]
+              - cell "—" [ref=f1e1811]
+            - row [ref=f1e1812]:
+              - cell [ref=f1e1813]:
+                - text: 联系人姓名
+                - code [ref=f1e1814]: name
+              - cell "文本(100)" [ref=f1e1815]
+              - cell "1级索引 · 主" [ref=f1e1816]
+              - cell "—" [ref=f1e1818]
+            - row [ref=f1e1819]:
+              - cell [ref=f1e1820]:
+                - text: 外键联系方式
+                - code [ref=f1e1821]: methodId
+              - cell "外键→联系方式类型.编号" [ref=f1e1822]
+              - cell "级索引" [ref=f1e1823]
+              - cell "—" [ref=f1e1825]
+            - row [ref=f1e1826]:
+              - cell [ref=f1e1827]:
+                - text: 联系值
+                - code [ref=f1e1828]: value
+              - cell "文本(200)" [ref=f1e1829]
+              - cell "级索引" [ref=f1e1830]
+              - cell "—" [ref=f1e1832]
+            - row [ref=f1e1833]:
+              - cell [ref=f1e1834]:
+                - text: 是否默认
+                - code [ref=f1e1835]: isDefault
+              - cell "布尔" [ref=f1e1836]
+              - cell "级索引" [ref=f1e1837]
+              - cell "—" [ref=f1e1839]
+            - row [ref=f1e1840]:
+              - cell [ref=f1e1841]:
+                - text: 排序
+                - code [ref=f1e1842]: sortOrder
+              - cell "整数" [ref=f1e1843]
+              - cell "级索引" [ref=f1e1844]
+              - cell "—" [ref=f1e1846]
+        - group [ref=f1e1847]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 库房联系人 · 点开看 yml 原文" [ref=f1e1848] [cursor=pointer]
+        - table [ref=f1e1850]:
+          - rowgroup [ref=f1e1858]:
+            - row [ref=f1e1859]:
+              - columnheader "表(业务/物理)" [ref=f1e1860]
+              - columnheader "表级配置" [ref=f1e1861]
+              - columnheader "字段" [ref=f1e1862]
+              - columnheader "类型" [ref=f1e1863]
+              - columnheader "检索.级别" [ref=f1e1864]
+              - columnheader "缺省值" [ref=f1e1865]
+            - row [ref=f1e1866]:
+              - cell [ref=f1e1867]:
+                - text: 库存
+                - code [ref=f1e1868]: inventory
+              - cell [ref=f1e1869]:
+                - generic [ref=f1e1870]:
+                  - code [ref=f1e1871]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e1872]:
+                  - code [ref=f1e1873]: "联合去重:"
+                  - text: "[[外键仓库, 外键规格, 外键品牌, 外键单位]]"
+                - generic [ref=f1e1874]:
+                  - code [ref=f1e1875]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1876]:
+                  - code [ref=f1e1877]: "索引:"
+                  - text: "[外键仓库, 外键规格, 外键品牌, 外键单位]"
+              - cell [ref=f1e1878]:
+                - text: 外键仓库
+                - code [ref=f1e1879]: warehouseId
+              - cell "外键→仓库.编号(逻辑)" [ref=f1e1880]
+              - cell "级索引" [ref=f1e1881]
+              - cell "—" [ref=f1e1883]
+            - row [ref=f1e1884]:
+              - cell [ref=f1e1885]:
+                - text: 外键库区
+                - code [ref=f1e1886]: warehouseZoneId
+              - cell "外键→库区.编号" [ref=f1e1887]
+              - cell "级索引" [ref=f1e1888]
+              - cell "—" [ref=f1e1890]
+            - row [ref=f1e1891]:
+              - cell [ref=f1e1892]:
+                - text: 外键规格
+                - code [ref=f1e1893]: specId
+              - cell "外键→品牌规格.编号(逻辑)" [ref=f1e1894]
+              - cell "级索引" [ref=f1e1895]
+              - cell "—" [ref=f1e1897]
+            - row [ref=f1e1898]:
+              - cell [ref=f1e1899]:
+                - text: 外键品牌
+                - code [ref=f1e1900]: brandId
+              - cell "外键→品牌.编号(逻辑)" [ref=f1e1901]
+              - cell "级索引" [ref=f1e1902]
+              - cell "—" [ref=f1e1904]
+            - row [ref=f1e1905]:
+              - cell [ref=f1e1906]:
+                - text: 外键单位
+                - code [ref=f1e1907]: unitId
+              - cell "外键→单位.编号(逻辑)" [ref=f1e1908]
+              - cell "级索引" [ref=f1e1909]
+              - cell "—" [ref=f1e1911]
+            - row [ref=f1e1912]:
+              - cell [ref=f1e1913]:
+                - text: 规格名称快照
+                - code [ref=f1e1914]: specModel
+              - cell "文本(200)" [ref=f1e1915]
+              - cell "1级索引 · 主" [ref=f1e1916]
+              - cell "—" [ref=f1e1918]
+            - row [ref=f1e1919]:
+              - cell [ref=f1e1920]:
+                - text: 品牌名称快照
+                - code [ref=f1e1921]: brandName
+              - cell "文本(100)" [ref=f1e1922]
+              - cell "级索引" [ref=f1e1923]
+              - cell "—" [ref=f1e1925]
+            - row [ref=f1e1926]:
+              - cell [ref=f1e1927]:
+                - text: 单位名称快照
+                - code [ref=f1e1928]: unitName
+              - cell "文本(50)" [ref=f1e1929]
+              - cell "级索引" [ref=f1e1930]
+              - cell "—" [ref=f1e1932]
+            - row [ref=f1e1933]:
+              - cell [ref=f1e1934]:
+                - text: 库存数量
+                - code [ref=f1e1935]: qty
+              - cell "小数(14，3)" [ref=f1e1936]
+              - cell "级索引" [ref=f1e1937]
+              - cell "—" [ref=f1e1939]
+            - row [ref=f1e1940]:
+              - cell [ref=f1e1941]:
+                - text: 加权平均进价
+                - code [ref=f1e1942]: weightedAvgCost
+              - cell "小数(14，2)" [ref=f1e1943]
+              - cell "级索引" [ref=f1e1944]
+              - cell "—" [ref=f1e1946]
+            - row [ref=f1e1947]:
+              - cell [ref=f1e1948]:
+                - text: 最近入库时间
+                - code [ref=f1e1949]: lastInAt
+              - cell "时间" [ref=f1e1950]
+              - cell "级索引" [ref=f1e1951]
+              - cell "—" [ref=f1e1953]
+        - group [ref=f1e1954]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 库存 · 点开看 yml 原文" [ref=f1e1955] [cursor=pointer]
+        - table [ref=f1e1957]:
+          - rowgroup [ref=f1e1965]:
+            - row [ref=f1e1966]:
+              - columnheader "表(业务/物理)" [ref=f1e1967]
+              - columnheader "表级配置" [ref=f1e1968]
+              - columnheader "字段" [ref=f1e1969]
+              - columnheader "类型" [ref=f1e1970]
+              - columnheader "检索.级别" [ref=f1e1971]
+              - columnheader "缺省值" [ref=f1e1972]
+            - row [ref=f1e1973]:
+              - cell [ref=f1e1974]:
+                - text: 库存流水
+                - code [ref=f1e1975]: inventory_ledger
+              - cell [ref=f1e1976]:
+                - generic [ref=f1e1977]:
+                  - code [ref=f1e1978]: "独立去重:"
+                  - text: "[流水号]"
+                - generic [ref=f1e1979]:
+                  - code [ref=f1e1980]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e1981]:
+                  - code [ref=f1e1982]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e1983]:
+                  - code [ref=f1e1984]: "索引:"
+                  - text: "[外键仓库, 外键规格, 外键品牌, 外键单位, 业务单号]"
+              - cell [ref=f1e1985]:
+                - text: 流水号
+                - code [ref=f1e1986]: ledgerNo
+              - cell "文本(50)" [ref=f1e1987]
+              - cell "1级索引 · 主" [ref=f1e1988]
+              - cell "—" [ref=f1e1990]
+            - row [ref=f1e1991]:
+              - cell [ref=f1e1992]:
+                - text: 外键仓库
+                - code [ref=f1e1993]: warehouseId
+              - cell "外键→仓库.编号(逻辑)" [ref=f1e1994]
+              - cell "级索引" [ref=f1e1995]
+              - cell "—" [ref=f1e1997]
+            - row [ref=f1e1998]:
+              - cell [ref=f1e1999]:
+                - text: 外键规格
+                - code [ref=f1e2000]: specId
+              - cell "外键→品牌规格.编号(逻辑)" [ref=f1e2001]
+              - cell "级索引" [ref=f1e2002]
+              - cell "—" [ref=f1e2004]
+            - row [ref=f1e2005]:
+              - cell [ref=f1e2006]:
+                - text: 外键品牌
+                - code [ref=f1e2007]: brandId
+              - cell "外键→品牌.编号(逻辑)" [ref=f1e2008]
+              - cell "级索引" [ref=f1e2009]
+              - cell "—" [ref=f1e2011]
+            - row [ref=f1e2012]:
+              - cell [ref=f1e2013]:
+                - text: 外键单位
+                - code [ref=f1e2014]: unitId
+              - cell "外键→单位.编号(逻辑)" [ref=f1e2015]
+              - cell "级索引" [ref=f1e2016]
+              - cell "—" [ref=f1e2018]
+            - row [ref=f1e2019]:
+              - cell [ref=f1e2020]:
+                - text: 规格名称快照
+                - code [ref=f1e2021]: specModel
+              - cell "文本(200)" [ref=f1e2022]
+              - cell "级索引" [ref=f1e2023]
+              - cell "—" [ref=f1e2025]
+            - row [ref=f1e2026]:
+              - cell [ref=f1e2027]:
+                - text: 品牌名称快照
+                - code [ref=f1e2028]: brandName
+              - cell "文本(100)" [ref=f1e2029]
+              - cell "级索引" [ref=f1e2030]
+              - cell "—" [ref=f1e2032]
+            - row [ref=f1e2033]:
+              - cell [ref=f1e2034]:
+                - text: 单位名称快照
+                - code [ref=f1e2035]: unitName
+              - cell "文本(50)" [ref=f1e2036]
+              - cell "级索引" [ref=f1e2037]
+              - cell "—" [ref=f1e2039]
+            - row [ref=f1e2040]:
+              - cell [ref=f1e2041]:
+                - text: 变动类型
+                - code [ref=f1e2042]: movementType
+              - cell "枚举" [ref=f1e2043]
+              - cell "级索引" [ref=f1e2044]
+              - cell "—" [ref=f1e2046]
+            - row [ref=f1e2047]:
+              - cell [ref=f1e2048]:
+                - text: 变动数量
+                - code [ref=f1e2049]: qty
+              - cell "小数(14，3)" [ref=f1e2050]
+              - cell "级索引" [ref=f1e2051]
+              - cell "—" [ref=f1e2053]
+            - row [ref=f1e2054]:
+              - cell [ref=f1e2055]:
+                - text: 入库单价
+                - code [ref=f1e2056]: unitCost
+              - cell "小数(14，2)" [ref=f1e2057]
+              - cell "级索引" [ref=f1e2058]
+              - cell "—" [ref=f1e2060]
+            - row [ref=f1e2061]:
+              - cell [ref=f1e2062]:
+                - text: 结存数量
+                - code [ref=f1e2063]: balanceQty
+              - cell "小数(14，3)" [ref=f1e2064]
+              - cell "级索引" [ref=f1e2065]
+              - cell "—" [ref=f1e2067]
+            - row [ref=f1e2068]:
+              - cell [ref=f1e2069]:
+                - text: 结存加权进价
+                - code [ref=f1e2070]: balanceAvgCost
+              - cell "小数(14，2)" [ref=f1e2071]
+              - cell "级索引" [ref=f1e2072]
+              - cell "—" [ref=f1e2074]
+            - row [ref=f1e2075]:
+              - cell [ref=f1e2076]:
+                - text: 业务来源
+                - code [ref=f1e2077]: bizType
+              - cell "文本(50)" [ref=f1e2078]
+              - cell "级索引" [ref=f1e2079]
+              - cell "—" [ref=f1e2081]
+            - row [ref=f1e2082]:
+              - cell [ref=f1e2083]:
+                - text: 业务单号
+                - code [ref=f1e2084]: bizNo
+              - cell "文本(100)" [ref=f1e2085]
+              - cell "2级索引 · 子" [ref=f1e2086]
+              - cell "—" [ref=f1e2088]
+            - row [ref=f1e2089]:
+              - cell [ref=f1e2090]:
+                - text: 关联单据行
+                - code [ref=f1e2091]: lineId
+              - cell "长整数" [ref=f1e2092]
+              - cell "级索引" [ref=f1e2093]
+              - cell "—" [ref=f1e2095]
+            - row [ref=f1e2096]:
+              - cell [ref=f1e2097]:
+                - text: 备注
+                - code [ref=f1e2098]: remark
+              - cell "文本(500)" [ref=f1e2099]
+              - cell "级索引" [ref=f1e2100]
+              - cell "—" [ref=f1e2102]
+            - row [ref=f1e2103]:
+              - cell [ref=f1e2104]:
+                - text: 操作人编号
+                - code [ref=f1e2105]: createdBy
+              - cell "长整数" [ref=f1e2106]
+              - cell "级索引" [ref=f1e2107]
+              - cell "—" [ref=f1e2109]
+            - row [ref=f1e2110]:
+              - cell [ref=f1e2111]:
+                - text: 操作人名称快照
+                - code [ref=f1e2112]: creatorName
+              - cell "文本(50)" [ref=f1e2113]
+              - cell "级索引" [ref=f1e2114]
+              - cell "—" [ref=f1e2116]
+        - group [ref=f1e2117]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 库存流水 · 点开看 yml 原文" [ref=f1e2118] [cursor=pointer]
+        - table [ref=f1e2120]:
+          - rowgroup [ref=f1e2128]:
+            - row [ref=f1e2129]:
+              - columnheader "表(业务/物理)" [ref=f1e2130]
+              - columnheader "表级配置" [ref=f1e2131]
+              - columnheader "字段" [ref=f1e2132]
+              - columnheader "类型" [ref=f1e2133]
+              - columnheader "检索.级别" [ref=f1e2134]
+              - columnheader "缺省值" [ref=f1e2135]
+            - row [ref=f1e2136]:
+              - cell [ref=f1e2137]:
+                - text: 待入库单
+                - code [ref=f1e2138]: inbound_tasks
+              - cell [ref=f1e2139]:
+                - generic [ref=f1e2140]:
+                  - code [ref=f1e2141]: "独立去重:"
+                  - text: "[待入库单号]"
+                - generic [ref=f1e2142]:
+                  - code [ref=f1e2143]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e2144]:
+                  - code [ref=f1e2145]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e2146]:
+                  - code [ref=f1e2147]: "索引:"
+                  - text: "[外键供应商, 外键目标仓库]"
+              - cell [ref=f1e2148]:
+                - text: 待入库单号
+                - code [ref=f1e2149]: inboundNo
+              - cell "文本(50)" [ref=f1e2150]
+              - cell "1级索引 · 主" [ref=f1e2151]
+              - cell "—" [ref=f1e2153]
+            - row [ref=f1e2154]:
+              - cell [ref=f1e2155]:
+                - text: 来源单据
+                - code [ref=f1e2156]: documentId
+              - cell "长整数" [ref=f1e2157]
+              - cell "级索引" [ref=f1e2158]
+              - cell "—" [ref=f1e2160]
+            - row [ref=f1e2161]:
+              - cell [ref=f1e2162]:
+                - text: 外键供应商
+                - code [ref=f1e2163]: supplierId
+              - cell "外键→供应商.编号(逻辑)" [ref=f1e2164]
+              - cell "级索引" [ref=f1e2165]
+              - cell "—" [ref=f1e2167]
+            - row [ref=f1e2168]:
+              - cell [ref=f1e2169]:
+                - text: 供应商名称快照
+                - code [ref=f1e2170]: supplierName
+              - cell "文本(200)" [ref=f1e2171]
+              - cell "级索引" [ref=f1e2172]
+              - cell "—" [ref=f1e2174]
+            - row [ref=f1e2175]:
+              - cell [ref=f1e2176]:
+                - text: 外键目标仓库
+                - code [ref=f1e2177]: targetWarehouseId
+              - cell "外键→仓库.编号(逻辑)" [ref=f1e2178]
+              - cell "级索引" [ref=f1e2179]
+              - cell "—" [ref=f1e2181]
+            - row [ref=f1e2182]:
+              - cell [ref=f1e2183]:
+                - text: 超额总数量
+                - code [ref=f1e2184]: totalQty
+              - cell "小数(14，3)" [ref=f1e2185]
+              - cell "级索引" [ref=f1e2186]
+              - cell "—" [ref=f1e2188]
+            - row [ref=f1e2189]:
+              - cell [ref=f1e2190]:
+                - text: 超额总金额
+                - code [ref=f1e2191]: totalAmount
+              - cell "小数(14，2)" [ref=f1e2192]
+              - cell "级索引" [ref=f1e2193]
+              - cell "—" [ref=f1e2195]
+            - row [ref=f1e2196]:
+              - cell [ref=f1e2197]:
+                - text: 状态
+                - code [ref=f1e2198]: status
+              - cell "枚举" [ref=f1e2199]
+              - cell "级索引" [ref=f1e2200]
+              - cell "—" [ref=f1e2202]
+            - row [ref=f1e2203]:
+              - cell [ref=f1e2204]:
+                - text: 确认时间
+                - code [ref=f1e2205]: confirmedAt
+              - cell "时间" [ref=f1e2206]
+              - cell "级索引" [ref=f1e2207]
+              - cell "—" [ref=f1e2209]
+            - row [ref=f1e2210]:
+              - cell [ref=f1e2211]:
+                - text: 确认人编号
+                - code [ref=f1e2212]: confirmedBy
+              - cell "长整数" [ref=f1e2213]
+              - cell "级索引" [ref=f1e2214]
+              - cell "—" [ref=f1e2216]
+            - row [ref=f1e2217]:
+              - cell [ref=f1e2218]:
+                - text: 确认人名称快照
+                - code [ref=f1e2219]: confirmedName
+              - cell "文本(50)" [ref=f1e2220]
+              - cell "级索引" [ref=f1e2221]
+              - cell "—" [ref=f1e2223]
+            - row [ref=f1e2224]:
+              - cell [ref=f1e2225]:
+                - text: 备注
+                - code [ref=f1e2226]: note
+              - cell "文本(500)" [ref=f1e2227]
+              - cell "级索引" [ref=f1e2228]
+              - cell "—" [ref=f1e2230]
+        - group [ref=f1e2231]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 待入库单 · 点开看 yml 原文" [ref=f1e2232] [cursor=pointer]
+        - table [ref=f1e2234]:
+          - rowgroup [ref=f1e2242]:
+            - row [ref=f1e2243]:
+              - columnheader "表(业务/物理)" [ref=f1e2244]
+              - columnheader "表级配置" [ref=f1e2245]
+              - columnheader "字段" [ref=f1e2246]
+              - columnheader "类型" [ref=f1e2247]
+              - columnheader "检索.级别" [ref=f1e2248]
+              - columnheader "缺省值" [ref=f1e2249]
+            - row [ref=f1e2250]:
+              - cell [ref=f1e2251]:
+                - text: 待入库明细
+                - code [ref=f1e2252]: inbound_lines
+              - cell [ref=f1e2253]:
+                - generic [ref=f1e2254]:
+                  - code [ref=f1e2255]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e2256]:
+                  - code [ref=f1e2257]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e2258]:
+                  - code [ref=f1e2259]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e2260]:
+                  - code [ref=f1e2261]: "索引:"
+                  - text: "[]"
+              - cell [ref=f1e2262]:
+                - text: 外键入库单
+                - code [ref=f1e2263]: taskId
+              - cell "外键→待入库单.编号" [ref=f1e2264]
+              - cell "级索引" [ref=f1e2265]
+              - cell "—" [ref=f1e2267]
+            - row [ref=f1e2268]:
+              - cell [ref=f1e2269]:
+                - text: 来源单据行
+                - code [ref=f1e2270]: lineId
+              - cell "长整数" [ref=f1e2271]
+              - cell "级索引" [ref=f1e2272]
+              - cell "—" [ref=f1e2274]
+            - row [ref=f1e2275]:
+              - cell [ref=f1e2276]:
+                - text: 外键规格
+                - code [ref=f1e2277]: specId
+              - cell "外键→品牌规格.编号(逻辑)" [ref=f1e2278]
+              - cell "级索引" [ref=f1e2279]
+              - cell "—" [ref=f1e2281]
+            - row [ref=f1e2282]:
+              - cell [ref=f1e2283]:
+                - text: 外键品牌
+                - code [ref=f1e2284]: brandId
+              - cell "外键→品牌.编号(逻辑)" [ref=f1e2285]
+              - cell "级索引" [ref=f1e2286]
+              - cell "—" [ref=f1e2288]
+            - row [ref=f1e2289]:
+              - cell [ref=f1e2290]:
+                - text: 外键单位
+                - code [ref=f1e2291]: unitId
+              - cell "外键→单位.编号(逻辑)" [ref=f1e2292]
+              - cell "级索引" [ref=f1e2293]
+              - cell "—" [ref=f1e2295]
+            - row [ref=f1e2296]:
+              - cell [ref=f1e2297]:
+                - text: 产品名称快照
+                - code [ref=f1e2298]: productName
+              - cell "文本(200)" [ref=f1e2299]
+              - cell "级索引" [ref=f1e2300]
+              - cell "—" [ref=f1e2302]
+            - row [ref=f1e2303]:
+              - cell [ref=f1e2304]:
+                - text: 规格名称快照
+                - code [ref=f1e2305]: specModel
+              - cell "文本(200)" [ref=f1e2306]
+              - cell "级索引" [ref=f1e2307]
+              - cell "—" [ref=f1e2309]
+            - row [ref=f1e2310]:
+              - cell [ref=f1e2311]:
+                - text: 品牌名称快照
+                - code [ref=f1e2312]: brandName
+              - cell "文本(100)" [ref=f1e2313]
+              - cell "级索引" [ref=f1e2314]
+              - cell "—" [ref=f1e2316]
+            - row [ref=f1e2317]:
+              - cell [ref=f1e2318]:
+                - text: 分类名称快照
+                - code [ref=f1e2319]: categoryName
+              - cell "文本(100)" [ref=f1e2320]
+              - cell "级索引" [ref=f1e2321]
+              - cell "—" [ref=f1e2323]
+            - row [ref=f1e2324]:
+              - cell [ref=f1e2325]:
+                - text: 单位名称快照
+                - code [ref=f1e2326]: unitName
+              - cell "文本(50)" [ref=f1e2327]
+              - cell "级索引" [ref=f1e2328]
+              - cell "—" [ref=f1e2330]
+            - row [ref=f1e2331]:
+              - cell [ref=f1e2332]:
+                - text: 超额数量
+                - code [ref=f1e2333]: qty
+              - cell "小数(14，3)" [ref=f1e2334]
+              - cell "级索引" [ref=f1e2335]
+              - cell "—" [ref=f1e2337]
+            - row [ref=f1e2338]:
+              - cell [ref=f1e2339]:
+                - text: 约定进价
+                - code [ref=f1e2340]: unitCost
+              - cell "小数(14，2)" [ref=f1e2341]
+              - cell "级索引" [ref=f1e2342]
+              - cell "—" [ref=f1e2344]
+            - row [ref=f1e2345]:
+              - cell [ref=f1e2346]:
+                - text: 小计
+                - code [ref=f1e2347]: amount
+              - cell "小数(14，2)" [ref=f1e2348]
+              - cell "级索引" [ref=f1e2349]
+              - cell "—" [ref=f1e2351]
+            - row [ref=f1e2352]:
+              - cell [ref=f1e2353]:
+                - text: 状态
+                - code [ref=f1e2354]: status
+              - cell "枚举" [ref=f1e2355]
+              - cell "级索引" [ref=f1e2356]
+              - cell "—" [ref=f1e2358]
+        - group [ref=f1e2359]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 待入库明细 · 点开看 yml 原文" [ref=f1e2360] [cursor=pointer]
+        - table [ref=f1e2362]:
+          - rowgroup [ref=f1e2370]:
+            - row [ref=f1e2371]:
+              - columnheader "表(业务/物理)" [ref=f1e2372]
+              - columnheader "表级配置" [ref=f1e2373]
+              - columnheader "字段" [ref=f1e2374]
+              - columnheader "类型" [ref=f1e2375]
+              - columnheader "检索.级别" [ref=f1e2376]
+              - columnheader "缺省值" [ref=f1e2377]
+            - row [ref=f1e2378]:
+              - cell [ref=f1e2379]:
+                - text: 采购入库单
+                - code [ref=f1e2380]: purchase_inbounds
+              - cell [ref=f1e2381]:
+                - generic [ref=f1e2382]:
+                  - code [ref=f1e2383]: "独立去重:"
+                  - text: "[采购单号]"
+                - generic [ref=f1e2384]:
+                  - code [ref=f1e2385]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e2386]:
+                  - code [ref=f1e2387]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e2388]:
+                  - code [ref=f1e2389]: "索引:"
+                  - text: "[外键供应商, 外键仓库]"
+              - cell [ref=f1e2390]:
+                - text: 采购单号
+                - code [ref=f1e2391]: purchaseNo
+              - cell "文本(50)" [ref=f1e2392]
+              - cell "1级索引 · 主" [ref=f1e2393]
+              - cell "—" [ref=f1e2395]
+            - row [ref=f1e2396]:
+              - cell [ref=f1e2397]:
+                - text: 外键供应商
+                - code [ref=f1e2398]: supplierId
+              - cell "外键→供应商.编号(逻辑)" [ref=f1e2399]
+              - cell "级索引" [ref=f1e2400]
+              - cell "—" [ref=f1e2402]
+            - row [ref=f1e2403]:
+              - cell [ref=f1e2404]:
+                - text: 供应商名称快照
+                - code [ref=f1e2405]: supplierName
+              - cell "文本(200)" [ref=f1e2406]
+              - cell "级索引" [ref=f1e2407]
+              - cell "—" [ref=f1e2409]
+            - row [ref=f1e2410]:
+              - cell [ref=f1e2411]:
+                - text: 外键仓库
+                - code [ref=f1e2412]: warehouseId
+              - cell "外键→仓库.编号(逻辑)" [ref=f1e2413]
+              - cell "级索引" [ref=f1e2414]
+              - cell "—" [ref=f1e2416]
+            - row [ref=f1e2417]:
+              - cell [ref=f1e2418]:
+                - text: 仓库名称快照
+                - code [ref=f1e2419]: warehouseName
+              - cell "文本(200)" [ref=f1e2420]
+              - cell "级索引" [ref=f1e2421]
+              - cell "—" [ref=f1e2423]
+            - row [ref=f1e2424]:
+              - cell [ref=f1e2425]:
+                - text: 状态
+                - code [ref=f1e2426]: status
+              - cell "枚举" [ref=f1e2427]
+              - cell "级索引" [ref=f1e2428]
+              - cell "—" [ref=f1e2430]
+            - row [ref=f1e2431]:
+              - cell [ref=f1e2432]:
+                - text: 总数量
+                - code [ref=f1e2433]: totalQty
+              - cell "小数(14，3)" [ref=f1e2434]
+              - cell "级索引" [ref=f1e2435]
+              - cell "—" [ref=f1e2437]
+            - row [ref=f1e2438]:
+              - cell [ref=f1e2439]:
+                - text: 总金额
+                - code [ref=f1e2440]: totalAmount
+              - cell "小数(14，2)" [ref=f1e2441]
+              - cell "级索引" [ref=f1e2442]
+              - cell "—" [ref=f1e2444]
+            - row [ref=f1e2445]:
+              - cell [ref=f1e2446]:
+                - text: 备注
+                - code [ref=f1e2447]: remark
+              - cell "文本(500)" [ref=f1e2448]
+              - cell "级索引" [ref=f1e2449]
+              - cell "—" [ref=f1e2451]
+            - row [ref=f1e2452]:
+              - cell [ref=f1e2453]:
+                - text: 确认时间
+                - code [ref=f1e2454]: confirmedAt
+              - cell "时间" [ref=f1e2455]
+              - cell "级索引" [ref=f1e2456]
+              - cell "—" [ref=f1e2458]
+            - row [ref=f1e2459]:
+              - cell [ref=f1e2460]:
+                - text: 确认人编号
+                - code [ref=f1e2461]: confirmedBy
+              - cell "长整数" [ref=f1e2462]
+              - cell "级索引" [ref=f1e2463]
+              - cell "—" [ref=f1e2465]
+            - row [ref=f1e2466]:
+              - cell [ref=f1e2467]:
+                - text: 确认人名称快照
+                - code [ref=f1e2468]: confirmedName
+              - cell "文本(50)" [ref=f1e2469]
+              - cell "级索引" [ref=f1e2470]
+              - cell "—" [ref=f1e2472]
+        - group [ref=f1e2473]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 采购入库单 · 点开看 yml 原文" [ref=f1e2474] [cursor=pointer]
+        - table [ref=f1e2476]:
+          - rowgroup [ref=f1e2484]:
+            - row [ref=f1e2485]:
+              - columnheader "表(业务/物理)" [ref=f1e2486]
+              - columnheader "表级配置" [ref=f1e2487]
+              - columnheader "字段" [ref=f1e2488]
+              - columnheader "类型" [ref=f1e2489]
+              - columnheader "检索.级别" [ref=f1e2490]
+              - columnheader "缺省值" [ref=f1e2491]
+            - row [ref=f1e2492]:
+              - cell [ref=f1e2493]:
+                - text: 采购入库明细
+                - code [ref=f1e2494]: purchase_inbound_liness
+              - cell [ref=f1e2495]:
+                - generic [ref=f1e2496]:
+                  - code [ref=f1e2497]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e2498]:
+                  - code [ref=f1e2499]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e2500]:
+                  - code [ref=f1e2501]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e2502]:
+                  - code [ref=f1e2503]: "索引:"
+                  - text: "[外键规格, 外键品牌, 外键单位]"
+              - cell [ref=f1e2504]:
+                - text: 外键采购单
+                - code [ref=f1e2505]: inboundId
+              - cell "外键→采购入库单.编号" [ref=f1e2506]
+              - cell "级索引" [ref=f1e2507]
+              - cell "—" [ref=f1e2509]
+            - row [ref=f1e2510]:
+              - cell [ref=f1e2511]:
+                - text: 外键规格
+                - code [ref=f1e2512]: specId
+              - cell "外键→品牌规格.编号(逻辑)" [ref=f1e2513]
+              - cell "级索引" [ref=f1e2514]
+              - cell "—" [ref=f1e2516]
+            - row [ref=f1e2517]:
+              - cell [ref=f1e2518]:
+                - text: 外键品牌
+                - code [ref=f1e2519]: brandId
+              - cell "外键→品牌.编号(逻辑)" [ref=f1e2520]
+              - cell "级索引" [ref=f1e2521]
+              - cell "—" [ref=f1e2523]
+            - row [ref=f1e2524]:
+              - cell [ref=f1e2525]:
+                - text: 外键单位
+                - code [ref=f1e2526]: unitId
+              - cell "外键→单位.编号(逻辑)" [ref=f1e2527]
+              - cell "级索引" [ref=f1e2528]
+              - cell "—" [ref=f1e2530]
+            - row [ref=f1e2531]:
+              - cell [ref=f1e2532]:
+                - text: 产品名称快照
+                - code [ref=f1e2533]: productName
+              - cell "文本(200)" [ref=f1e2534]
+              - cell "级索引" [ref=f1e2535]
+              - cell "—" [ref=f1e2537]
+            - row [ref=f1e2538]:
+              - cell [ref=f1e2539]:
+                - text: 规格名称快照
+                - code [ref=f1e2540]: specModel
+              - cell "文本(200)" [ref=f1e2541]
+              - cell "级索引" [ref=f1e2542]
+              - cell "—" [ref=f1e2544]
+            - row [ref=f1e2545]:
+              - cell [ref=f1e2546]:
+                - text: 品牌名称快照
+                - code [ref=f1e2547]: brandName
+              - cell "文本(100)" [ref=f1e2548]
+              - cell "级索引" [ref=f1e2549]
+              - cell "—" [ref=f1e2551]
+            - row [ref=f1e2552]:
+              - cell [ref=f1e2553]:
+                - text: 分类名称快照
+                - code [ref=f1e2554]: categoryName
+              - cell "文本(100)" [ref=f1e2555]
+              - cell "级索引" [ref=f1e2556]
+              - cell "—" [ref=f1e2558]
+            - row [ref=f1e2559]:
+              - cell [ref=f1e2560]:
+                - text: 单位名称快照
+                - code [ref=f1e2561]: unitName
+              - cell "文本(50)" [ref=f1e2562]
+              - cell "级索引" [ref=f1e2563]
+              - cell "—" [ref=f1e2565]
+            - row [ref=f1e2566]:
+              - cell [ref=f1e2567]:
+                - text: 数量
+                - code [ref=f1e2568]: qty
+              - cell "小数(14，3)" [ref=f1e2569]
+              - cell "级索引" [ref=f1e2570]
+              - cell "—" [ref=f1e2572]
+            - row [ref=f1e2573]:
+              - cell [ref=f1e2574]:
+                - text: 进价单价
+                - code [ref=f1e2575]: unitCost
+              - cell "小数(14，2)" [ref=f1e2576]
+              - cell "级索引" [ref=f1e2577]
+              - cell "—" [ref=f1e2579]
+            - row [ref=f1e2580]:
+              - cell [ref=f1e2581]:
+                - text: 小计
+                - code [ref=f1e2582]: amount
+              - cell "小数(14，2)" [ref=f1e2583]
+              - cell "级索引" [ref=f1e2584]
+              - cell "—" [ref=f1e2586]
+            - row [ref=f1e2587]:
+              - cell [ref=f1e2588]:
+                - text: 行序
+                - code [ref=f1e2589]: seq
+              - cell "整数" [ref=f1e2590]
+              - cell "级索引" [ref=f1e2591]
+              - cell "—" [ref=f1e2593]
+        - group [ref=f1e2594]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 采购入库明细 · 点开看 yml 原文" [ref=f1e2595] [cursor=pointer]
+        - table [ref=f1e2597]:
+          - rowgroup [ref=f1e2605]:
+            - row [ref=f1e2606]:
+              - columnheader "表(业务/物理)" [ref=f1e2607]
+              - columnheader "表级配置" [ref=f1e2608]
+              - columnheader "字段" [ref=f1e2609]
+              - columnheader "类型" [ref=f1e2610]
+              - columnheader "检索.级别" [ref=f1e2611]
+              - columnheader "缺省值" [ref=f1e2612]
+            - row [ref=f1e2613]:
+              - cell [ref=f1e2614]:
+                - text: 欠库
+                - code [ref=f1e2615]: backorder
+              - cell [ref=f1e2616]:
+                - generic [ref=f1e2617]:
+                  - code [ref=f1e2618]: "独立去重:"
+                  - text: "[]"
+                - generic [ref=f1e2619]:
+                  - code [ref=f1e2620]: "联合去重:"
+                  - text: "[]"
+                - generic [ref=f1e2621]:
+                  - code [ref=f1e2622]: "全文检索:"
+                  - text: "[]"
+                - generic [ref=f1e2623]:
+                  - code [ref=f1e2624]: "索引:"
+                  - text: "[外键仓库, 外键规格, 外键品牌, 外键单位]"
+              - cell [ref=f1e2625]:
+                - text: 来源单据
+                - code [ref=f1e2626]: documentId
+              - cell "长整数" [ref=f1e2627]
+              - cell "级索引" [ref=f1e2628]
+              - cell "—" [ref=f1e2630]
+            - row [ref=f1e2631]:
+              - cell [ref=f1e2632]:
+                - text: 来源单据行
+                - code [ref=f1e2633]: lineId
+              - cell "长整数" [ref=f1e2634]
+              - cell "级索引" [ref=f1e2635]
+              - cell "—" [ref=f1e2637]
+            - row [ref=f1e2638]:
+              - cell [ref=f1e2639]:
+                - text: 外键仓库
+                - code [ref=f1e2640]: warehouseId
+              - cell "外键→仓库.编号(逻辑)" [ref=f1e2641]
+              - cell "级索引" [ref=f1e2642]
+              - cell "—" [ref=f1e2644]
+            - row [ref=f1e2645]:
+              - cell [ref=f1e2646]:
+                - text: 外键规格
+                - code [ref=f1e2647]: specId
+              - cell "外键→品牌规格.编号(逻辑)" [ref=f1e2648]
+              - cell "级索引" [ref=f1e2649]
+              - cell "—" [ref=f1e2651]
+            - row [ref=f1e2652]:
+              - cell [ref=f1e2653]:
+                - text: 外键品牌
+                - code [ref=f1e2654]: brandId
+              - cell "外键→品牌.编号(逻辑)" [ref=f1e2655]
+              - cell "级索引" [ref=f1e2656]
+              - cell "—" [ref=f1e2658]
+            - row [ref=f1e2659]:
+              - cell [ref=f1e2660]:
+                - text: 外键单位
+                - code [ref=f1e2661]: unitId
+              - cell "外键→单位.编号(逻辑)" [ref=f1e2662]
+              - cell "级索引" [ref=f1e2663]
+              - cell "—" [ref=f1e2665]
+            - row [ref=f1e2666]:
+              - cell [ref=f1e2667]:
+                - text: 规格名称快照
+                - code [ref=f1e2668]: specModel
+              - cell "文本(200)" [ref=f1e2669]
+              - cell "1级索引 · 主" [ref=f1e2670]
+              - cell "—" [ref=f1e2672]
+            - row [ref=f1e2673]:
+              - cell [ref=f1e2674]:
+                - text: 品牌名称快照
+                - code [ref=f1e2675]: brandName
+              - cell "文本(100)" [ref=f1e2676]
+              - cell "级索引" [ref=f1e2677]
+              - cell "—" [ref=f1e2679]
+            - row [ref=f1e2680]:
+              - cell [ref=f1e2681]:
+                - text: 单位名称快照
+                - code [ref=f1e2682]: unitName
+              - cell "文本(50)" [ref=f1e2683]
+              - cell "级索引" [ref=f1e2684]
+              - cell "—" [ref=f1e2686]
+            - row [ref=f1e2687]:
+              - cell [ref=f1e2688]:
+                - text: 欠库数量
+                - code [ref=f1e2689]: qty
+              - cell "小数(14，3)" [ref=f1e2690]
+              - cell "级索引" [ref=f1e2691]
+              - cell "—" [ref=f1e2693]
+            - row [ref=f1e2694]:
+              - cell [ref=f1e2695]:
+                - text: 状态
+                - code [ref=f1e2696]: status
+              - cell "枚举" [ref=f1e2697]
+              - cell "级索引" [ref=f1e2698]
+              - cell "—" [ref=f1e2700]
+            - row [ref=f1e2701]:
+              - cell [ref=f1e2702]:
+                - text: 补齐时间
+                - code [ref=f1e2703]: fulfilledAt
+              - cell "时间" [ref=f1e2704]
+              - cell "级索引" [ref=f1e2705]
+              - cell "—" [ref=f1e2707]
+            - row [ref=f1e2708]:
+              - cell [ref=f1e2709]:
+                - text: 补齐人编号
+                - code [ref=f1e2710]: fulfilledBy
+              - cell "长整数" [ref=f1e2711]
+              - cell "级索引" [ref=f1e2712]
+              - cell "—" [ref=f1e2714]
+            - row [ref=f1e2715]:
+              - cell [ref=f1e2716]:
+                - text: 补齐人名称快照
+                - code [ref=f1e2717]: fulfilledName
+              - cell "文本(50)" [ref=f1e2718]
+              - cell "级索引" [ref=f1e2719]
+              - cell "—" [ref=f1e2721]
+            - row [ref=f1e2722]:
+              - cell [ref=f1e2723]:
+                - text: 备注
+                - code [ref=f1e2724]: note
+              - cell "文本(500)" [ref=f1e2725]
+              - cell "级索引" [ref=f1e2726]
+              - cell "—" [ref=f1e2728]
+        - group [ref=f1e2729]:
+          - generic "▸ 📄 真实配置原文 · physical-layer.yml → 欠库 · 点开看 yml 原文" [ref=f1e2730] [cursor=pointer]
+      - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸
+      - group [ref=f1e2731]:
+        - generic "▸ 📄 物理层真实配置原文 · physical-layer.yml 全文 · 点开看 yml 原文" [ref=f1e2732] [cursor=pointer]
+      - heading "库索引全貌（推导结果 · 识别用非配置）" [level=3] [ref=f1e2733]
+      - generic [ref=f1e2734]:
+        - text: 六类索引三种出身：① 库自动不用标（主键/外键列/唯一自带，解释器补齐）② 人工决策显式声明（
+        - code [ref=f1e2735]: "全文检索: 是"
+        - text: /
+        - code [ref=f1e2736]: "索引: 是"
+        - text: ）③ 应用层规则不进建表（
+        - code [ref=f1e2737]: 检索.级别
+        - text: ）。
+      - table [ref=f1e2739]:
+        - rowgroup [ref=f1e2747]:
+          - row [ref=f1e2748]:
+            - columnheader "表" [ref=f1e2749]
+            - columnheader "主键" [ref=f1e2750]
+            - columnheader "唯一索引(表级配置 独立去重/联合去重 → 约束自带)" [ref=f1e2751]
+            - columnheader "全文索引(表级配置 全文检索 → 显式声明)" [ref=f1e2752]
+            - columnheader "普通索引(表级配置 索引 → 显式声明)" [ref=f1e2753]
+            - columnheader "外键索引(外键列 → 库自动补)" [ref=f1e2754]
+          - row [ref=f1e2755]:
+            - cell "分类" [ref=f1e2756]
+            - cell [ref=f1e2757]:
+              - code [ref=f1e2758]: 编号
+            - cell [ref=f1e2759]:
+              - code [ref=f1e2760]: 分类名称
+            - cell "—" [ref=f1e2761]
+            - cell "—" [ref=f1e2762]
+            - cell "—" [ref=f1e2763]
+          - row [ref=f1e2764]:
+            - cell "产品" [ref=f1e2765]
+            - cell [ref=f1e2766]:
+              - code [ref=f1e2767]: 编号
+            - cell [ref=f1e2768]:
+              - code [ref=f1e2769]: 产品名称
+            - cell "—" [ref=f1e2770]
+            - cell "—" [ref=f1e2771]
+            - cell "外键分类 → 分类" [ref=f1e2772]
+          - row [ref=f1e2773]:
+            - cell "品牌" [ref=f1e2774]
+            - cell [ref=f1e2775]:
+              - code [ref=f1e2776]: 编号
+            - cell [ref=f1e2777]:
+              - code [ref=f1e2778]: 品牌名称
+            - cell "—" [ref=f1e2779]
+            - cell "—" [ref=f1e2780]
+            - cell "—" [ref=f1e2781]
+          - row [ref=f1e2782]:
+            - cell "单位" [ref=f1e2783]
+            - cell [ref=f1e2784]:
+              - code [ref=f1e2785]: 编号
+            - cell [ref=f1e2786]:
+              - code [ref=f1e2787]: 单位名
+            - cell "—" [ref=f1e2788]
+            - cell "—" [ref=f1e2789]
+            - cell "—" [ref=f1e2790]
+          - row [ref=f1e2791]:
+            - cell "价格类型" [ref=f1e2792]
+            - cell [ref=f1e2793]:
+              - code [ref=f1e2794]: 编号
+            - cell [ref=f1e2795]:
+              - code [ref=f1e2796]: 类型名
+            - cell "—" [ref=f1e2797]
+            - cell "—" [ref=f1e2798]
+            - cell "—" [ref=f1e2799]
+          - row [ref=f1e2800]:
+            - cell "产品×品牌" [ref=f1e2801]
+            - cell "—" [ref=f1e2802]
+            - cell [ref=f1e2803]:
+              - code [ref=f1e2804]: 外键产品 + 外键品牌
+            - cell "—" [ref=f1e2805]
+            - cell "—" [ref=f1e2806]
+            - cell "外键产品 → 产品；外键品牌 → 品牌" [ref=f1e2807]
+          - row [ref=f1e2808]:
+            - cell "品牌规格" [ref=f1e2809]
+            - cell "—" [ref=f1e2810]
+            - cell [ref=f1e2811]:
+              - code [ref=f1e2812]: 外键产品×品牌 + 规格名称
+            - cell "—" [ref=f1e2813]
+            - cell "—" [ref=f1e2814]
+            - cell "外键产品×品牌 → 产品×品牌" [ref=f1e2815]
+          - row [ref=f1e2816]:
+            - cell "单位换算" [ref=f1e2817]
+            - cell "—" [ref=f1e2818]
+            - cell [ref=f1e2819]:
+              - code [ref=f1e2820]: 外键规格 + 外键单位
+            - cell "—" [ref=f1e2821]
+            - cell "—" [ref=f1e2822]
+            - cell "外键规格 → 品牌规格；外键单位 → 单位" [ref=f1e2823]
+          - row [ref=f1e2824]:
+            - cell "售价" [ref=f1e2825]
+            - cell "—" [ref=f1e2826]
+            - cell [ref=f1e2827]:
+              - code [ref=f1e2828]: 外键单位换算 + 外键价格类型
+            - cell "—" [ref=f1e2829]
+            - cell "—" [ref=f1e2830]
+            - cell "外键单位换算 → 单位换算；外键价格类型 → 价格类型" [ref=f1e2831]
+          - row [ref=f1e2832]:
+            - cell "进价" [ref=f1e2833]
+            - cell "—" [ref=f1e2834]
+            - cell [ref=f1e2835]:
+              - code [ref=f1e2836]: 外键单位换算 + 采购渠道
+            - cell "—" [ref=f1e2837]
+            - cell [ref=f1e2838]:
+              - code [ref=f1e2839]: 采购渠道
+            - cell "外键单位换算 → 单位换算；采购渠道 → 供应商" [ref=f1e2840]
+          - row [ref=f1e2841]:
+            - cell "产品图片" [ref=f1e2842]
+            - cell "—" [ref=f1e2843]
+            - cell "—" [ref=f1e2844]
+            - cell "—" [ref=f1e2845]
+            - cell [ref=f1e2846]:
+              - code [ref=f1e2847]: 内容哈希
+            - cell "外键规格 → 品牌规格" [ref=f1e2848]
+          - row [ref=f1e2849]:
+            - cell "供应商" [ref=f1e2850]
+            - cell [ref=f1e2851]:
+              - code [ref=f1e2852]: 编号
+            - cell [ref=f1e2853]:
+              - code [ref=f1e2854]: 供应商名称
+            - cell "—" [ref=f1e2855]
+            - cell "—" [ref=f1e2856]
+            - cell "—" [ref=f1e2857]
+          - row [ref=f1e2858]:
+            - cell "联系方式类型" [ref=f1e2859]
+            - cell [ref=f1e2860]:
+              - code [ref=f1e2861]: 编号
+            - cell [ref=f1e2862]:
+              - code [ref=f1e2863]: 方式名称
+            - cell "—" [ref=f1e2864]
+            - cell "—" [ref=f1e2865]
+            - cell "—" [ref=f1e2866]
+          - row [ref=f1e2867]:
+            - cell "地址类型" [ref=f1e2868]
+            - cell [ref=f1e2869]:
+              - code [ref=f1e2870]: 编号
+            - cell [ref=f1e2871]:
+              - code [ref=f1e2872]: 地址类型名
+            - cell "—" [ref=f1e2873]
+            - cell "—" [ref=f1e2874]
+            - cell "—" [ref=f1e2875]
+          - row [ref=f1e2876]:
+            - cell "供应商联系人" [ref=f1e2877]
+            - cell "—" [ref=f1e2878]
+            - cell "—" [ref=f1e2879]
+            - cell "—" [ref=f1e2880]
+            - cell "—" [ref=f1e2881]
+            - cell "外键供应商 → 供应商；外键联系方式 → 联系方式类型" [ref=f1e2882]
+          - row [ref=f1e2883]:
+            - cell "供应商地址" [ref=f1e2884]
+            - cell "—" [ref=f1e2885]
+            - cell "—" [ref=f1e2886]
+            - cell "—" [ref=f1e2887]
+            - cell "—" [ref=f1e2888]
+            - cell "外键供应商 → 供应商；外键地址类型 → 地址类型" [ref=f1e2889]
+          - row [ref=f1e2890]:
+            - cell "供应商经营品类" [ref=f1e2891]
+            - cell "—" [ref=f1e2892]
+            - cell [ref=f1e2893]:
+              - code [ref=f1e2894]: 外键供应商 + 外键分类
+            - cell "—" [ref=f1e2895]
+            - cell "—" [ref=f1e2896]
+            - cell "外键供应商 → 供应商；外键分类 → 分类" [ref=f1e2897]
+          - row [ref=f1e2898]:
+            - cell "供应商经营品牌" [ref=f1e2899]
+            - cell "—" [ref=f1e2900]
+            - cell [ref=f1e2901]:
+              - code [ref=f1e2902]: 外键供应商 + 外键品牌
+            - cell "—" [ref=f1e2903]
+            - cell "—" [ref=f1e2904]
+            - cell "外键供应商 → 供应商；外键品牌 → 品牌" [ref=f1e2905]
+          - row [ref=f1e2906]:
+            - cell "供应商点位规则" [ref=f1e2907]
+            - cell "—" [ref=f1e2908]
+            - cell [ref=f1e2909]:
+              - code [ref=f1e2910]: 外键供应商 + 品牌名 + 分类名
+            - cell "—" [ref=f1e2911]
+            - cell "—" [ref=f1e2912]
+            - cell "外键供应商 → 供应商" [ref=f1e2913]
+          - row [ref=f1e2914]:
+            - cell "客户" [ref=f1e2915]
+            - cell [ref=f1e2916]:
+              - code [ref=f1e2917]: 编号
+            - cell [ref=f1e2918]:
+              - code [ref=f1e2919]: 客户编码 + 客户名称
+            - cell "—" [ref=f1e2920]
+            - cell "—" [ref=f1e2921]
+            - cell "外键客户类型 → 客户类型" [ref=f1e2922]
+          - row [ref=f1e2923]:
+            - cell "客户类型" [ref=f1e2924]
+            - cell [ref=f1e2925]:
+              - code [ref=f1e2926]: 编号
+            - cell [ref=f1e2927]:
+              - code [ref=f1e2928]: 类型名
+            - cell "—" [ref=f1e2929]
+            - cell "—" [ref=f1e2930]
+            - cell "—" [ref=f1e2931]
+          - row [ref=f1e2932]:
+            - cell "客户联系人" [ref=f1e2933]
+            - cell "—" [ref=f1e2934]
+            - cell "—" [ref=f1e2935]
+            - cell "—" [ref=f1e2936]
+            - cell [ref=f1e2937]:
+              - code [ref=f1e2938]: 联系值
+            - cell "外键客户 → 客户；外键联系方式 → 联系方式类型" [ref=f1e2939]
+          - row [ref=f1e2940]:
+            - cell "客户地址" [ref=f1e2941]
+            - cell "—" [ref=f1e2942]
+            - cell "—" [ref=f1e2943]
+            - cell "—" [ref=f1e2944]
+            - cell "—" [ref=f1e2945]
+            - cell "外键客户 → 客户" [ref=f1e2946]
+          - row [ref=f1e2947]:
+            - cell "客户开票信息" [ref=f1e2948]
+            - cell "—" [ref=f1e2949]
+            - cell "—" [ref=f1e2950]
+            - cell "—" [ref=f1e2951]
+            - cell "—" [ref=f1e2952]
+            - cell "外键客户 → 客户" [ref=f1e2953]
+          - row [ref=f1e2954]:
+            - cell "仓库" [ref=f1e2955]
+            - cell [ref=f1e2956]:
+              - code [ref=f1e2957]: 编号
+            - cell "—" [ref=f1e2958]
+            - cell "—" [ref=f1e2959]
+            - cell "—" [ref=f1e2960]
+            - cell "—" [ref=f1e2961]
+          - row [ref=f1e2962]:
+            - cell "库区" [ref=f1e2963]
+            - cell "—" [ref=f1e2964]
+            - cell "—" [ref=f1e2965]
+            - cell "—" [ref=f1e2966]
+            - cell "—" [ref=f1e2967]
+            - cell "外键仓库 → 仓库" [ref=f1e2968]
+          - row [ref=f1e2969]:
+            - cell "库房联系人" [ref=f1e2970]
+            - cell "—" [ref=f1e2971]
+            - cell "—" [ref=f1e2972]
+            - cell "—" [ref=f1e2973]
+            - cell "—" [ref=f1e2974]
+            - cell "外键仓库 → 仓库；外键联系方式 → 联系方式类型" [ref=f1e2975]
+          - row [ref=f1e2976]:
+            - cell "库存" [ref=f1e2977]
+            - cell "—" [ref=f1e2978]
+            - cell [ref=f1e2979]:
+              - code [ref=f1e2980]: 外键仓库 + 外键规格 + 外键品牌 + 外键单位
+            - cell "—" [ref=f1e2981]
+            - cell [ref=f1e2982]:
+              - code [ref=f1e2983]: 外键仓库 + 外键规格 + 外键品牌 + 外键单位
+            - cell "外键仓库 → 仓库；外键库区 → 库区；外键规格 → 品牌规格；外键品牌 → 品牌；外键单位 → 单位" [ref=f1e2984]
+          - row [ref=f1e2985]:
+            - cell "库存流水" [ref=f1e2986]
+            - cell "—" [ref=f1e2987]
+            - cell [ref=f1e2988]:
+              - code [ref=f1e2989]: 流水号
+            - cell "—" [ref=f1e2990]
+            - cell [ref=f1e2991]:
+              - code [ref=f1e2992]: 外键仓库 + 外键规格 + 外键品牌 + 外键单位 + 业务单号
+            - cell "外键仓库 → 仓库；外键规格 → 品牌规格；外键品牌 → 品牌；外键单位 → 单位" [ref=f1e2993]
+          - row [ref=f1e2994]:
+            - cell "待入库单" [ref=f1e2995]
+            - cell "—" [ref=f1e2996]
+            - cell [ref=f1e2997]:
+              - code [ref=f1e2998]: 待入库单号
+            - cell "—" [ref=f1e2999]
+            - cell [ref=f1e3000]:
+              - code [ref=f1e3001]: 外键供应商 + 外键目标仓库
+            - cell "外键供应商 → 供应商；外键目标仓库 → 仓库" [ref=f1e3002]
+          - row [ref=f1e3003]:
+            - cell "待入库明细" [ref=f1e3004]
+            - cell "—" [ref=f1e3005]
+            - cell "—" [ref=f1e3006]
+            - cell "—" [ref=f1e3007]
+            - cell "—" [ref=f1e3008]
+            - cell "外键入库单 → 待入库单；外键规格 → 品牌规格；外键品牌 → 品牌；外键单位 → 单位" [ref=f1e3009]
+          - row [ref=f1e3010]:
+            - cell "采购入库单" [ref=f1e3011]
+            - cell "—" [ref=f1e3012]
+            - cell [ref=f1e3013]:
+              - code [ref=f1e3014]: 采购单号
+            - cell "—" [ref=f1e3015]
+            - cell [ref=f1e3016]:
+              - code [ref=f1e3017]: 外键供应商 + 外键仓库
+            - cell "外键供应商 → 供应商；外键仓库 → 仓库" [ref=f1e3018]
+          - row [ref=f1e3019]:
+            - cell "采购入库明细" [ref=f1e3020]
+            - cell "—" [ref=f1e3021]
+            - cell "—" [ref=f1e3022]
+            - cell "—" [ref=f1e3023]
+            - cell [ref=f1e3024]:
+              - code [ref=f1e3025]: 外键规格 + 外键品牌 + 外键单位
+            - cell "外键采购单 → 采购入库单；外键规格 → 品牌规格；外键品牌 → 品牌；外键单位 → 单位" [ref=f1e3026]
+          - row [ref=f1e3027]:
+            - cell "欠库" [ref=f1e3028]
+            - cell "—" [ref=f1e3029]
+            - cell "—" [ref=f1e3030]
+            - cell "—" [ref=f1e3031]
+            - cell [ref=f1e3032]:
+              - code [ref=f1e3033]: 外键仓库 + 外键规格 + 外键品牌 + 外键单位
+            - cell "外键仓库 → 仓库；外键规格 → 品牌规格；外键品牌 → 品牌；外键单位 → 单位" [ref=f1e3034]
+      - heading "表 → 关系体 归属（点名字直达对应层级）" [level=3] [ref=f1e3035]
+      - table [ref=f1e3037]:
+        - rowgroup [ref=f1e3041]:
+          - row [ref=f1e3042]:
+            - columnheader "表" [ref=f1e3043]
+            - columnheader "出现在哪些关系体" [ref=f1e3044]
+          - row [ref=f1e3045]:
+            - cell [ref=f1e3046]:
+              - text: 分类
+              - code [ref=f1e3047]: category
+            - cell [ref=f1e3048]:
+              - button "产品管理 ↗" [ref=f1e3049] [cursor=pointer]
+          - row [ref=f1e3050]:
+            - cell [ref=f1e3051]:
+              - text: 产品
+              - code [ref=f1e3052]: product
+            - cell [ref=f1e3053]:
+              - button "产品管理 ↗" [ref=f1e3054] [cursor=pointer]
+          - row [ref=f1e3055]:
+            - cell [ref=f1e3056]:
+              - text: 品牌
+              - code [ref=f1e3057]: brand
+            - cell [ref=f1e3058]:
+              - button "产品管理 ↗" [ref=f1e3059] [cursor=pointer]
+          - row [ref=f1e3060]:
+            - cell [ref=f1e3061]:
+              - text: 单位
+              - code [ref=f1e3062]: unit
+            - cell [ref=f1e3063]:
+              - button "产品管理 ↗" [ref=f1e3064] [cursor=pointer]
+          - row [ref=f1e3065]:
+            - cell [ref=f1e3066]:
+              - text: 价格类型
+              - code [ref=f1e3067]: price_type
+            - cell [ref=f1e3068]:
+              - button "产品管理 ↗" [ref=f1e3069] [cursor=pointer]
+          - row [ref=f1e3070]:
+            - cell [ref=f1e3071]:
+              - text: 产品×品牌
+              - code [ref=f1e3072]: product_brand
+            - cell [ref=f1e3073]:
+              - button "产品管理 ↗" [ref=f1e3074] [cursor=pointer]
+          - row [ref=f1e3075]:
+            - cell [ref=f1e3076]:
+              - text: 品牌规格
+              - code [ref=f1e3077]: spec
+            - cell [ref=f1e3078]:
+              - button "产品管理 ↗" [ref=f1e3079] [cursor=pointer]
+          - row [ref=f1e3080]:
+            - cell [ref=f1e3081]:
+              - text: 单位换算
+              - code [ref=f1e3082]: spec_unit
+            - cell [ref=f1e3083]:
+              - button "产品管理 ↗" [ref=f1e3084] [cursor=pointer]
+          - row [ref=f1e3085]:
+            - cell [ref=f1e3086]:
+              - text: 售价
+              - code [ref=f1e3087]: sale_price
+            - cell [ref=f1e3088]:
+              - button "产品管理 ↗" [ref=f1e3089] [cursor=pointer]
+          - row [ref=f1e3090]:
+            - cell [ref=f1e3091]:
+              - text: 进价
+              - code [ref=f1e3092]: purchase_price
+            - cell [ref=f1e3093]:
+              - button "产品管理 ↗" [ref=f1e3094] [cursor=pointer]
+          - row [ref=f1e3095]:
+            - cell [ref=f1e3096]:
+              - text: 产品图片
+              - code [ref=f1e3097]: product_image
+            - cell [ref=f1e3098]:
+              - button "产品管理 ↗" [ref=f1e3099] [cursor=pointer]
+          - row [ref=f1e3100]:
+            - cell [ref=f1e3101]:
+              - text: 供应商
+              - code [ref=f1e3102]: supplier
+            - cell [ref=f1e3103]:
+              - button "产品管理 ↗" [ref=f1e3104] [cursor=pointer]
+              - button "供应商管理 ↗" [ref=f1e3105] [cursor=pointer]
+          - row [ref=f1e3106]:
+            - cell [ref=f1e3107]:
+              - text: 联系方式类型
+              - code [ref=f1e3108]: contact_method
+            - cell [ref=f1e3109]:
+              - button "供应商管理 ↗" [ref=f1e3110] [cursor=pointer]
+          - row [ref=f1e3111]:
+            - cell [ref=f1e3112]:
+              - text: 地址类型
+              - code [ref=f1e3113]: address_type
+            - cell [ref=f1e3114]:
+              - button "供应商管理 ↗" [ref=f1e3115] [cursor=pointer]
+          - row [ref=f1e3116]:
+            - cell [ref=f1e3117]:
+              - text: 供应商联系人
+              - code [ref=f1e3118]: supplier_contact
+            - cell [ref=f1e3119]:
+              - button "供应商管理 ↗" [ref=f1e3120] [cursor=pointer]
+          - row [ref=f1e3121]:
+            - cell [ref=f1e3122]:
+              - text: 供应商地址
+              - code [ref=f1e3123]: supplier_address
+            - cell [ref=f1e3124]:
+              - button "供应商管理 ↗" [ref=f1e3125] [cursor=pointer]
+          - row [ref=f1e3126]:
+            - cell [ref=f1e3127]:
+              - text: 供应商经营品类
+              - code [ref=f1e3128]: supplier_business_category
+            - cell [ref=f1e3129]:
+              - button "供应商管理 ↗" [ref=f1e3130] [cursor=pointer]
+          - row [ref=f1e3131]:
+            - cell [ref=f1e3132]:
+              - text: 供应商经营品牌
+              - code [ref=f1e3133]: supplier_business_brand
+            - cell [ref=f1e3134]:
+              - button "供应商管理 ↗" [ref=f1e3135] [cursor=pointer]
+          - row [ref=f1e3136]:
+            - cell [ref=f1e3137]:
+              - text: 供应商点位规则
+              - code [ref=f1e3138]: supplier_point_rule
+            - cell [ref=f1e3139]:
+              - button "供应商管理 ↗" [ref=f1e3140] [cursor=pointer]
+          - row [ref=f1e3141]:
+            - cell [ref=f1e3142]:
+              - text: 客户
+              - code [ref=f1e3143]: customers
+            - cell [ref=f1e3144]:
+              - button "客户管理 ↗" [ref=f1e3145] [cursor=pointer]
+          - row [ref=f1e3146]:
+            - cell [ref=f1e3147]:
+              - text: 客户类型
+              - code [ref=f1e3148]: customer_type
+            - cell [ref=f1e3149]:
+              - button "客户管理 ↗" [ref=f1e3150] [cursor=pointer]
+          - row [ref=f1e3151]:
+            - cell [ref=f1e3152]:
+              - text: 客户联系人
+              - code [ref=f1e3153]: customer_contact
+            - cell [ref=f1e3154]:
+              - button "客户管理 ↗" [ref=f1e3155] [cursor=pointer]
+          - row [ref=f1e3156]:
+            - cell [ref=f1e3157]:
+              - text: 客户地址
+              - code [ref=f1e3158]: customer_addresses
+            - cell [ref=f1e3159]:
+              - button "客户管理 ↗" [ref=f1e3160] [cursor=pointer]
+          - row [ref=f1e3161]:
+            - cell [ref=f1e3162]:
+              - text: 客户开票信息
+              - code [ref=f1e3163]: customer_invoice
+            - cell [ref=f1e3164]:
+              - button "客户管理 ↗" [ref=f1e3165] [cursor=pointer]
+          - row [ref=f1e3166]:
+            - cell [ref=f1e3167]:
+              - text: 仓库
+              - code [ref=f1e3168]: warehouse
+            - cell [ref=f1e3169]:
+              - button "库存管理 ↗" [ref=f1e3170] [cursor=pointer]
+          - row [ref=f1e3171]:
+            - cell [ref=f1e3172]:
+              - text: 库区
+              - code [ref=f1e3173]: warehouse_zone
+            - cell [ref=f1e3174]:
+              - button "库存管理 ↗" [ref=f1e3175] [cursor=pointer]
+          - row [ref=f1e3176]:
+            - cell [ref=f1e3177]:
+              - text: 库房联系人
+              - code [ref=f1e3178]: warehouse_contact
+            - cell [ref=f1e3179]:
+              - button "库存管理 ↗" [ref=f1e3180] [cursor=pointer]
+          - row [ref=f1e3181]:
+            - cell [ref=f1e3182]:
+              - text: 库存
+              - code [ref=f1e3183]: inventory
+            - cell [ref=f1e3184]:
+              - button "库存管理 ↗" [ref=f1e3185] [cursor=pointer]
+          - row [ref=f1e3186]:
+            - cell [ref=f1e3187]:
+              - text: 库存流水
+              - code [ref=f1e3188]: inventory_ledger
+            - cell [ref=f1e3189]:
+              - button "库存管理 ↗" [ref=f1e3190] [cursor=pointer]
+          - row [ref=f1e3191]:
+            - cell [ref=f1e3192]:
+              - text: 待入库单
+              - code [ref=f1e3193]: inbound_tasks
+            - cell [ref=f1e3194]:
+              - button "库存管理 ↗" [ref=f1e3195] [cursor=pointer]
+          - row [ref=f1e3196]:
+            - cell [ref=f1e3197]:
+              - text: 待入库明细
+              - code [ref=f1e3198]: inbound_lines
+            - cell [ref=f1e3199]:
+              - button "库存管理 ↗" [ref=f1e3200] [cursor=pointer]
+          - row [ref=f1e3201]:
+            - cell [ref=f1e3202]:
+              - text: 采购入库单
+              - code [ref=f1e3203]: purchase_inbounds
+            - cell [ref=f1e3204]:
+              - button "库存管理 ↗" [ref=f1e3205] [cursor=pointer]
+          - row [ref=f1e3206]:
+            - cell [ref=f1e3207]:
+              - text: 采购入库明细
+              - code [ref=f1e3208]: purchase_inbound_liness
+            - cell [ref=f1e3209]:
+              - button "库存管理 ↗" [ref=f1e3210] [cursor=pointer]
+          - row [ref=f1e3211]:
+            - cell [ref=f1e3212]:
+              - text: 欠库
+              - code [ref=f1e3213]: backorder
+            - cell [ref=f1e3214]:
+              - button "库存管理 ↗" [ref=f1e3215] [cursor=pointer]
+      - generic [ref=f1e3216]:
+        - text: 关键区分 · 缺省值 与 检索级别 是两回事：
+        - code [ref=f1e3217]: 缺省值
+        - text: (字段级，配字典唯一名称字段)=本表兜底成员，外键引用本表留空时由引擎按它【反查字典→找不到就建→拿 id 关联】；
+        - code [ref=f1e3218]: 检索.级别
+        - text: =本表内哪些字段参与检索、谁优先。互不相干。
+    - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸

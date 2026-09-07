@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三层配置预览 · 真源可视化（固定渲染框架 + 实时读真源）</title>
+<style>
+  /* ── 设计令牌（统一）── 三级导航共享同一套视觉语言：卡片质感 + 左侧色条选中信号 ── */
+  :root{
+    --bg:#0b1020; --bg2:#0e1426;
+    --panel:#141b30; --panel2:#1a2340; --panel3:#222d4d;
+    --line:#2a3858; --line2:#38466a;
+    --txt:#e9eff8; --dim:#8b98b5; --dim2:#6b7896;
+    --accent:#5aa2ff; --accent-soft:rgba(90,162,255,.14);
+    --green:#3ddc97; --green-soft:rgba(61,220,151,.12);
+    --amber:#ffc94d; --red:#ff8080; --purple:#b79bff;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0 auto;background:var(--bg);color:var(--txt);max-width:1480px;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:13px;line-height:1.6;padding:24px clamp(14px,3.5vw,44px) 60px;
+  }
+  *::-webkit-scrollbar{width:9px;height:9px}
+  *::-webkit-scrollbar-track{background:transparent}
+  *::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px;border:2px solid transparent;background-clip:padding-box}
+  *::-webkit-scrollbar-thumb:hover{background:var(--accent);border:2px solid transparent;background-clip:padding-box}
+  *{scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+
+  h1{font-size:21px;margin:0 0 2px;letter-spacing:.01em}
+  h2{font-size:15px;margin:22px 0 8px;color:var(--accent);border-left:3px solid var(--accent);padding-left:10px;line-height:1.4}
+  h3{font-size:13px;margin:16px 0 6px;color:var(--green);letter-spacing:.01em}
+  h4{font-size:12.5px;margin:14px 0 5px;color:var(--purple);letter-spacing:.01em}
+  .sub{color:var(--dim);font-size:12px;margin:0 0 12px;line-height:1.65}
+  .muted{color:var(--dim)}
+  a{color:var(--accent)}
+
+  /* ── 表格 ── */
+  .scroll{overflow-x:auto;margin:8px 0;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;margin:8px 0;font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .grid{table-layout:fixed}
+  th,td{border:1px solid var(--line);padding:6px 9px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);color:var(--accent);font-weight:600;white-space:nowrap;letter-spacing:.02em;font-size:11.5px}
+  tbody tr:hover{background:var(--panel2)}
+  td code,.tblhead code{background:var(--panel2);padding:1px 5px;border-radius:4px;color:var(--purple);font-size:11px;white-space:nowrap;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  th.plain{background:rgba(61,220,151,.16);color:var(--green);border-bottom:2px solid var(--green)}
+  td.plain{background:rgba(61,220,151,.05);color:var(--txt);font-weight:500;line-height:1.7}
+
+  /* 推导规则表（§8.5）：信息密度优先——行高收紧（字号不变），一屏看更多条 */
+  table.rules td,table.rules th{padding:2px 8px;line-height:1.35;font-size:11.5px}
+  table.rules th{padding:3px 8px}
+  table.rules td.plain{padding:3px 8px;line-height:1.4}
+  .rulecnt{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 2px}
+  .rulecnt span{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-size:11.5px;color:var(--dim)}
+  .rulecnt span b{color:var(--accent);margin-right:4px}
+
+  /* ── 状态标签 ── */
+  .tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10.5px;margin:1px 2px;line-height:1.5}
+  .t-phy{background:var(--green-soft);color:var(--green);border:1px solid rgba(61,220,151,.25)}
+  .t-dif{background:rgba(255,201,77,.12);color:var(--amber);border:1px solid rgba(255,201,77,.25)}
+  .t-new{background:rgba(183,155,255,.12);color:var(--purple);border:1px solid rgba(183,155,255,.25)}
+  .t1{background:rgba(255,158,216,.14);color:#ff9ed8;border:1px solid rgba(255,158,216,.25)}
+  .t2{background:var(--green-soft);color:var(--green);border:1px solid rgba(61,220,151,.25)}
+  .t3{background:rgba(255,201,77,.12);color:var(--amber);border:1px solid rgba(255,201,77,.25)}
+  .t-st-ok{background:var(--green-soft);color:var(--green);border:1px solid rgba(61,220,151,.25)}
+  .t-st-amber{background:rgba(255,201,77,.12);color:var(--amber);border:1px solid rgba(255,201,77,.25)}
+  .t-st-dim{background:var(--accent-soft);color:var(--accent);border:1px solid rgba(90,162,255,.25)}
+  .t-st-red{background:rgba(255,128,128,.12);color:var(--red);border:1px solid rgba(255,128,128,.25)}
+
+  /* ── 提示框 ── */
+  .note{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--purple);border-radius:7px;padding:10px 13px;margin:12px 0;font-size:12px;line-height:1.65}
+  .note b{color:var(--purple)}
+  .tblhead{margin:12px 0 0;font-size:13px}
+  .linklike{background:none;border:none;color:var(--accent);cursor:pointer;font-size:12px;padding:0;text-decoration:underline;font-family:inherit}
+  .linklike:hover{color:var(--green)}
+
+  /* ── Hero 定位条 ── */
+  .hero{background:linear-gradient(135deg,#16203a 0%,#0e1626 100%);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:0 0 16px}
+  .hero h1{margin:0}
+  .hero .badge{display:inline-block;background:var(--green-soft);color:var(--green);font-size:11px;padding:2px 8px;border-radius:4px;margin-left:8px;vertical-align:middle;border:1px solid rgba(61,220,151,.25)}
+  .hero .pos{color:var(--dim);font-size:12px;margin-top:6px;line-height:1.7}
+  .hero .pos b{color:var(--accent)}
+  .hero .pos code{background:var(--panel2);padding:1px 5px;border-radius:4px;color:var(--purple);font-size:11px}
+
+  /* ── 三级导航 ── */
+  .tabs{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);margin:12px 0 4px;padding:8px 0 6px}
+  .navrow{display:none;gap:8px;overflow-x:auto;padding:4px 0;-webkit-overflow-scrolling:touch}
+  .navrow.show{display:flex}
+  .lvlrow{display:none;gap:6px;overflow-x:auto;padding:4px 0;-webkit-overflow-scrolling:touch}
+  .lvlrow.show{display:flex}
+
+  .layercards{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0 4px}
+  .lcard{
+    flex:1;min-width:230px;position:relative;
+    background:linear-gradient(180deg,var(--panel) 0%,#0f1729 100%);
+    border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px 12px 16px;cursor:pointer;
+    transition:border-color .15s,transform .12s,box-shadow .15s;
+  }
+  .lcard b{color:var(--txt);font-size:14px;margin-right:6px;display:inline-block}
+  .lcard>code{background:var(--panel2);padding:1px 5px;border-radius:3px;color:var(--dim);font-size:10.5px}
+  .lcard div{color:var(--dim);font-size:11.5px;margin-top:5px;line-height:1.55}
+  .lcard:hover{border-color:var(--line2);transform:translateY(-1px)}
+  .lcard.on{
+    border-color:var(--accent);
+    box-shadow:inset 3px 0 0 var(--accent),0 6px 18px rgba(90,162,255,.12);
+    background:linear-gradient(180deg,var(--accent-soft) 0%,#0f1729 60%);
+  }
+  .lcard.on b{color:var(--accent)}
+  .lcard.on>code{color:var(--accent)}
+
+  .bcard{
+    flex:0 0 auto;position:relative;display:flex;flex-direction:column;gap:2px;align-items:flex-start;
+    background:linear-gradient(180deg,var(--panel) 0%,#0f1729 100%);
+    color:var(--txt);border:1px solid var(--line);border-radius:10px;
+    padding:9px 14px 9px 16px;font-size:12.5px;cursor:pointer;white-space:nowrap;
+    transition:border-color .15s,transform .12s,box-shadow .15s;
+  }
+  .bcard b{font-size:13px;color:var(--txt)}
+  .bcard .muted{font-size:11px;line-height:1.4}
+  .bcard:hover{border-color:var(--line2);transform:translateY(-1px)}
+  .bcard.on{
+    border-color:var(--accent);
+    box-shadow:inset 3px 0 0 var(--accent),0 6px 16px rgba(90,162,255,.12);
+    background:linear-gradient(180deg,var(--accent-soft) 0%,#0f1729 60%);
+  }
+  .bcard.on b{color:var(--accent)}
+
+  .chip{
+    flex:0 0 auto;position:relative;
+    background:linear-gradient(180deg,var(--panel) 0%,#0f1729 100%);
+    color:var(--dim);border:1px solid var(--line);border-radius:8px;
+    padding:5px 11px 5px 13px;font-size:12px;cursor:pointer;white-space:nowrap;
+    transition:border-color .15s,transform .12s,box-shadow .15s;
+  }
+  .chip:hover{border-color:var(--line2);color:var(--txt);transform:translateY(-1px)}
+  .chip.on{
+    border-color:var(--accent);
+    box-shadow:inset 3px 0 0 var(--accent);
+    background:linear-gradient(180deg,var(--accent-soft) 0%,#0f1729 70%);
+    color:var(--accent);font-weight:600;
+  }
+
+  .tabsec{display:none}.tabsec.show{display:block}
+  .rsec{display:none}.rsec.show{display:block}
+  .lvsec{display:none}.lvsec.show{display:block}
+  .grpsec{display:none}.grpsec.show{display:block}
+  .tsec{display:none}.tsec.show{display:block}
+  .grpnav{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px;-webkit-overflow-scrolling:touch;position:sticky;top:48px;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);margin-bottom:8px}
+
+  details.grp{margin:8px 0;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+  details.grp>summary{cursor:pointer;padding:9px 13px 9px 15px;background:linear-gradient(180deg,var(--panel2),var(--panel));font-size:13px;list-style:none;position:relative;border-left:3px solid var(--dim)}
+  details.grp[open]>summary{border-left-color:var(--accent)}
+  details.grp>summary::-webkit-details-marker{display:none}
+  details.grp>summary::before{content:'▸ ';color:var(--dim)}
+  details.grp[open]>summary::before{content:'▾ ';color:var(--accent)}
+  details.grp>summary:hover{background:var(--panel3)}
+  details.grp>summary .muted{font-size:11px;margin-left:6px}
+  details.grp .scroll{margin:0;border:0;border-radius:0}
+  details.grp table{margin:0;border:0;border-radius:0}
+
+  details.raw{margin:6px 0 12px;border:1px dashed var(--line2);border-radius:8px;background:#0a0f1e;overflow:hidden}
+  details.raw summary{cursor:pointer;padding:7px 12px 7px 14px;font-size:11.5px;color:var(--dim);user-select:none;list-style:none;border-left:3px solid var(--dim);transition:color .15s,border-color .15s}
+  details.raw[open] summary{border-left-color:var(--accent);color:var(--txt);border-bottom:1px dashed var(--line2)}
+  details.raw summary::-webkit-details-marker{display:none}
+  details.raw summary::before{content:'▸ ';color:var(--dim)}
+  details.raw[open] summary::before{content:'▾ ';color:var(--accent)}
+  details.raw summary:hover{color:var(--accent)}
+  details.raw pre{margin:0;padding:10px 13px;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;line-height:1.65;color:#a8b8d8;overflow:auto;max-height:440px}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>三层配置预览 <span class="badge">真源可视化 · 实时读源 · 零生成器</span></h1>
+  <div class="pos">独立文件夹 <code>配置预览/config-layer/</code>（物理层 / 关系层 / 差异层 yml + 分层契约 + 概念纲领）。<b>这些文件是唯一真相源</b>；本页是一套<b>固定的显示渲染框架</b>——表格、列宽、分组、中文映射规则全部预置，只把真源数据套进去出视图，<b>不改、不写、不产生任何配置数据</b>。打开时一次性读取真源；<b>改完文件刷新浏览器即最新</b>（无监听、无轮询）。每块解读下面都能展开「📄 真实配置原文」对照验收。</div>
+</div>
+
+<div id="app"><div class="note">正在读取 配置预览/config-layer/ 真源…</div></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   数据源：真源文件路径（框架不变，只改这里就能换目录）
+   ══════════════════════════════════════════════════════════════════ */
+const BASE = '/配置预览/config-layer/';
+const SRC = {
+  physical: BASE + encodeURIComponent('物理层') + '/physical-layer.yml',
+  relation: BASE + encodeURIComponent('关系层') + '/relation-layer.yml',
+  diff:     BASE + encodeURIComponent('差异层') + '/difference-layer.yml',
+  rules:    BASE + encodeURIComponent('推导规则') + '/derivation-rules.yml',
+  contract: BASE + encodeURIComponent('分层契约.md'),
+  concept:  BASE + encodeURIComponent('概念纲领.md'),
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   极简 YAML 解析器（浏览器端替代 js-yaml：块映射 / 块列表 / 行内 {} [] / 注释）
+   —— 只做「结构化数据读取」，不参与渲染规则
+   ══════════════════════════════════════════════════════════════════ */
+function stripComment(line) {
+  let depth = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') depth--;
+    if (ch === '#' && depth === 0 && (i === 0 || /\s/.test(line[i - 1]))) return line.slice(0, i).replace(/\s+$/, '');
+  }
+  return line.replace(/\s+$/, '');
+}
+function splitTop(s, sep) {
+  const parts = []; let depth = 0, cur = '';
+  for (const ch of s) {
+    if (ch === '{' || ch === '[') depth++;
+    else if (ch === '}' || ch === ']') depth--;
+    if (ch === sep && depth === 0) { parts.push(cur); cur = ''; } else cur += ch;
+  }
+  if (cur.trim() !== '') parts.push(cur);
+  return parts;
+}
+function parseYAML(text) {
+  const L = [];
+  for (const raw of text.split('\n')) {
+    const c = stripComment(raw.replace(/\t/g, '  '));
+    if (c.trim() === '') continue;
+    L.push({ indent: c.length - c.trimStart().length, s: c.trim() });
+  }
+  let pos = 0;
+  function parseInline(v) {
+    v = v.trim();
+    if (v.startsWith('{')) {
+      const inner = v.slice(1, v.lastIndexOf('}'));
+      const o = {};
+      for (const p of splitTop(inner, ',')) {
+        const ci = p.indexOf(':');
+        if (ci > 0) o[p.slice(0, ci).trim()] = parseInline(p.slice(ci + 1));
+      }
+      return o;
+    }
+    if (v.startsWith('[')) return splitTop(v.slice(1, v.lastIndexOf(']')), ',').map((x) => parseInline(x)).filter((x) => x !== '');
+    if (/^-?\d+(\.\d+)?$/.test(v)) return Number(v);
+    if (v.length >= 2 && ((v[0] === '"' && v[v.length - 1] === '"') || (v[0] === "'" && v[v.length - 1] === "'"))) return v.slice(1, -1);
+    return v;
+  }
+  function parseBlock(indent) {
+    if (pos >= L.length) return null;
+    const first = L[pos];
+    if (first.indent < indent) return null;
+    if (/^-\s?/.test(first.s)) {
+      const arr = [];
+      while (pos < L.length && L[pos].indent === indent && /^-\s?/.test(L[pos].s)) {
+        const line = L[pos];
+        const rest = line.s.replace(/^-\s?/, '');
+        const eff = line.indent + 2;
+        if (rest === '') { pos++; arr.push(parseBlock(eff)); }
+        else { L[pos] = { indent: eff, s: rest }; arr.push(parseBlock(eff)); }
+      }
+      return arr;
+    }
+    const obj = {};
+    while (pos < L.length && L[pos].indent === indent) {
+      const line = L[pos];
+      const ci = line.s.indexOf(':');
+      if (ci < 0) { pos++; continue; }
+      const key = line.s.slice(0, ci).trim();
+      const rest = line.s.slice(ci + 1).trim();
+      pos++;
+      if (rest === '') obj[key] = (pos < L.length && L[pos].indent > indent) ? parseBlock(L[pos].indent) : null;
+      else obj[key] = parseInline(rest);
+    }
+    return obj;
+  }
+  return L.length ? parseBlock(L[0].indent) : {};
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   渲染框架（原样沿用 gen-layer-preview.mjs v4 —— 列、列宽、分组、映射不动）
+   ══════════════════════════════════════════════════════════════════ */
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const levelTag = (lv) => (Number(lv) === 1 ? 't1' : Number(lv) === 2 ? 't2' : 't3');
+const levelLabel = (lv) => `${esc(lv)}级索引${Number(lv) === 1 ? ' · 主' : Number(lv) === 2 ? ' · 子' : ''}`;
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const indentOf = (l) => (l.match(/^ */)[0] || '').length;
+
+let rawFiles = { physical: [], relation: [], diff: [] };
+let contractRaw = '', conceptRaw = '', rulesRaw = '';
+let rules = [];
+function rawBlock(file, startRe) {
+  const lines = rawFiles[file];
+  const idx = lines.findIndex((l) => startRe.test(l));
+  if (idx < 0) return null;
+  const base = indentOf(lines[idx]);
+  let end = idx + 1;
+  while (end < lines.length) {
+    const l = lines[end];
+    if (l.trim() === '') { end++; continue; }
+    if (indentOf(l) <= base) break;
+    end++;
+  }
+  return lines.slice(idx, end).join('\n');
+}
+function rawSubBlock(file, outerRe, innerRe) {
+  const lines = rawFiles[file];
+  const idx = lines.findIndex((l) => outerRe.test(l));
+  if (idx < 0) return null;
+  const base = indentOf(lines[idx]);
+  let end = idx + 1;
+  while (end < lines.length && (lines[end].trim() === '' || indentOf(lines[end]) > base)) end++;
+  const scope = lines.slice(idx, end);
+  const j = scope.findIndex((l) => innerRe.test(l));
+  if (j < 0) return null;
+  const b2 = indentOf(scope[j]);
+  let e2 = j + 1;
+  while (e2 < scope.length && (scope[e2].trim() === '' || indentOf(scope[e2]) > b2)) e2++;
+  return scope.slice(j, e2).join('\n');
+}
+const rawShow = (block, label) =>
+  block ? `<details class="raw"><summary>📄 ${esc(label)} · 点开看 yml 原文</summary><pre>${esc(block)}</pre></details>` : '';
+
+/* ── 推导规则：结构化条目（真源 推导规则/derivation-rules.yml）→ 表格展示（同物理层/关系层）── */
+const cell = (s) => esc(s).replace(/`([^`]*)`/g, '<code>$1</code>');
+const RULE_CATS = ['自动补齐', '标记推导', '关系层推导', '组合推导'];
+/* 推导规则表：列顺序 / 中文名 / 列宽 全部由配置 @col 注释驱动（见 derivation-rules.yml 顶部）。
+   顺序以 RULE_COL_ORDER 为基准（配置未声明时沿用），新增规则键自动追加到末尾。 */
+const RULE_COL_ORDER = ['编号', '名称', '解决什么业务问题', '落点', '配置方法', '应用规则', '大白话'];
+function ruleCols() {
+  const extra = rules.length
+    ? Object.keys(rules[0]).filter((k) => !RULE_COL_ORDER.includes(k) && k !== '类别')
+    : [];
+  return RULE_COL_ORDER.concat(extra);
+}
+function ruleHeadAndCols() {
+  const cols = ruleCols();
+  const head = cols.map((k) => `<th>${esc(colMeta(k).label)}</th>`).join('');
+  const group = cols.map((k) => `<col style="width:${colMeta(k).w}px">`).join('');
+  const total = cols.reduce((a, k) => a + colMeta(k).w, 0);
+  return { head, group, total };
+}
+function ruleRowsOf(cat) {
+  const cols = ruleCols();
+  return rules.filter((r) => (r['类别'] || '未分类') === cat).map((r) => `<tr>${cols.map((k) => {
+    const v = r[k] || '';
+    if (k === '编号') return `<td><b>${esc(v)}</b></td>`;
+    if (k === '大白话') return `<td class="plain">${esc(v)}</td>`;
+    return `<td>${cell(v)}</td>`;
+  }).join('')}</tr>`).join('');
+}
+function rulesSection() {
+  const cats = [];
+  for (const r of rules) { const c = r['类别'] || '未分类'; if (!cats.includes(c)) cats.push(c); }
+  const order = RULE_CATS.filter((c) => cats.includes(c)).concat(cats.filter((c) => !RULE_CATS.includes(c)));
+  const navHtml = `<div class="grpnav" id="nav-rule">${order.map((c, i) =>
+    `<button class="chip${i === 0 ? ' on' : ''}" data-rule="${esc(c)}">${esc(c)} <span class="muted">${rules.filter((r) => (r['类别'] || '未分类') === c).length}</span></button>`).join('')}</div>`;
+  const rc = ruleHeadAndCols();
+  const secsHtml = order.map((c, i) => `<div class="rsec${i === 0 ? ' show' : ''}" id="rule-${esc(c)}"><div class="scroll"><table class="grid rules" style="width:${rc.total}px">${rc.group}${rc.head}${ruleRowsOf(c)}</table></div></div>`).join('\n');
+  return `
+<h2>推导规则（结构化条目 · 共 ${rules.length} 条）</h2>
+<div class="sub">真源 = <code>推导规则/derivation-rules.yml</code>——一条一条、字段固定（编号 / 类别 / 名称 / 解决什么业务问题 / 落点 / 配置方法 / 应用规则 / 大白话）。条目会持续增长，故按<b>类别横向导航</b>分组：<b>自动补齐</b>=引擎零声明自动给；<b>标记推导</b>=单一标记直接应用；<b>关系层推导</b>=关系层配置零书写；<b>组合推导</b>=跨层级多源才推得出（最易被误判成"缺配置"）。做解释器时照此逐条对账：<b>表里有的 = 引擎推导、配置零新增、禁止另加键</b>。</div>
+${navHtml}
+${secsHtml}
+${rawShow(rulesRaw, '真实原文 · derivation-rules.yml 全文')}
+${rawShow(contractRaw, '真实原文 · 分层契约.md 全文')}`;
+}
+function startRulesNav() {
+  document.querySelectorAll('#nav-rule .chip').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#nav-rule .chip').forEach((x) => x.classList.toggle('on', x === b));
+      document.querySelectorAll('.rsec').forEach((s) => s.classList.remove('show'));
+      const el = document.getElementById('rule-' + b.dataset.rule);
+      if (el) el.classList.add('show');
+    });
+  });
+}
+
+/* ── 配置层体检（实时、零生成；原 gen-layer-map 的 0 红门禁能力折入）── */
+function healthSection() {
+  try {
+    const issues = [];
+    const red = (where, msg) => issues.push({ sev: '红', where, msg });
+    const forbid = [
+      [/组合\s*\(/g, '组合(...)（表级组合唯一，已退役→用 独立去重/联合去重）'],
+      [/全局唯一/g, '全局唯一（已退役→用 独立去重/联合去重）'],
+      [/确保引用/g, '确保引用（已退役→外键缺省值兜底）'],
+      [/全文索引/g, '全文索引（库实现词，配置用 全文检索: 是）'],
+      [/FULLTEXT/gi, 'FULLTEXT（库实现词，配置用 全文检索: 是）'],
+      [/唯一组/g, '唯一组（旧分组推导模型，已退役）'],
+      [/^\s*去重\s*:/gm, '表级 去重:（已退役）'],
+      [/^\s*缺省\s*:/gm, '字段级 缺省:（P7 退役→用 缺省值）'],
+    ];
+    const scan = (txt, label) => { if (!txt) return; const bare = txt.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); for (const [re, why] of forbid) { re.lastIndex = 0; if (re.test(bare)) red(label, '出现退役/禁写键：' + why); } };   // 只扫配置行，注释（教学性提及）不算
+    scan(rawFiles.physical.join('\n'), '物理层');
+    scan(rawFiles.relation.join('\n'), '关系层');
+    scan(rawFiles.diff.join('\n'), '差异层');
+    for (const [tn, t] of Object.entries(tables)) {
+      const f = t['字段'] || {}; const tc = t['表级配置'] || {};
+      // 刚性规则（渲染契约）：四键每表必列、顺序固定、永不自动删减——缺键/多键/顺序错即红
+      const ks = Object.keys(tc).join('|');
+      if (ks !== TC_KEYS.join('|')) red(tn + '.表级配置', '固定结构不符（刚性规则：键全集必列、顺序固定），实际=' + (ks || '空'));
+      const RETIRED = ['独立去重', '联合去重', '全文检索', '索引'];   // 2026-09-07 数组化：字段级标记退役
+      for (const [fk, v] of Object.entries(f)) {
+        // 刚性规则：字段级固定集 标识/类型/检索/缺省值 每字段必列、顺序固定（ extras 可追加在后）
+        const fks = Object.keys(v).join('|');
+        if (!fks.startsWith('标识|类型|检索|缺省值')) red(tn + '.' + fk, '字段固定结构不符（刚性规则），实际=' + (fks || '空'));
+        for (const rk of RETIRED) if (v[rk] !== undefined) red(tn + '.' + fk, '字段级「' + rk + '」已退役 → 写到表级配置（数组）');
+        const lvl = v['检索'] && v['检索']['级别'];
+        if (lvl !== undefined && lvl !== '' && lvl !== null && !(Number.isInteger(Number(lvl)) && Number(lvl) > 0)) red(tn + '.' + fk, '检索.级别 非正整数');
+      }
+      const refOk = (k) => !!f[String(k).trim()];
+      for (const k of (tc['独立去重'] || [])) if (!refOk(k)) red(tn + '.表级配置.独立去重', '引用字段不存在：' + k);
+      (tc['联合去重'] || []).forEach((g, gi) => {
+        if (!Array.isArray(g) || g.length < 2) red(tn + '.表级配置.联合去重', '第 ' + (gi + 1) + ' 组至少 2 个字段（只配 1 个 = 等同独立去重）');
+        else for (const k of g) if (!refOk(k)) red(tn + '.表级配置.联合去重', '第 ' + (gi + 1) + ' 组引用字段不存在：' + k);
+      });
+      for (const k of (tc['全文检索'] || [])) if (!refOk(k)) red(tn + '.表级配置.全文检索', '引用字段不存在：' + k);
+      for (const k of (tc['索引'] || [])) if (!refOk(k)) red(tn + '.表级配置.索引', '引用字段不存在：' + k);
+    }
+    for (const d of diffs) {
+      const obj = d['对象']; if (!obj) continue;
+      const [tn] = String(obj).split('.');
+      if (!tables[tn]) red('差异.' + obj, '引用对象指向的物理层表不存在');
+      // 字段/槽位不设红：差异层对象可指向呈现槽位等非物理字段（P14 横切补丁语义）
+    }
+    const summary = '<div class="sub">配置层防污染体检（实时、零生成，随真源刷新）。原 gen-layer-map 的 0 红门禁能力现折入本区。</div>';
+    if (issues.length === 0) return summary + '<div class="note" style="border-left-color:#2e9e5b"><b>✓ 体检 0 红</b>：机器语法 / 标记 / 引用存在性 全部通过。</div>';
+    const row = (i) => '<tr><td><span class="tag ' + (i.sev === '红' ? 't-dif' : 't-new') + '">' + i.sev + '</span></td><td><code>' + esc(i.where) + '</code></td><td>' + esc(i.msg) + '</td></tr>';
+    return summary + '<div class="scroll"><table class="grid" style="width:900px"><colgroup><col style="width:60px"><col style="width:300px"><col style="width:540px"></colgroup><tr><th>级别</th><th>位置</th><th>问题</th></tr>' + issues.map(row).join('') + '</table></div>';
+  } catch (e) {
+    return '<div class="note" style="border-left-color:var(--red)">体检计算出错：' + esc(e.message) + '</div>';
+  }
+}
+
+/* ── 物理层 ── */
+let tables = {}, tableNames = [], diffs = [], bodies = {}, bodyNames = [];
+/* 表级配置（2026-09-07 数组化）：唯一/全文/索引 = 表级数组声明，一处收纳、一处读取，不再扫字段归拢 */
+const tcOf = (t) => t['表级配置'] || {};
+const uniqueKeysOf = (t) => {
+  const tc = tcOf(t);
+  return (tc['独立去重'] || []).map(String)                                  // 单列唯一
+    .concat((tc['联合去重'] || []).map((g) => g.map(String).join(' + ')));   // 组合唯一
+};
+const uniqFieldsOf = (t) => {
+  const tc = tcOf(t);
+  return (tc['独立去重'] || []).map(String).concat((tc['联合去重'] || []).flat().map(String));
+};
+const fulltextKeysOf = (t) => (tcOf(t)['全文检索'] || []).map(String);
+const indexKeysOf = (t) => (tcOf(t)['索引'] || []).map(String);
+/* 表级配置独立大列：固定结构——四个配置项每表必列（无值显示 —），不因有无值增减行，保证结构化可读 */
+const TC_KEYS = ['独立去重', '联合去重', '全文检索', '索引'];
+const tcFmt = (v) => Array.isArray(v)
+  ? (v.some(Array.isArray) ? '[' + v.map((g) => '[' + g.join(', ') + ']').join('][') + ']' : '[' + v.join(', ') + ']')
+  : String(v);
+const tcCell = (t) => {
+  const tc = tcOf(t);
+  return TC_KEYS.map((k) => {
+    const v = tc[k];
+    return `<div><code>${esc(k)}:</code> ${v === undefined ? '<span class="muted">—</span>' : '<b>' + esc(tcFmt(v)) + '</b>'}</div>`;
+  }).join('');
+};
+/* ── 列由【数据 + 配置注释】驱动：列的中文名 / 列宽来自配置层 yml 的 `# @col 键: 中文名,宽度` 注释
+      （显示元数据下沉到配置：改列名 / 加列 = 只动 yml 注释，本框架零改动）；
+      配置里没写 @col 的键 → 走下方兜底默认值（FALLBACK_LABEL / EXTRA_W）。
+      渲染形态（是→标签 / 级别→层级标签）仍由 cellOf 兜底，新增键默认按「是→绿标签 / 否则原文」处理。 ── */
+const COL_RE = /#\s*@col\s+([^:：]+)[：:]\s*([^,]+?)\s*,\s*(\d+)/g;
+let COL_META_OVERRIDE = {};                       // 由 collectColMeta 在 boot 时填充（配置注释 → 显示元数据）
+function collectColMeta(texts) {
+  const m = {};
+  for (const t of texts) {
+    if (!t) continue;
+    for (const line of t.split('\n')) {
+      let mm; COL_RE.lastIndex = 0;
+      while ((mm = COL_RE.exec(line))) m[mm[1].trim()] = { label: mm[2].trim(), w: Number(mm[3]) };
+    }
+  }
+  return m;
+}
+const FALLBACK_LABEL = { 标识:'字段', 类型:'类型', 检索:'检索.级别', 缺省值:'缺省值' };   // 字段列一格合并（中文业务名+英文标识）
+const FIXED_ORDER = ['标识', '类型', '检索', '缺省值'];   // 已知键的预置顺序（配置未声明 @col 时沿用）
+const EXTRA_W = 110;                            // 配置未声明 @col 的新键：默认列宽 + 用原始键名当表头
+const BIZ_W = 150;                              // 「业务名」列（字段中文名，来自键名）
+function colMeta(k) {
+  const o = COL_META_OVERRIDE[k];
+  return { label: o ? o.label : (FALLBACK_LABEL[k] || k), w: o ? o.w : EXTRA_W };
+}
+function colsOf(fieldList) {
+  const seen = [];
+  for (const f of fieldList) for (const k of Object.keys(f || {})) if (!seen.includes(k)) seen.push(k);
+  const order = FIXED_ORDER.slice();   // 固定结构定律：字段/类型/检索.级别/缺省值 四列每表必列（无该属性显示 —），不因有无增减列
+  for (const k of seen) if (!order.includes(k)) order.push(k);
+  return order;
+}
+function cellOf(k, v) {
+  switch (k) {
+    case '标识': return `<code>${esc(v ?? '')}</code>`;
+    case '类型': return esc(v ?? '—');
+    case '检索': return (v && v['级别'] !== undefined) ? `<span class="tag ${levelTag(v['级别'])}">${levelLabel(v['级别'])}</span>` : '—';
+    case '缺省值': return v ? `<span class="tag t-new">${esc(v)}</span>` : '—';
+    default: return v === '是' ? '<span class="tag t-phy">是</span>' : esc(v ?? '—');
+  }
+}
+// 表头 + colgroup（中文名/列宽来自 colMeta：配置 @col 注释优先，否则兜底）
+function headAndCols(cols) {
+  let head = '', group = '', total = 0;
+  for (const k of cols) {
+    const cm = colMeta(k);
+    head += `<th>${esc(cm.label)}</th>`;
+    group += `<col style="width:${cm.w}px">`;
+    total += cm.w;
+  }
+  return { head, group, total };
+}
+function fieldRowOf(fk, f, cols) {
+  let row = '';
+  for (const k of cols) {
+    if (k === '标识') { row += `<td><b>${esc(fk)}</b> <code>${esc(f['标识'] ?? '')}</code></td>`; continue; }   // 字段一格：中文业务名 + 英文标识
+    row += `<td>${cellOf(k, f[k])}</td>`;
+  }
+  return row;   // 仅返回单元格序列（不含 <tr>，由调用方包裹，杜绝 <tr> 嵌套）
+}
+function fieldTableOf(tname) {
+  const t = tables[tname];
+  if (!t) return `<div class="note" style="border-left-color:var(--red)">⚠️ 物理层没有这张表：<code>${esc(tname)}</code></div>`;
+  const id = t['标识'] || '';
+  const fields = t['字段'] || {};
+  const fkeys = Object.keys(fields);
+  const cols = colsOf(Object.values(fields));
+  let { head, group, total } = headAndCols(cols);
+  head = '<th>表(业务/物理)</th><th>表级配置</th>' + head;   // 前两列跨本表全部字段行
+  group = '<col style="width:150px"><col style="width:240px">' + group;
+  total += 390;
+  const rows = fkeys.map((fk, i) => {
+    const first = i === 0;
+    const rs = fkeys.length > 1 ? ` rowspan="${fkeys.length}"` : '';
+    const lead = first
+      ? `<td${rs}><b>${esc(tname)}</b><br><code>${esc(id)}</code></td><td${rs} style="vertical-align:top">${tcCell(t)}</td>`
+      : '';
+    return `<tr>${lead}${fieldRowOf(fk, fields[fk], cols)}</tr>`;
+  }).join('\n');
+  return `<div class="scroll"><table class="grid" style="width:${Math.max(total, 760)}px">
+<colgroup>${group}</colgroup>
+<tr>${head}</tr>
+${rows}</table></div>
+${rawShow(rawBlock('physical', new RegExp('^ {2}' + reEsc(tname) + ':')), '真实配置原文 · physical-layer.yml → ' + tname)}`;
+}
+function indexRowOf(tname) {
+  const t = tables[tname];
+  if (!t) return '';
+  const fields = t['字段'] || {};
+  const fkeys = Object.keys(fields);
+  const pkBiz = fkeys.find((fk) => String(fields[fk]['类型'] || '').startsWith('主键')) || '';
+  const fkInfos = fkeys
+    .filter((fk) => String(fields[fk]['类型'] || '').startsWith('外键→'))
+    .map((fk) => ({ biz: fk, target: String(fields[fk]['类型']).replace('外键→', '').split('.')[0] }));
+  const ukDesc = uniqueKeysOf(t).join(' + ');
+  const ftDesc = fulltextKeysOf(t).join(' + ');
+  const idxDesc = indexKeysOf(t).join(' + ');
+  const fkDesc = fkInfos.length ? fkInfos.map((x) => `${x.biz} → ${x.target}`).join('；') : '';
+  const code = (s) => (s ? `<code>${esc(s)}</code>` : '—');
+  return `<tr><td><b>${esc(tname)}</b></td><td>${code(pkBiz)}</td><td>${code(ukDesc)}</td><td>${code(ftDesc)}</td><td>${code(idxDesc)}</td><td>${fkDesc ? `<span class="muted">${esc(fkDesc)}</span>` : '—'}</td></tr>\n`;
+}
+function indexTableOf(tnames) {
+  return `<div class="scroll"><table class="grid" style="width:1180px">
+<colgroup><col style="width:100px"><col style="width:120px"><col style="width:200px"><col style="width:200px"><col style="width:200px"><col style="width:360px"></colgroup>
+<tr><th>表</th><th>主键</th><th>唯一索引(表级配置 独立去重/联合去重 → 约束自带)</th><th>全文索引(表级配置 全文检索 → 显式声明)</th><th>普通索引(表级配置 索引 → 显式声明)</th><th>外键索引(外键列 → 库自动补)</th></tr>
+${tnames.map(indexRowOf).join('')}</table></div>`;
+}
+function diffCardsOf(tname) {
+  const hit = diffs.filter((d) => String(d['对象'] || '').split('.')[0] === tname);
+  if (!hit.length) return '';
+  const items = hit.map((d) => {
+    const props = Object.keys(d).filter((k) => k !== '对象');
+    const tags = props.map((k) => `<span class="tag t-dif">${esc(k)}: ${esc(d[k])}</span>`).join(' ');
+    return `<li><code>${esc(d['对象'])}</code> ${tags}</li>`;
+  }).join('');
+  return `<div class="note" style="border-left-color:var(--amber)"><b>相关差异层条目（有意偏离，不是Bug）：</b><ul style="margin:6px 0 0;padding-left:18px">${items}</ul></div>`;
+}
+
+/* ── 关系层 ── */
+function dedupOfLevel(levelTables) {
+  const parts = [];
+  for (const lt of levelTables) {
+    const t = tables[lt];
+    if (!t) continue;
+    const uks = uniqFieldsOf(t);
+    if (!uks.length) continue;
+    parts.push(`<code>${esc(lt)}</code>：${uks.length === 1 ? `${esc(uks[0])} 全局唯一` : `${esc(uks.join('、'))} 联合唯一`}`);
+  }
+  return parts.join('<br>') || '—';
+}
+function levelParamTable(lv) {
+  const seq = lv['序号'];
+  const tbls = lv['表'] || [];
+  const retr = lv['检索'] || {};
+  return `<div class="scroll"><table class="grid" style="width:1000px">
+<colgroup><col style="width:150px"><col style="width:220px"><col style="width:240px"><col style="width:390px"></colgroup>
+<tr><th>层级.序号</th><th>层级.表</th><th>独立去重/联合去重（物理层配置）</th><th>检索.模式 ／ 检索.主字段</th></tr>
+<tr><td><b>L${esc(seq)}</b> ${esc(lv['标题'])}<br><code>序号: ${esc(seq)}</code><br><span class="muted">通路位次由序号推导（非配置）</span></td>
+  <td>${tbls.map((t) => `<code>${esc(t)}</code>`).join('<br>')}</td>
+  <td>${dedupOfLevel(tbls)}</td>
+  <td><code>模式:</code> <b>${esc(retr['模式'] || '')}</b><br><code>主字段:</code> <code>${esc(retr['主字段'] || '')}</code><br><span class="muted">主字段应指向该层主实体 1级索引</span></td></tr>
+</table></div>`;
+}
+function bodyViews(bname) {
+  const b = bodies[bname];
+  const levels = b['层级'] || [];
+  const dictTables = b['横切字典'] || [];
+  const views = [];
+  const allParam = `<div class="scroll"><table class="grid" style="width:1000px">
+<colgroup><col style="width:150px"><col style="width:220px"><col style="width:240px"><col style="width:390px"></colgroup>
+<tr><th>层级.序号</th><th>层级.表</th><th>独立去重/联合去重（物理层配置）</th><th>检索.模式 ／ 检索.主字段</th></tr>
+${levels.map((lv) => {
+  const tbls = lv['表'] || [];
+  const retr = lv['检索'] || {};
+  return `<tr><td><b>L${esc(lv['序号'])}</b> ${esc(lv['标题'])}<br><code>序号: ${esc(lv['序号'])}</code></td>
+  <td>${tbls.map((t) => `<code>${esc(t)}</code>`).join('<br>')}</td>
+  <td>${dedupOfLevel(tbls)}</td>
+  <td><code>模式:</code> <b>${esc(retr['模式'] || '')}</b><br><code>主字段:</code> <code>${esc(retr['主字段'] || '')}</code></td></tr>`;
+}).join('')}</table></div>`;
+  views.push({ key: 'l0', label: '通路总览', html: `
+<h2>${esc(bname)} · 通路总览</h2>
+<div class="sub">通路（由层级标题串联推导，配置不重复写）：${levels.map((l) => `<b>${esc(l['标题'])}(${esc(l['序号'])})</b>`).join(' → ')}。点上方分级页签逐层细看。</div>
+${allParam}
+<div class="note"><b>两种"级别"别混：</b>物理层 <code>检索.级别</code>=本表内字段谁参与检索、谁优先（配置在物理层）；关系层 <code>序号</code>=这一层在通路里的位次（位次权重由它推导，不是配置值）。两件独立的事，互不耦合。</div>
+${rawShow(rawBlock('relation', new RegExp('^ {2}' + reEsc(bname) + ':')), '真实配置原文 · relation-layer.yml → ' + bname)}` });
+  for (const lv of levels) {
+    const tbls = lv['表'] || [];
+    views.push({ key: `l${lv['序号']}`, label: `L${lv['序号']} ${lv['标题']}`, html: `
+<h2>${esc(bname)} · L${esc(lv['序号'])} ${esc(lv['标题'])}</h2>
+${levelParamTable(lv)}
+${tbls.map(fieldTableOf).join('\n')}
+<h3>本层库索引全貌（推导结果 · 识别用非配置）</h3>
+${indexTableOf(tbls)}
+${rawShow(rawSubBlock('relation', new RegExp('^ {2}' + reEsc(bname) + ':'), new RegExp('^ {6}- 序号: ' + lv['序号'] + '\\b')), '真实配置原文 · relation-layer.yml → ' + bname + ' → L' + lv['序号'])}
+${tbls.map(diffCardsOf).join('')}` });
+  }
+  if (dictTables.length) {
+    views.push({ key: 'd', label: '横切字典', html: `
+<h2>${esc(bname)} · 横切字典</h2>
+<div class="sub">${dictTables.map((t) => `<code>${esc(t)}</code>`).join('、')}——各层级共用的字典表（可达依据见差异层/外键），不占层级序号。</div>
+${dictTables.map(fieldTableOf).join('\n')}
+${indexTableOf(dictTables)}
+${rawShow(rawSubBlock('relation', new RegExp('^ {2}' + reEsc(bname) + ':'), /^ {4}横切字典:/), '真实配置原文 · relation-layer.yml → ' + bname + ' → 横切字典')}
+${dictTables.map(diffCardsOf).join('')}` });
+  }
+  return views;
+}
+
+function overviewSection(phyNavHtml, phySectionsHtml, unmapped, mapRows) {
+  return `
+<h2>物理层（原材料 · 全部 ${tableNames.length} 张表）</h2>
+<div class="sub">物理层=客观全部原材料，<b>不按关系体切、集中展示</b>（按场景看请切「关系层」页签）。下方横向导航按域直达：<b>总览</b>=所有表依次铺开；各域=表卡片切换逐表细看。每张表 = <b>属性独立区</b>（表名+表级配置四行：唯一键/全文/索引）+ <b>纯字段表</b>（字段中文+标识一格、类型、检索.级别、缺省值）——表级/字段属性分层，不混排。</div>
+${phyNavHtml}
+${phySectionsHtml}
+${rawShow(rawFiles.physical.join('\n'), '物理层真实配置原文 · physical-layer.yml 全文')}
+<h3>库索引全貌（推导结果 · 识别用非配置）</h3>
+<div class="sub">六类索引三种出身：① 库自动不用标（主键/外键列/唯一自带，解释器补齐）② 人工决策显式声明（<code>全文检索: 是</code> / <code>索引: 是</code>）③ 应用层规则不进建表（<code>检索.级别</code>）。</div>
+${indexTableOf(tableNames)}
+<h3>表 → 关系体 归属（点名字直达对应层级）</h3>
+<div class="scroll"><table class="grid" style="width:640px">
+<colgroup><col style="width:320px"><col style="width:320px"></colgroup>
+<tr><th>表</th><th>出现在哪些关系体</th></tr>
+${mapRows}</table></div>
+${unmapped.length ? `<div class="note" style="border-left-color:var(--red)"><b>体检提示：</b>以下物理层表未挂进任何关系体：<code>${unmapped.map(esc).join('</code>、<code>')}</code>——先改关系层配置归位。</div>` : ''}
+<div class="note"><b>关键区分 · 缺省值 与 检索级别 是两回事：</b><code>缺省值</code>(字段级，配字典唯一名称字段)=本表兜底成员，外键引用本表留空时由引擎按它【反查字典→找不到就建→拿 id 关联】；<code>检索.级别</code>=本表内哪些字段参与检索、谁优先。互不相干。</div>`;
+}
+
+function diffSection() {
+  // 列同样由数据驱动：对象 /（条目里出现的其余键，各成一列）/ 说明
+  const seen = [];
+  for (const d of diffs) for (const k of Object.keys(d)) if (!['对象', '说明'].includes(k) && !seen.includes(k)) seen.push(k);
+  const cols = ['对象', ...seen, '说明'];
+  // 列中文名 / 列宽由配置 @col 注释驱动（见 difference-layer.yml 顶部）；配置未声明的动态键用原始键名 + 默认宽
+  const total = cols.reduce((a, k) => a + colMeta(k).w, 0);
+  const diffRows = diffs.map((d) => '<tr>' + cols.map((k) => {
+    if (k === '对象') return `<td><code>${esc(d[k] || '')}</code></td>`;
+    if (k === '说明') return `<td>${esc(d[k] || '')}</td>`;
+    return `<td>${d[k] !== undefined ? `<span class="tag t-dif">${esc(k)}: ${esc(d[k])}</span>` : '—'}</td>`;
+  }).join('') + '</tr>').join('');
+  return `
+<h2>差异层（仅有意偏离标准推导 · 共 ${diffs.length} 处）</h2>
+<div class="sub">标准推导能覆盖的一律不写这里；这是补丁本不是垃圾桶。各条同时出现在它所属表所在的关系体分级视图里。</div>
+<div class="scroll"><table class="grid" style="width:${Math.max(total, 920)}px">
+<colgroup>${cols.map((k) => `<col style="width:${colMeta(k).w}px">`).join('')}</colgroup>
+<tr>${cols.map((k) => `<th>${esc(colMeta(k).label)}</th>`).join('')}</tr>
+${diffRows}</table></div>
+${rawShow(rawFiles.diff.join('\n'), '差异层真实配置原文 · difference-layer.yml 全文')}`;
+}
+
+/* ── 解释器覆盖（框架固定内容；末尾附 概念纲领.md 真源原文）── */
+const interpRows = [
+  ['建表 + 索引解释器（结构链）', '物理层', '全部建表/建索引 SQL（幂等）+ Prisma 对账报告 + --check 门禁', '—', ['ok', '已落地', 'tools/gen-db-ddl.mjs']],
+  ['检索引擎', '物理层（级别集）+ 关系层（模式、主字段）', '参与集、命中优先、模式切换', '打分公式 = 引擎写死规则', ['amber', '雏形', '现状 search.fields 写死，待由级别集生成']],
+  ['层级展开 / 下钻子集', '关系层（层级序 + 表 + 主字段）', '展开几级、每级子集是什么、下钻路径、面包屑', '—', ['dim', '目标态', '本页关系体分级视图就是它的可视化预演']],
+  ['分组视图（flat vs grouped）', '关系层（层级）+ 物理层（组内字段）', '按哪层分组、组内显示什么、子集以什么形态展开', 'flat/grouped 切换入口 = 场景组织', ['dim', '目标态', '']],
+  ['后端 CRUD 接口（resourceController 雏形）', '物理层 + 关系层（外键通路→include）', '列表/详情/增删改/引用计数、唯一冲突校验、兜底成员、关联读取', '可写白名单、权限码 = 决策声明；多表事务/状态机 = 代码', ['amber', '雏形', '现读 entity-meta，切换后由三层派生']],
+  ['表格呈现', '物理层 + 关系层 + 差异层（渲染接管）', '默认列集、默认列序、固定列、分组结构与展开方式', '薄残量：人工调序、列形态接管、编辑器指定、标题微调', ['amber', '雏形', 'pageAssembler 局部装配已实现']],
+  ['场景组织（菜单/工作台/权限树）', '——（建模三层表达不了）', '—', '独立方面，尚无"家"（纲领 §4.2-3）', ['red', '未立项', '等消费端切换时按残量认家']],
+];
+const toolRows = [
+  ['gen-db-ddl.mjs', '结构解释器', '物理层 yml → 幂等 DDL + Prisma 对账', ['ok', '已落地', '--check 门禁']],
+  ['gen-layer-preview.mjs', '三层配置预览（渲染框架来源）', '三层 yml → 层/关系体/分级三级导航可视化', ['ok', '已落地 · v4', '定稿前停用：改由本页实时读真源渲染']],
+  ['check-contract.mjs', '契约体检', '退役键 / 机器语法一律标红', ['ok', '已落地', '']],
+  ['gen-entity-meta.mjs', '实体登记表生成器', 'entity-meta.yml → 前后端（emit 漏斗）', ['amber', '现役另一份真相', '切换目标：由三层派生替代，entity-meta 退役或降为导出物']],
+];
+function interpSection() {
+  const interpRowsHtml = interpRows.map(([who, layers, can, rest, st]) => {
+    const [cls, label, note] = st;
+    return `<tr><td><b>${esc(who)}</b></td><td>${esc(layers)}</td><td>${esc(can)}</td><td class="muted">${esc(rest)}</td><td><span class="tag t-st-${cls}">${esc(label)}</span>${note ? `<br><span class="muted" style="font-size:11px">${esc(note)}</span>` : ''}</td></tr>`;
+  }).join('');
+  const toolRowsHtml = toolRows.map(([file, name, what, st]) => {
+    const [cls, label, note] = st;
+    return `<tr><td><code>${esc(file)}</code></td><td><b>${esc(name)}</b></td><td>${esc(what)}</td><td><span class="tag t-st-${cls}">${esc(label)}</span>${note ? `<br><span class="muted" style="font-size:11px">${esc(note)}</span>` : ''}</td></tr>`;
+  }).join('');
+  return `
+<h2>解释器覆盖总览 · 谁解决了哪些方面的问题</h2>
+<div class="sub">核心视角（纲领 §4.3）：每个消费端（解释器）都是从几层的组合里解读出自己要的东西。当前试验范围：物理层 ${tableNames.length} 表（${bodyNames.length} 域）+ ${bodyNames.length} 个关系体——先用有体感的域验证两层表达力，稳定后全面接入并由解释器派生替代散落的实现。</div>
+<div class="scroll"><table class="grid" style="width:1300px">
+<colgroup><col style="width:230px"><col style="width:220px"><col style="width:330px"><col style="width:250px"><col style="width:170px"></colgroup>
+<tr><th>消费端（解释器）</th><th>读哪些层</th><th>能推导出什么（解决了）</th><th>残量（推不出，需声明/代码）</th><th>现状</th></tr>
+${interpRowsHtml}</table></div>
+<h3>落地工具清单（本仓库）</h3>
+<div class="scroll"><table class="grid" style="width:900px">
+<colgroup><col style="width:200px"><col style="width:160px"><col style="width:340px"><col style="width:200px"></colgroup>
+<tr><th>工具</th><th>角色</th><th>干什么</th><th>状态</th></tr>
+${toolRowsHtml}</table></div>
+<div class="note"><b>一眼看懂"还缺什么"：</b><br>
+• <b>已解决</b>：表结构与索引怎么建（结构链）✓ · 配置对错怎么体检（0 红门禁）✓ · 配置长什么样（本页）✓<br>
+• <b>雏形、待切换</b>：检索参与集还靠写死的 search.fields；CRUD/表格呈现还读 entity-meta（第二份真相），切换后由三层派生。<br>
+• <b>还没家</b>：场景组织（菜单/工作台/权限树）——建模三层表达不了，等消费端切换时按残量认家，不提前立项。</div>
+${rawShow(conceptRaw, '真实原文 · 概念纲领.md 全文')}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   装配：读真源 → 结构化数据 → 套进固定框架 → 出视图
+   ══════════════════════════════════════════════════════════════════ */
+async function boot() {
+  const get = async (u) => {
+    const r = await fetch(u, { cache: 'no-store' });
+    if (!r.ok) throw new Error(u + ' → HTTP ' + r.status);
+    return r.text();
+  };
+  try {
+    const [phyTxt, relTxt, difTxt, rulesTxt, contractTxt, conceptTxt] = await Promise.all([
+      get(SRC.physical), get(SRC.relation), get(SRC.diff), get(SRC.rules), get(SRC.contract), get(SRC.concept),
+    ]);
+    rawFiles = { physical: phyTxt.split('\n'), relation: relTxt.split('\n'), diff: difTxt.split('\n') };
+    contractRaw = contractTxt; conceptRaw = conceptTxt; rulesRaw = rulesTxt;
+    COL_META_OVERRIDE = collectColMeta([phyTxt, relTxt, difTxt, rulesTxt]);   // 显示元数据：配置 @col 注释 → 渲染
+    rules = parseYAML(rulesTxt)['规则'] || [];
+
+    const physical = parseYAML(phyTxt);
+    const relation = parseYAML(relTxt);
+    const diff = parseYAML(difTxt);
+
+    tables = physical['表'] || {}; tableNames = Object.keys(tables);
+    diffs = diff['差异'] || [];
+    bodies = relation['关系体'] || {}; bodyNames = Object.keys(bodies);
+
+    const bodyViewsList = bodyNames.map((bn) => ({ name: bn, views: bodyViews(bn) }));
+    const bodySections = bodyViewsList.map(({ name, views }, i) =>
+      `<section class="tabsec" id="tab-r${i}">\n${views
+        .map((v) => `<div class="lvsec${v.key === 'l0' ? ' show' : ''}" id="lv-r${i}-${v.key}">${v.html}</div>`)
+        .join('\n')}\n</section>`
+    ).join('\n');
+
+    const domainOf = {};
+    for (const [bn, b] of Object.entries(bodies)) {
+      for (const lv of b['层级'] || []) for (const t of lv['表'] || []) domainOf[t] = bn;
+      for (const t of b['横切字典'] || []) domainOf[t] = bn;
+    }
+    const groupNames = [...bodyNames, '未挂靠'];
+    const groups = groupNames.map((g) => ({ name: g, tables: tableNames.filter((t) => (domainOf[t] || '未挂靠') === g) })).filter((g) => g.tables.length);
+
+    const usage = {};
+    for (const [bn, b] of Object.entries(bodies)) {
+      for (const lv of b['层级'] || []) for (const t of lv['表'] || []) (usage[t] = usage[t] || []).push({ bn, seq: String(lv['序号']) });
+      for (const t of b['横切字典'] || []) (usage[t] = usage[t] || []).push({ bn, seq: 'd' });
+    }
+    const usageCell = (t) => {
+      const list = usage[t];
+      if (!list) return '<span class="tag t-dif">未挂任何关系体</span>';
+      const seen = new Set();
+      return list.map(({ bn, seq }) => {
+        if (seen.has(bn)) return '';
+        seen.add(bn);
+        return `<button class="linklike" data-goto="r${bodyNames.indexOf(bn)}" data-lv="${seq}">${esc(bn)} ↗</button>`;
+      }).join(' ');
+    };
+    const mapRows = tableNames.map((t) => `<tr><td><b>${esc(t)}</b> <code>${esc(tables[t]['标识'] || '')}</code></td><td>${usageCell(t)}</td></tr>`).join('');
+    const unmapped = tableNames.filter((t) => !usage[t]);
+
+    const phyNavItems = [{ key: 'all', label: '总览', tables: tableNames }]
+      .concat(groups.filter((g) => g.name !== '未挂靠').map((g) => ({ key: g.name, label: g.name.replace('管理', ''), tables: g.tables })));
+    if (unmapped.length) phyNavItems.push({ key: '未挂靠', label: '未挂靠', tables: unmapped });
+    const phyNavHtml = `<div class="grpnav" id="nav-phy">${phyNavItems.map((it, i) =>
+      `<button class="chip${i === 0 ? ' on' : ''}" data-phy="${esc(it.key)}">${esc(it.label)} <span class="muted">${it.tables.length}</span></button>`
+    ).join('')}</div>`;
+    const phySectionsHtml = phyNavItems.map((it, i) => {
+      const inner = it.key === 'all'
+        ? it.tables.map(fieldTableOf).join('\n')
+        : `<div class="grpnav tblnav">${it.tables.map((tn, j) =>
+            `<button class="chip${j === 0 ? ' on' : ''}" data-tbl="${esc(it.key)}|${esc(tn)}"><b>${esc(tn)}</b> <span class="muted">${esc(tables[tn]['标识'] || '')}</span></button>`).join('')}</div>`
+          + it.tables.map((tn, j) =>
+            `<div class="tsec${j === 0 ? ' show' : ''}" id="tsec-${esc(it.key)}-${esc(tn)}">${fieldTableOf(tn)}</div>`).join('\n');
+      return `<div class="grpsec${i === 0 ? ' show' : ''}" id="phy-${esc(it.key)}">${inner}</div>`;
+    }).join('\n');
+
+    const bodyMeta = bodyViewsList.map(({ name, views }) => {
+      const levels = bodies[name]['层级'] || [];
+      const tblCount = levels.reduce((n, l) => n + (l['表'] || []).length, 0) + (bodies[name]['横切字典'] || []).length;
+      return { name, chain: levels.map((l) => `${l['标题']}(${l['序号']})`).join(' → '), levels: levels.length, tblCount };
+    });
+    const relOverviewRows = bodyViewsList.flatMap(({ name }) => {
+      const levels = bodies[name]['层级'] || [];
+      return levels.map((lv) => {
+        const tbls = lv['表'] || [];
+        const retr = lv['检索'] || {};
+        return `<tr><td><b>${esc(name)}</b></td><td><b>L${esc(lv['序号'])}</b><br><span class="muted">${esc(lv['标题'])}</span></td><td>${tbls.map((t) => `<code>${esc(t)}</code>`).join('<br>')}</td><td><code>${esc(retr['模式'] || '')}</code></td><td><code>${esc(retr['主字段'] || '')}</code></td></tr>`;
+      });
+    }).join('');
+    const relOverviewSection = `
+<h2>关系层 · 所有关系体通路一览（总览）</h2>
+<div class="sub">${bodyNames.length} 个关系体，共 ${relOverviewRows ? relOverviewRows.split('<tr>').length - 1 : 0} 个层级。点上方关系体卡片看单一关系体的完整通路；本表=所有关系体的层级合并，一眼看全。</div>
+<div class="scroll"><table class="grid" style="width:980px">
+<colgroup><col style="width:130px"><col style="width:160px"><col style="width:300px"><col style="width:150px"><col style="width:240px"></colgroup>
+<tr><th>关系体</th><th>层级.序号</th><th>层级.表</th><th>检索.模式</th><th>检索.主字段</th></tr>
+${relOverviewRows}</table></div>
+${rawShow(rawFiles.relation.join('\n'), '关系层真实配置原文 · relation-layer.yml 全文')}`;
+
+    const layerCards = `
+<div class="layercards" id="nav1">
+  <div class="lcard" data-nav="physical"><b>物理层</b> <code>physical-layer.yml</code><div>客观全部原材料：${tableNames.length} 张表（${bodyNames.length} 域：${bodyNames.join('、')}，其余域验证后接入）。表级配置（唯一/全文/索引）固定四键；字段级只留 检索.级别、缺省值。不表达业务组织。</div></div>
+  <div class="lcard" data-nav="relation"><b>关系层</b> <code>relation-layer.yml</code><div>按场景串通路：${bodyNames.length} 个关系体（<b>总览</b>=所有关系体通路一览；点关系体卡片再按层级分级查看）。每层 检索{模式,主字段}；通路位次由序号推导。</div></div>
+  <div class="lcard" data-nav="diff"><b>差异层</b> <code>difference-layer.yml</code><div>仅 ${diffs.length} 处有意偏离（补丁本，不是垃圾桶）。各条同时出现在所属表所在的关系体分级视图里。</div></div>
+  <div class="lcard" data-nav="interp"><b>解释器覆盖</b> <code>概念纲领.md · §4.3/§5</code><div>哪些解释器解决了哪些方面的问题、哪些还没解决（消费端派生矩阵 + 诚实清单）。</div></div>
+  <div class="lcard" data-nav="rules"><b>推导规则</b> <code>分层契约.md · §8.5</code><div>引擎该推导的全部规则（组合/补齐/关系层推导/多源推导，共 14 条）——做解释器时的逐条对账清单，防止漏、防止误加键。</div></div>
+  <div class="lcard" data-nav="check"><b>体检</b> <code>防污染 · 0 红门禁</code><div>机器语法 / 标记 / 引用存在性 实时校验，随真源刷新（原 gen-layer-map 能力折入）。</div></div>
+</div>`;
+    const relOverviewCard = `<button class="bcard" data-body="rover"><b>总览</b><span class="muted">${bodyNames.length} 个关系体 · 通路一览</span></button>`;
+    const bodyCards = relOverviewCard + bodyMeta.map((m, i) =>
+      `<button class="bcard" data-body="r${i}"><b>${esc(m.name)}</b><span class="muted">${esc(m.chain)}</span><span class="muted" style="font-size:11px">${m.levels} 级 · ${m.tblCount} 张表</span></button>`
+    ).join('');
+    const bodyLevelNavs = bodyViewsList.map(({ views }, i) =>
+      `<div class="lvlrow" data-for="r${i}">${views.map((v) => `<button class="chip" data-lvbtn="${v.key}">${esc(v.label)}</button>`).join('')}</div>`
+    ).join('\n');
+
+    document.getElementById('app').innerHTML = `
+${layerCards}
+<nav class="tabs">
+  <div class="navrow" id="nav2">${bodyCards}</div>
+  ${bodyLevelNavs}
+</nav>
+<section class="tabsec show" id="tab-physical">
+${overviewSection(phyNavHtml, phySectionsHtml, unmapped, mapRows)}
+</section>
+<section class="tabsec" id="tab-rover">
+${relOverviewSection}
+</section>
+${bodySections}
+<section class="tabsec" id="tab-diff">
+${diffSection()}
+</section>
+<section class="tabsec" id="tab-interp">
+${interpSection()}
+</section>
+<section class="tabsec" id="tab-rules">
+${rulesSection()}
+</section>
+<section class="tabsec" id="tab-check">
+${healthSection()}
+</section>`;
+    startNav();
+    startRulesNav();
+  } catch (e) {
+    document.getElementById('app').innerHTML =
+      `<div class="note" style="border-left-color:var(--red)"><b>真源读取失败：</b>${esc(e.message)}<br><br>
+       确认已启动静态服务：<code>npm run layer</code>（<code>http://localhost:8899</code>），且本页由该服务打开（file:// 直接双击无法读取真源）。</div>`;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   三级导航交互（原样沿用：层卡片 → 关系体卡片 → 分级 chips）
+   ══════════════════════════════════════════════════════════════════ */
+function startNav() {
+  var nav2 = document.getElementById('nav2');
+  var state = { layer: 'physical', phy: 'all', body: 'rover', lv: null };
+  function q(s) { return document.querySelector(s) }
+  function qa(s) { return Array.prototype.slice.call(document.querySelectorAll(s)) }
+  function isBody(s) { return /^r\d+$/.test(s || ''); }
+  function apply() {
+    qa('#nav1 .lcard').forEach(function (b) { b.classList.toggle('on', b.dataset.nav === state.layer) });
+    qa('.tabsec').forEach(function (s) { s.classList.remove('show') });
+    var secId = state.layer === 'relation' ? 'tab-' + state.body : 'tab-' + state.layer;
+    var sec = document.getElementById(secId);
+    if (sec) sec.classList.add('show');
+    if (state.layer === 'physical') {
+      qa('#nav-phy .chip').forEach(function (b) { b.classList.toggle('on', b.dataset.phy === state.phy) });
+      qa('.grpsec').forEach(function (s) { s.classList.remove('show') });
+      var gs = document.getElementById('phy-' + state.phy);
+      if (gs) gs.classList.add('show');
+    }
+    nav2.classList.toggle('show', state.layer === 'relation');
+    qa('#nav2 .bcard').forEach(function (b) { b.classList.toggle('on', b.dataset.body === state.body) });
+    qa('.lvlrow').forEach(function (r) { r.classList.toggle('show', state.layer === 'relation' && isBody(state.body) && r.dataset.for === state.body) });
+    if (state.layer === 'relation' && isBody(state.body) && state.lv) {
+      qa('.lvlrow .chip').forEach(function (b) { b.classList.remove('on') });
+      var row = document.querySelector('.lvlrow[data-for="' + state.body + '"]');
+      if (row) { Array.prototype.slice.call(row.querySelectorAll('.chip')).forEach(function (b) { b.classList.toggle('on', b.dataset.lvbtn === state.lv) }) }
+      qa('.lvsec').forEach(function (s) { s.classList.remove('show') });
+      var lv = document.getElementById('lv-' + state.body + '-' + state.lv);
+      if (lv) lv.classList.add('show');
+    }
+    try { history.replaceState(null, '', '#' + (state.layer === 'relation' ? (isBody(state.body) ? state.body + '-' + (state.lv || 'l0') : state.body) : state.layer)) } catch (e) {}
+  }
+  qa('#nav1 .lcard').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.layer = b.dataset.nav;
+      if (state.layer === 'relation' && !state.body) { state.body = 'rover' }
+      apply();
+    });
+  });
+  qa('#nav-phy .chip').forEach(function (b) {
+    b.addEventListener('click', function () { state.phy = b.dataset.phy; apply() });
+  });
+  // 表级卡片切换：域内按表切换（tsec 显隐，仅本域范围内互斥）
+  qa('.tblnav .chip').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var parts = b.dataset.tbl.split('|');
+      var sec = document.getElementById('phy-' + parts[0]);
+      if (!sec) return;
+      Array.prototype.slice.call(sec.querySelectorAll('.tblnav .chip')).forEach(function (x) { x.classList.toggle('on', x === b) });
+      Array.prototype.slice.call(sec.querySelectorAll('.tsec')).forEach(function (s) { s.classList.remove('show') });
+      var el = document.getElementById('tsec-' + parts[0] + '-' + parts[1]);
+      if (el) el.classList.add('show');
+    });
+  });
+  qa('#nav2 .bcard').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.body = b.dataset.body;
+      state.lv = isBody(state.body) ? 'l0' : null;
+      apply();
+    });
+  });
+  Array.prototype.slice.call(document.querySelectorAll('.lvlrow')).forEach(function (row) {
+    Array.prototype.slice.call(row.querySelectorAll('.chip')).forEach(function (b) {
+      b.addEventListener('click', function () { state.lv = b.dataset.lvbtn; apply() });
+    });
+  });
+  qa('.linklike[data-goto]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      state.layer = 'relation'; state.body = b.dataset.goto; state.lv = b.dataset.lv || 'l0'; apply();
+      window.scrollTo({ top: 0 });
+    });
+  });
+  var h = (location.hash || '').slice(1);
+  if (h) {
+    var m = /^(r\d+)-(l\d+|d)$/.exec(h);
+    if (m) { state.layer = 'relation'; state.body = m[1]; state.lv = m[2] }
+    else if (h === 'rover') { state.layer = 'relation'; state.body = 'rover'; state.lv = null }
+    else if (['physical','diff','interp','rules','check'].indexOf(h) >= 0) { state.layer = h }
+  }
+  apply();
+}
+boot();
+</script>
+</body>
+</html>

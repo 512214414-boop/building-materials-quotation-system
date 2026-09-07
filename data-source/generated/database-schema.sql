@@ -1,0 +1,647 @@
+-- ═══════════════════════════════════════════════════════════════
+-- 数据库结构 DDL（生成物 · 禁手改）
+-- 源：配置预览/config-layer/physical-layer.yml（唯一业务描述源）
+-- 解释器：tools/gen-db-ddl.mjs · 幂等（IF NOT EXISTS，重复执行安全）
+-- 范围：产品管理域 34 表；全库表选项 utf8mb4/InnoDB 由引擎统一补齐
+-- 对账：见 database-schema-对账.md（与 backend/prisma/schema.prisma 自动比对）
+-- ═══════════════════════════════════════════════════════════════
+
+-- 分类（category）
+CREATE TABLE IF NOT EXISTS `category` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(100) NOT NULL COMMENT '分类名称',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='分类';
+
+-- 产品（product）
+CREATE TABLE IF NOT EXISTS `product` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(200) NOT NULL COMMENT '产品名称',
+  `categoryId` INT UNSIGNED NOT NULL COMMENT '外键分类',
+  `remark` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`categoryId`) REFERENCES `category` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品';
+
+-- 品牌（brand）
+CREATE TABLE IF NOT EXISTS `brand` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(100) NOT NULL COMMENT '品牌名称',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='品牌';
+
+-- 单位（unit）
+CREATE TABLE IF NOT EXISTS `unit` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `unitName` VARCHAR(50) NOT NULL COMMENT '单位名',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`unitName`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='单位';
+
+-- 价格类型（price_type）
+CREATE TABLE IF NOT EXISTS `price_type` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(50) NOT NULL COMMENT '类型名',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='价格类型';
+
+-- 产品×品牌（product_brand）
+CREATE TABLE IF NOT EXISTS `product_brand` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `productId` BIGINT UNSIGNED NOT NULL COMMENT '外键产品',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`productId`, `brandId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`productId`) REFERENCES `product` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`brandId`) REFERENCES `brand` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品×品牌';
+
+-- 品牌规格（spec）
+CREATE TABLE IF NOT EXISTS `spec` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `productBrandId` BIGINT UNSIGNED NOT NULL COMMENT '外键产品×品牌',
+  `specModel` VARCHAR(200) NOT NULL COMMENT '规格名称',
+  `remark` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '规格备注',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`productBrandId`, `specModel`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`productBrandId`) REFERENCES `product_brand` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='品牌规格';
+
+-- 单位换算（spec_unit）
+CREATE TABLE IF NOT EXISTS `spec_unit` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `unitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位',
+  `isBase` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否基准',
+  `isDisplay` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否展示',
+  `conversionRate` DECIMAL(10,4) NOT NULL COMMENT '换算率',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`specId`, `unitId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`specId`) REFERENCES `spec` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`unitId`) REFERENCES `unit` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='单位换算';
+
+-- 售价（sale_price）
+CREATE TABLE IF NOT EXISTS `sale_price` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `specUnitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位换算',
+  `priceTypeId` BIGINT UNSIGNED NOT NULL COMMENT '外键价格类型',
+  `price` DECIMAL(10,2) NOT NULL COMMENT '单价',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`specUnitId`, `priceTypeId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`specUnitId`) REFERENCES `spec_unit` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`priceTypeId`) REFERENCES `price_type` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='售价';
+
+-- 进价（purchase_price）
+CREATE TABLE IF NOT EXISTS `purchase_price` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `specUnitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位换算',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '采购渠道',
+  `price` DECIMAL(10,2) NOT NULL COMMENT '进价',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`specUnitId`, `supplierId`),
+  KEY `idx_1` (`supplierId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`specUnitId`) REFERENCES `spec_unit` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='进价';
+
+-- 产品图片（product_image）
+CREATE TABLE IF NOT EXISTS `product_image` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `imageUrl` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '主图URL',
+  `mediumUrl` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '中图URL',
+  `thumbnailUrl` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '缩略图URL',
+  `width` INT NOT NULL DEFAULT 0 COMMENT '原图宽',
+  `height` INT NOT NULL DEFAULT 0 COMMENT '原图高',
+  `size` INT NOT NULL DEFAULT 0 COMMENT '字节数',
+  `hash` VARCHAR(64) NOT NULL DEFAULT '' COMMENT '内容哈希',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `isMain` INT NOT NULL DEFAULT 0 COMMENT '是否主图',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_1` (`hash`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`specId`) REFERENCES `spec` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品图片';
+
+-- 供应商（supplier）
+CREATE TABLE IF NOT EXISTS `supplier` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(200) NOT NULL COMMENT '供应商名称',
+  `remark` TEXT NOT NULL DEFAULT '' COMMENT '备注',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商';
+
+-- 联系方式类型（contact_method）
+CREATE TABLE IF NOT EXISTS `contact_method` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(50) NOT NULL COMMENT '方式名称',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='联系方式类型';
+
+-- 地址类型（address_type）
+CREATE TABLE IF NOT EXISTS `address_type` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(50) NOT NULL COMMENT '地址类型名',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='地址类型';
+
+-- 供应商联系人（supplier_contact）
+CREATE TABLE IF NOT EXISTS `supplier_contact` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '联系人姓名',
+  `methodId` BIGINT UNSIGNED NOT NULL COMMENT '外键联系方式',
+  `value` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '联系值',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`supplierId`) REFERENCES `supplier` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`methodId`) REFERENCES `contact_method` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商联系人';
+
+-- 供应商地址（supplier_address）
+CREATE TABLE IF NOT EXISTS `supplier_address` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `addressTypeId` BIGINT UNSIGNED NOT NULL COMMENT '外键地址类型',
+  `addressText` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '地址文本',
+  `lng` DECIMAL(10,7) NOT NULL COMMENT '经度',
+  `lat` DECIMAL(10,7) NOT NULL COMMENT '纬度',
+  `coordSource` INT NOT NULL DEFAULT 1 COMMENT '坐标来源',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `remark` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '备注',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`supplierId`) REFERENCES `supplier` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`addressTypeId`) REFERENCES `address_type` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商地址';
+
+-- 供应商经营品类（supplier_business_category）
+CREATE TABLE IF NOT EXISTS `supplier_business_category` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `categoryId` INT UNSIGNED NOT NULL COMMENT '外键分类',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`supplierId`, `categoryId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`supplierId`) REFERENCES `supplier` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`categoryId`) REFERENCES `category` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商经营品类';
+
+-- 供应商经营品牌（supplier_business_brand）
+CREATE TABLE IF NOT EXISTS `supplier_business_brand` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`supplierId`, `brandId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`supplierId`) REFERENCES `supplier` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`brandId`) REFERENCES `brand` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商经营品牌';
+
+-- 供应商点位规则（supplier_point_rule）
+CREATE TABLE IF NOT EXISTS `supplier_point_rule` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `brandName` VARCHAR(100) NOT NULL COMMENT '品牌名',
+  `categoryName` VARCHAR(100) NOT NULL COMMENT '分类名',
+  `point` DECIMAL(10,4) NOT NULL COMMENT '点位',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`supplierId`, `brandName`, `categoryName`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='供应商点位规则';
+
+-- 客户（customers）
+CREATE TABLE IF NOT EXISTS `customers` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `customerCode` VARCHAR(30) NOT NULL COMMENT '客户编码',
+  `name` VARCHAR(100) NOT NULL COMMENT '客户名称',
+  `company` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '公司名称',
+  `note` TEXT NOT NULL DEFAULT '' COMMENT '备注',
+  `customerTypeId` BIGINT UNSIGNED NOT NULL COMMENT '外键客户类型',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`customerCode`),
+  UNIQUE KEY `uk_2` (`name`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`customerTypeId`) REFERENCES `customer_type` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户';
+
+-- 客户类型（customer_type）
+CREATE TABLE IF NOT EXISTS `customer_type` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(50) NOT NULL COMMENT '类型名',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户类型';
+
+-- 客户联系人（customer_contact）
+CREATE TABLE IF NOT EXISTS `customer_contact` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `customerId` BIGINT UNSIGNED NOT NULL COMMENT '外键客户',
+  `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '联系人姓名',
+  `methodId` BIGINT UNSIGNED NOT NULL COMMENT '外键联系方式',
+  `value` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '联系值',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_1` (`value`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`customerId`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`methodId`) REFERENCES `contact_method` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户联系人';
+
+-- 客户地址（customer_addresses）
+CREATE TABLE IF NOT EXISTS `customer_addresses` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `customerId` BIGINT UNSIGNED NOT NULL COMMENT '外键客户',
+  `label` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '地址标签',
+  `contact` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '联系人',
+  `phone` VARCHAR(20) NOT NULL DEFAULT '' COMMENT '联系电话',
+  `province` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '省',
+  `city` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '市',
+  `district` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '区',
+  `detail` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '详细地址',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`customerId`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户地址';
+
+-- 客户开票信息（customer_invoice）
+CREATE TABLE IF NOT EXISTS `customer_invoice` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `customerId` BIGINT UNSIGNED NOT NULL COMMENT '外键客户',
+  `invoiceTitle` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '开票抬头',
+  `taxNumber` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '税号',
+  `bankName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '开户银行',
+  `bankAccount` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '银行账号',
+  `address` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '开票地址',
+  `phone` VARCHAR(30) NOT NULL DEFAULT '' COMMENT '开票电话',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`customerId`) REFERENCES `customers` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='客户开票信息';
+
+-- 仓库（warehouse）
+CREATE TABLE IF NOT EXISTS `warehouse` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号',
+  `name` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '仓库名称',
+  `address` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '主地址',
+  `lng` DECIMAL(10,7) NOT NULL COMMENT '经度',
+  `lat` DECIMAL(10,7) NOT NULL COMMENT '纬度',
+  `coordSource` INT NOT NULL DEFAULT 1 COMMENT '坐标来源',
+  `isMain` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否主库房',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='仓库';
+
+-- 库区（warehouse_zone）
+CREATE TABLE IF NOT EXISTS `warehouse_zone` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `warehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键仓库',
+  `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '区位名称',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`warehouseId`) REFERENCES `warehouse` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='库区';
+
+-- 库房联系人（warehouse_contact）
+CREATE TABLE IF NOT EXISTS `warehouse_contact` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `warehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键仓库',
+  `name` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '联系人姓名',
+  `methodId` BIGINT UNSIGNED NOT NULL COMMENT '外键联系方式',
+  `value` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '联系值',
+  `isDefault` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否默认',
+  `sortOrder` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`warehouseId`) REFERENCES `warehouse` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_2` FOREIGN KEY (`methodId`) REFERENCES `contact_method` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='库房联系人';
+
+-- 库存（inventory）
+CREATE TABLE IF NOT EXISTS `inventory` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `warehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键仓库',
+  `warehouseZoneId` BIGINT UNSIGNED NOT NULL COMMENT '外键库区',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `unitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位',
+  `specModel` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '规格名称快照',
+  `brandName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '品牌名称快照',
+  `unitName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '单位名称快照',
+  `qty` DECIMAL(14,3) NOT NULL COMMENT '库存数量',
+  `weightedAvgCost` DECIMAL(14,2) NOT NULL COMMENT '加权平均进价',
+  `lastInAt` DATETIME NOT NULL COMMENT '最近入库时间',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`warehouseId`, `specId`, `brandId`, `unitId`),
+  KEY `idx_1` (`specId`),
+  KEY `idx_2` (`brandId`),
+  KEY `idx_3` (`unitId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`warehouseZoneId`) REFERENCES `warehouse_zone` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='库存';
+
+-- 库存流水（inventory_ledger）
+CREATE TABLE IF NOT EXISTS `inventory_ledger` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `ledgerNo` VARCHAR(50) NOT NULL COMMENT '流水号',
+  `warehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键仓库',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `unitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位',
+  `specModel` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '规格名称快照',
+  `brandName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '品牌名称快照',
+  `unitName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '单位名称快照',
+  `movementType` INT NOT NULL DEFAULT 1 COMMENT '变动类型',
+  `qty` DECIMAL(14,3) NOT NULL COMMENT '变动数量',
+  `unitCost` DECIMAL(14,2) NOT NULL COMMENT '入库单价',
+  `balanceQty` DECIMAL(14,3) NOT NULL COMMENT '结存数量',
+  `balanceAvgCost` DECIMAL(14,2) NOT NULL COMMENT '结存加权进价',
+  `bizType` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '业务来源',
+  `bizNo` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '业务单号',
+  `lineId` BIGINT UNSIGNED NOT NULL COMMENT '关联单据行',
+  `remark` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+  `createdBy` BIGINT UNSIGNED NOT NULL COMMENT '操作人编号',
+  `creatorName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '操作人名称快照',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`ledgerNo`),
+  KEY `idx_1` (`warehouseId`),
+  KEY `idx_2` (`specId`),
+  KEY `idx_3` (`brandId`),
+  KEY `idx_4` (`unitId`),
+  KEY `idx_5` (`bizNo`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='库存流水';
+
+-- 待入库单（inbound_tasks）
+CREATE TABLE IF NOT EXISTS `inbound_tasks` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `inboundNo` VARCHAR(50) NOT NULL COMMENT '待入库单号',
+  `documentId` BIGINT UNSIGNED NOT NULL COMMENT '来源单据',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `supplierName` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '供应商名称快照',
+  `targetWarehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键目标仓库',
+  `totalQty` DECIMAL(14,3) NOT NULL COMMENT '超额总数量',
+  `totalAmount` DECIMAL(14,2) NOT NULL COMMENT '超额总金额',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `confirmedAt` DATETIME NOT NULL COMMENT '确认时间',
+  `confirmedBy` BIGINT UNSIGNED NOT NULL COMMENT '确认人编号',
+  `confirmedName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '确认人名称快照',
+  `note` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`inboundNo`),
+  KEY `idx_1` (`supplierId`),
+  KEY `idx_2` (`targetWarehouseId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='待入库单';
+
+-- 待入库明细（inbound_lines）
+CREATE TABLE IF NOT EXISTS `inbound_lines` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `taskId` BIGINT UNSIGNED NOT NULL COMMENT '外键入库单',
+  `lineId` BIGINT UNSIGNED NOT NULL COMMENT '来源单据行',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `unitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位',
+  `productName` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '产品名称快照',
+  `specModel` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '规格名称快照',
+  `brandName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '品牌名称快照',
+  `categoryName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '分类名称快照',
+  `unitName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '单位名称快照',
+  `qty` DECIMAL(14,3) NOT NULL COMMENT '超额数量',
+  `unitCost` DECIMAL(14,2) NOT NULL COMMENT '约定进价',
+  `amount` DECIMAL(14,2) NOT NULL COMMENT '小计',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`taskId`) REFERENCES `inbound_tasks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='待入库明细';
+
+-- 采购入库单（purchase_inbounds）
+CREATE TABLE IF NOT EXISTS `purchase_inbounds` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `purchaseNo` VARCHAR(50) NOT NULL COMMENT '采购单号',
+  `supplierId` BIGINT UNSIGNED NOT NULL COMMENT '外键供应商',
+  `supplierName` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '供应商名称快照',
+  `warehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键仓库',
+  `warehouseName` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '仓库名称快照',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `totalQty` DECIMAL(14,3) NOT NULL COMMENT '总数量',
+  `totalAmount` DECIMAL(14,2) NOT NULL COMMENT '总金额',
+  `remark` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+  `confirmedAt` DATETIME NOT NULL COMMENT '确认时间',
+  `confirmedBy` BIGINT UNSIGNED NOT NULL COMMENT '确认人编号',
+  `confirmedName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '确认人名称快照',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_1` (`purchaseNo`),
+  KEY `idx_1` (`supplierId`),
+  KEY `idx_2` (`warehouseId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='采购入库单';
+
+-- 采购入库明细（purchase_inbound_liness）
+CREATE TABLE IF NOT EXISTS `purchase_inbound_liness` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `inboundId` BIGINT UNSIGNED NOT NULL COMMENT '外键采购单',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `unitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位',
+  `productName` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '产品名称快照',
+  `specModel` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '规格名称快照',
+  `brandName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '品牌名称快照',
+  `categoryName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '分类名称快照',
+  `unitName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '单位名称快照',
+  `qty` DECIMAL(14,3) NOT NULL COMMENT '数量',
+  `unitCost` DECIMAL(14,2) NOT NULL COMMENT '进价单价',
+  `amount` DECIMAL(14,2) NOT NULL COMMENT '小计',
+  `seq` INT NOT NULL DEFAULT 0 COMMENT '行序',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_1` (`specId`),
+  KEY `idx_2` (`brandId`),
+  KEY `idx_3` (`unitId`),
+  CONSTRAINT `fk_1` FOREIGN KEY (`inboundId`) REFERENCES `purchase_inbounds` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='采购入库明细';
+
+-- 欠库（backorder）
+CREATE TABLE IF NOT EXISTS `backorder` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '编号（引擎补齐）',
+  `documentId` BIGINT UNSIGNED NOT NULL COMMENT '来源单据',
+  `lineId` BIGINT UNSIGNED NOT NULL COMMENT '来源单据行',
+  `warehouseId` BIGINT UNSIGNED NOT NULL COMMENT '外键仓库',
+  `specId` BIGINT UNSIGNED NOT NULL COMMENT '外键规格',
+  `brandId` BIGINT UNSIGNED NOT NULL COMMENT '外键品牌',
+  `unitId` BIGINT UNSIGNED NOT NULL COMMENT '外键单位',
+  `specModel` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '规格名称快照',
+  `brandName` VARCHAR(100) NOT NULL DEFAULT '' COMMENT '品牌名称快照',
+  `unitName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '单位名称快照',
+  `qty` DECIMAL(14,3) NOT NULL COMMENT '欠库数量',
+  `status` INT NOT NULL DEFAULT 1 COMMENT '状态',
+  `fulfilledAt` DATETIME NOT NULL COMMENT '补齐时间',
+  `fulfilledBy` BIGINT UNSIGNED NOT NULL COMMENT '补齐人编号',
+  `fulfilledName` VARCHAR(50) NOT NULL DEFAULT '' COMMENT '补齐人名称快照',
+  `note` VARCHAR(500) NOT NULL DEFAULT '' COMMENT '备注',
+  `tenantId` BIGINT UNSIGNED NOT NULL DEFAULT 1 COMMENT '多租户预留',
+  `legacyCode` VARCHAR(64) NULL COMMENT '旧业务编码(只读保留)',
+  `createdAt` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updatedAt` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_1` (`warehouseId`),
+  KEY `idx_2` (`specId`),
+  KEY `idx_3` (`brandId`),
+  KEY `idx_4` (`unitId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='欠库';

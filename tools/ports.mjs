@@ -73,6 +73,18 @@ const PORTS = {
     optional: true,
     desc: '仅手动单独启动时临时占用；正常由工具台 /meta/ 进程内提供',
   },
+
+  // 配置层预览（草稿期）：npm run layer 按需启动。
+  // 纯静态服务 + 页面轮询真源文件，零生成器——配置层定稿前不接项目（用户裁决）。
+  layerPreview: {
+    port: 8899,
+    name: '配置层预览',
+    zone: 'tool',
+    deploy: false,
+    public: true,
+    optional: true,
+    desc: '配置预览面板的静态服务（按需启动），页面实时读 配置预览/config-layer/ 真源',
+  },
 };
 
 /** 生产部署要带的服务 */

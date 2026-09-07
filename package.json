@@ -4,7 +4,8 @@
     "verify:static": "node tools/verify.mjs --skip-smoke",
     "smoke": "node e2e_browser/smoke-pages.js",
     "routes": "node tools/gen-routes.mjs",
-    "signal-scan": "node tools/scan-signals.mjs"
+    "signal-scan": "node tools/scan-signals.mjs",
+    "layer": "node tools/dev-layer.mjs"
   },
   "dependencies": {
     "playwright": "^1.48.0",

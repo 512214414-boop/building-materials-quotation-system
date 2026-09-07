@@ -7,6 +7,8 @@
 - **框架要通用、按形状参数（层级/规模/数据源）配置驱动，禁止为单实体开特例"后门"**（把某实体当"唯一例外"写专用槽=后门；正确=通用 displayLevel+childLevel，任何实体声明即生效、框架零改动）。
 - **数据量级按生产级设计**：聚合/展开必须走后端索引（GROUP BY + 复用现有 FULLTEXT 召回），禁止前端全量聚合。
 - **掌控台 = 开发驱动台**（下一步管道/待拍板/已拍板待开发），非状态播报板。
+- **配置层调整铁律（2026-09-07 用户立规）**：讨论完≠可以动手。**任何配置层改动（yml/契约/规则条目）必须先报"打算怎么改"、经用户确认后才执行**；只读核对可直接做。已写入 .codebuddy/rules/boss-view.md。理由：思路跑偏时改回去比多问一句贵得多。
+- **看配置层必须以配置层为准**（不拿真实库 schema.prisma 当参照）；且**看物理层必须同时对照关系层定义的层级通路**——只看物理层会得到跨级引用的错误解读（曾据此误判产品域）。
 - **"做完了吗"只认客观信号**（typecheck/build/测试退出码/Playwright），绝不问 AI。已装 playwright，e2e_browser/ 可跑截图冒烟。
 
 ## 项目架构
@@ -14,7 +16,14 @@
 - 平台内核 frontend/src/shared/**（ArchiveListPage/UnifiedTable/PickerEditGate/editorRegistry/ArchiveSlotHost）；业务页 apps/*/pages/* 复用。
 - 真相源 1：data-source/entity-meta.yml → tools/gen-entity-meta.mjs → 生成物。*.generated.* 禁手改，差异走 *.override.ts。Meta Studio(8898) 直读直写该 yml 整文件覆盖→保持单文件不分片。
 - 真相源 2：文档可视化/data-source/methodology/(_meta+_assets+items/<navId>.yml+_index.yml) → node tools/gen-docs.mjs 生成文档站/侧栏/技能索引/AGENTS.md。加一篇=两步(建 items 文件→_index.yml groups 加一行)，禁手写 05-nav-groups.js。
-- 本地服务：后端 3000 / 生产前端 8080 / 开发前端 8081(./dev.sh)；文档站 8123；掌控台 8124。冒烟 admin/Admin@123。路由真相源 menu.config.ts → tools/gen-routes.mjs 派生 e2e_browser/routes.generated.json(冒烟禁硬编码 URL)。
+- 本地服务：后端 3000 / 生产前端 8080 / 开发前端 8081(./dev.sh)；文档站 8123；掌控台 8124；配置层预览 8899(npm run layer，纯静态零生成器)。冒烟 admin/Admin@123。路由真相源 menu.config.ts → tools/gen-routes.mjs 派生 e2e_browser/routes.generated.json(冒烟禁硬编码 URL)。
+- 配置层预览（2026-09-07 定稿·用户权威口径）：**config-layer 各文件=唯一真相源；预览面板只是可视化视图，不保存/不产生配置数据**。公式=结构化配置数据 + 固定展示渲染框架（表格/列宽/分组/中文映射）= 预览界面，数据与显示完全解耦。框架**逐行沿用** tools/gen-layer-preview.mjs v4（CSS+三级导航+全部渲染函数+导航 IIFE），只换数据源：打开时 fetch 真源 + 浏览器端极简 YAML 解析（替代 js-yaml），`SRC` 是唯一路径入口。**改外观/列/分组=违规，只能改数据源**。边界：绝不回写真源；无监听无轮询（改完手动刷新）；换目录只改 SRC。零生成器（定稿前）。
+- **显示元数据下沉到配置（2026-09-07 用户要求+已落地）**：列的中文名/列宽以 `# @col <键>: <中文表头>,<像素宽>` 注释写在对应 yml 顶部（物理层/推导规则/差异层均已加）。预览 `collectColMeta()` 扫描四个真源文本提取 `@col`→`COL_META_OVERRIDE`，`colMeta(k)` 注释优先、无则走 `FALLBACK_LABEL/EXTRA_W` 兜底。**渲染形态（是→标签/级别→层级标签）仍由 `cellOf` 兜底，新增键默认「是→绿标签/否则原文」**。效果：改列名/加列=只动 yml 注释，HTML 零改动。边界（什么不进配置）：教学性说明文字、渲染引擎、跨表推导视图仍留 HTML。
+- **配置总览/分层体检器退役（2026-09-07 用户定稿）**：`gen-layer-map.mjs` + 产物 `配置分层总览.html` 已删除——与实时预览面板（fetch 真源+浏览器解析）内容重叠，属冗余生成物。原则落地：**配置层 yml 任何改动 = 零生成**（刷新面板即最新）；仅 `entity-meta.yml`/`schema` 这类「应用代码/DDL」专属源变更才定向跑对应生成器（`gen-entity-meta`/`gen-db-ddl`），绝不「改个配置就重跑一整套」。`gen-layer-map` 原兼「分层体检器(0红门禁)」，删除后该体检能力需另立（折进面板或独立 check）方恢复门禁。
+
+- **编辑操作铁律（2026-09-07 事故复盘）**：**同一文件禁止在一条消息里并发多个 replace_in_file**——本次并发改 `配置预览/配置预览面板.html` 致尾部（startNav 哈希路由收尾 + `boot()` + 闭合标签）被截断损坏，且文件 untracked 无法 git 恢复，靠 `gen-layer-preview.mjs` 模板的 `apply()`/哈希路由逻辑重建尾部才修复（`node --check` SYNTAX_OK）。同一文件的多处改动必须串行逐个执行。另：`配置预览/配置预览面板.html` 当前**未纳入 git**（untracked），改动前建议先 `git add` 或备份，避免单点损坏无兜底。
+- **工作重心铁律（2026-09-07 用户顶层定调）**：分层配置存在的唯一目的 = **让业务改动只改对应层的那一个文件**（正常情况改完即完；有新推导行为 → 沉淀一条到 `推导规则/derivation-rules.yml`）。预览/体检实时看、零生成；跑生成器仅限动 DB/应用代码（建库发版），不是配置验证。**工具（面板/生成器/体检）冻结，业务优先**——此前连续修工具致业务实体零新增（业务模型：产品/SKU/单位换算/价格/库存/单据），此为教训，后续不得再让工具调整占用业务推进时间。
+- **生成器定位（2026-09-07 用户质问后明确）**：预览/体检**完全不依赖生成器**（面板实时读真源）。生成器只有两个、只干"建库发版"的事：`gen-db-ddl`=建库 DDL、`gen-entity-meta`=应用 TypeScript。**改配置（含显示调整）绝不动生成器、绝不跑生成器**；仅当语法级结构变更使生成器读不到旧键时才必须同步生成器（如 P17 迁移，一次性，且用基线 diff 验证零漂移）。显示类调整只碰面板一个文件。用户对"改个配置等半小时"零容忍——普通配置改动只许动该层 yml 一个文件。**配置探索期（未定稿）一律不跑生成器（含验证性运行）**；验证收拢到定稿节点一次做，且跑之前必须先用一句话向用户说明用途。
 
 ## 门禁（交付判定 = 退出码）
 - npm run verify(完整，需 3000/8080) / npm run verify:static(静态，服务不在时不得标已交付)。阶段 S0 yml↔generated→S1 fe-typecheck→S2 fe-lint→S3 fe-dupe→S3b fe-test(Vitest)→S4 be-test(node:test)→S5 be-lint→S6 e2e-smoke。跑完全部再汇总，不 fail-fast。报告 verify-report.json。

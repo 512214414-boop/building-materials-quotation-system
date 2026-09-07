@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 // PanelTree —— 面板层级树（编辑辅助层第五层基础设施）
 // （v3 已废弃，v4 §12.2 修正 3 确认级联关闭通过 React 组件卸载实现，PanelTree 主要管同级互斥）
 //
@@ -74,6 +76,24 @@ function generatePanelId(): string {
  */
 export function allocPanelId(): string {
   return generatePanelId();
+}
+
+/**
+ * React hook 版 allocPanelId：在组件首帧生成面板 id，并跨重渲染保持稳定。
+ *
+ * 用途：浮层/弹窗组件需要把一个 panel-id 同时用于
+ *   - 注册进 PanelTree（useEffect 内 registerPanel）
+ *   - 写到 DOM 的 data-panel-id（首帧就要，便于点击外部关闭的 DOM 链判断）
+ * 若直接在 render 里每次调 allocPanelId，id 会随每次渲染改变，导致
+ * data-panel-id 与注册表里的 id 对不上、级联关闭/互斥失效。
+ * 用 useRef 把 id 钉死在首帧生成的值上即可。
+ */
+export function useStablePanelId(): string {
+  const ref = useRef<string | undefined>(undefined);
+  if (ref.current === undefined) {
+    ref.current = generatePanelId();
+  }
+  return ref.current;
 }
 
 /**

@@ -21,9 +21,10 @@ import RecordExpandPanel from '../RecordExpandPanel.js';
 import { UnitPriceExpandPanel } from '../UnitPriceExpandPanel.js';
 import type { SalePriceItem, PurchasePriceItem } from '../UnitPriceExpandPanel.js';
 import type { PriceTypeView, SkuOptionUnit, BrandConversion } from '../../services/api/baseDataApi.js';
-import { resolveUnitPriceDisplay } from '../../engines/pricing-engine.js';
 import { calcEffectivePrice } from '../../utils/format.js';
 import { createRecordFieldColumn } from './RecordFieldColumn.js';
+import { createRecordSetColumn, type RecordSetProvider } from './RecordSetColumn.js';
+import { findRecordSet } from '../../config/recordSets.js';
 
 // ============================================================
 // §1 类型定义
@@ -355,15 +356,11 @@ function createPriceColumn<T>(
 ): UnifiedTableColumn<T> {
   const { rowStates, actions, getRowData, priceTypes, onPriceTypesChange, onPointPersisted } = opts;
   const isSale = kind === 'sale';
-  const title = isSale ? '售价' : '进价';
-  const defaultTab = isSale ? 'sale' : 'purchase';
-  const priceColor = isSale ? 'var(--text-default)' : 'var(--status-discount-default)';
-  const emptyText = isSale ? '未定价' : '未设进价';
-  const derivedTitle = isSale ? '按基准单位售价 × 换算率推算' : '按基准单位进价 × 换算率推算';
+  // 声明驱动：颜色/回退链/推算/缺省全部来自 entity-meta.yml 的 recordSet 声明，
+  // 不再手写（此前硬编码在 display.render 里）。引擎按声明推导，业务只注入数据能力。
+  const spec = findRecordSet('product', isSale ? 'salePrices' : 'purchasePrices')!;
 
-  return createRecordFieldColumn<T>({
-    title,
-    minWidth: COL_WIDTHS.AMOUNT,
+  const provider: RecordSetProvider<T, Record<string, any>> = {
     getRecords: (record) => {
       const row = getRowData(record);
       if (!row) return [];
@@ -378,102 +375,59 @@ function createPriceColumn<T>(
           isSale
             ? {
                 priceTypeId: (p as SalePriceItem).priceTypeId,
-                priceTypeName: (p as SalePriceItem).priceTypeName,
                 price: p.price,
                 isDefault: p.isDefault,
                 point: (p as SalePriceItem).point,
-                effectivePrice: (p as SalePriceItem).effectivePrice,
               }
             : {
                 supplierId: (p as PurchasePriceItem).supplierId,
-                supplierName: (p as PurchasePriceItem).supplierName,
                 price: p.price,
                 isDefault: p.isDefault,
                 point: (p as PurchasePriceItem).point,
-                effectivePrice: (p as PurchasePriceItem).effectivePrice,
               },
         );
     },
-    getRecordKey: (rec) => (isSale ? String(rec.priceTypeId) : String(rec.supplierId)),
-    display: {
-      mode: 'single',
-      field: 'price',
-      // 价格单元格：选中/默认记录已录价 → 直接用；未录 → 推算（基准×率）→ 宽表兜底
-      // 注意：source 是业务行 T（RecordFieldColumn 原样透传），必须经 getRowData 统一映射，
-      //   禁止 `as SkuPriceRowData` 裸断言（v2.1 修复：曾导致列表初始全部显示空值，展开后才正确）
-      render: ({ record, source }) => {
-        // source: T（可选）→ 非空断言消除 undefined；禁止把 source 断言为 SkuPriceRowData 等映射类型
-        const row = getRowData(source as T);
-        if (!row) {
-          return <span style={{ color: 'var(--text-placeholder-accent)' }}>{emptyText}</span>;
-        }
-        const rowState = rowStates[row.id] ?? null;
-        const currentUnitIdx = getCurrentUnitIdx(rowState);
-        const priceList = isSale ? rowState?.salePrices : rowState?.purchasePrices;
-
-        // ① 当前显示记录（选中→默认）已录价 → 直接显示
-        if (record && record.price != null && String(record.price).trim()) {
-          const eff = calcEffectivePrice(record as unknown as PurchasePriceItem);
-          if (!isNaN(eff)) {
-            return (
-              <span style={{ fontWeight: 500, color: priceColor }}>{`¥${eff}`}</span>
-            );
-          }
-        }
-
-        // ② 统一回退链：默认价 → 推算（基准×率）→ 宽表兜底
-        if (priceList && currentUnitIdx >= 0) {
-          const resolved = resolveUnitPriceDisplay({
-            currentUnitIdx,
-            conversionRates: buildConversionRates(rowState),
-            fallback: isSale ? row.retailPrice ?? null : row.purchasePriceDefault ?? null,
-            pickPrice: (idx) => {
-              const item = priceList?.find(
-                (p) => p.unitIdx === idx && p.isDefault && p.price.trim(),
-              );
-              if (!item) return null;
-              const eff = calcEffectivePrice(item);
-              return isNaN(eff) ? null : eff;
-            },
-          });
-          if (resolved.price != null) {
-            return (
-              <span
-                style={{ fontWeight: 500, color: 'var(--text-placeholder-accent)' }}
-                title={resolved.derived ? derivedTitle : undefined}
-              >
-                {`¥${resolved.price}`}
-              </span>
-            );
-          }
-        }
-
-        // ③ 均不可得 → 空值占位（系统补全语义色）
-        const fb = isSale ? row.retailPrice ?? null : row.purchasePriceDefault ?? null;
-        if (fb != null) {
-          return <span style={{ fontWeight: 500, color: priceColor }}>{`¥${fb}`}</span>;
-        }
-        return <span style={{ color: 'var(--text-placeholder-accent)' }}>{emptyText}</span>;
-      },
+    getSelectedKey: (record) => {
+      const row = getRowData(record);
+      if (!row) return null;
+      const state = rowStates[row.id] ?? null;
+      return isSale
+        ? (state?.selectedSalePriceTypeId ?? null)
+        : (state?.selectedPurchaseSupplierId ?? null);
     },
-    // v2.0：切换选中（本地态）——面板行点击切换当前显示的价格类型/供应商
-    select: {
-      selectedKey: (record) => {
-        const row = getRowData(record);
-        if (!row) return null;
-        const state = rowStates[row.id] ?? null;
-        return isSale
-          ? (state?.selectedSalePriceTypeId ?? null)
-          : (state?.selectedPurchaseSupplierId ?? null);
-      },
-      onChange: (key, record) => {
-        const row = getRowData(record);
-        if (!row) return;
-        if (isSale) actions.changeSalePriceType(row.id, key);
-        else actions.changePurchaseSupplier(row.id, key);
-      },
+    onSelect: (key, record) => {
+      const row = getRowData(record);
+      if (!row) return;
+      if (isSale) actions.changeSalePriceType(row.id, key);
+      else actions.changePurchaseSupplier(row.id, key);
     },
-    open: (record) => {
+    // 推算基准值 = 基准单位（换算率=1）的默认价（与 resolveUnitPriceDisplay 口径一致）
+    getBaseValue: (record) => {
+      const row = getRowData(record);
+      if (!row) return null;
+      const rowState = rowStates[row.id] ?? null;
+      const rates = buildConversionRates(rowState);
+      const baseIdx = rates.findIndex((r) => r === 1);
+      const priceList = isSale ? rowState?.salePrices : rowState?.purchasePrices;
+      if (!priceList) return null;
+      const base = priceList.find(
+        (p) => p.unitIdx === (baseIdx >= 0 ? baseIdx : 0) && p.isDefault && p.price.trim(),
+      );
+      if (!base) return null;
+      const eff = calcEffectivePrice(base as unknown as PurchasePriceItem);
+      return isNaN(eff) ? null : eff;
+    },
+    // 推算系数 = 当前单位换算率
+    getAxisFactor: (record) => {
+      const row = getRowData(record);
+      if (!row) return null;
+      const rowState = rowStates[row.id] ?? null;
+      const currentUnitIdx = getCurrentUnitIdx(rowState);
+      const rates = buildConversionRates(rowState);
+      const f = currentUnitIdx >= 0 ? rates[currentUnitIdx] : null;
+      return f ?? null;
+    },
+    getOpen: (record) => {
       const row = getRowData(record);
       if (!row) return false;
       const state = rowStates[row.id] ?? null;
@@ -487,7 +441,6 @@ function createPriceColumn<T>(
       if (isSale) actions.setSalePopoverOpen(row.id, o);
       else actions.setPurchasePopoverOpen(row.id, o);
       if (!o) {
-        // 面板关闭时有变更则持久化（hook saveIfDirty 内部读行状态）
         actions.saveIfDirty({
           skuId: row.id,
           specBrandId: row.specBrandId,
@@ -510,59 +463,64 @@ function createPriceColumn<T>(
         });
       }
     },
-    panel: {
-      render: ({ selectedRowKey, onSelect, source }) => {
-        const row = getRowData(source as T);
-        if (!row) return null;
-        const rowState = rowStates[row.id] ?? null;
-        const currentUnitIdx = getCurrentUnitIdx(rowState);
-        const currentUnitName = getCurrentUnitName(rowState);
-        const units = (rowState?.skuOptions ?? []).map((u, i) => ({
-          idx: i,
-          name: u.unitName,
-        }));
-        if (!rowState?.loaded || !rowState.salePrices || !rowState.purchasePrices) {
-          return <Spin size="small" />; // 加载中
-        }
-        return (
-          <UnitPriceExpandPanel
-            unitIdx={currentUnitIdx >= 0 ? currentUnitIdx : 0}
-            unitName={currentUnitName}
-            units={units}
-            onUnitChange={(newIdx) => {
-              const newUnit = rowState?.skuOptions?.[newIdx];
-              if (newUnit) actions.changeUnit(row.id, newUnit.unitId);
-            }}
-            brandIdx={0}
-            unitConversions={buildConversionRates(rowState)}
-            salePrices={rowState.salePrices}
-            onSalePricesChange={(prices) => actions.setSalePrices(row.id, prices)}
-            purchasePrices={rowState.purchasePrices}
-            onPurchasePricesChange={(prices) => actions.setPurchasePrices(row.id, prices)}
-            priceTypes={priceTypes}
-            onPriceTypesChange={onPriceTypesChange}
-            defaultTab={defaultTab}
-            pointCtx={{
-              specBrandId: row.specBrandId,
-              brandName: row.brandName,
-              categoryName: row.categoryName,
-              onPersisted: () => onPointPersisted?.(row),
-            }}
-            supplierCandidateCtx={{
-              categoryId: row.categoryId ?? undefined,
-              brandId: row.brandId || undefined,
-              unitId: rowState?.selectedUnitId ?? undefined,
-            }}
-            // v2.0：切换选中接线（selectKey 即业务 key，无需解析）
-            selectedSalePriceTypeId={isSale ? (selectedRowKey ?? undefined) : undefined}
-            onSaleSelect={isSale ? onSelect : undefined}
-            selectedPurchaseSupplierId={!isSale ? (selectedRowKey ?? undefined) : undefined}
-            onPurchaseSelect={!isSale ? onSelect : undefined}
-          />
-        );
-      },
+    isReady: (record) => {
+      const row = getRowData(record);
+      if (!row) return true;
+      const state = rowStates[row.id] ?? null;
+      return !!state?.loaded;
     },
-  });
+    renderLoading: () => <Spin size="small" />,
+    // 面板：售价/进价明细（Tab 由声明 group=price 推导，此处按 kind 设默认 Tab）
+    renderPanel: ({ selectedRowKey, onSelect, row }) => {
+      const r = row as T;
+      const rowData = getRowData(r);
+      if (!rowData) return null;
+      const rowState = rowStates[rowData.id] ?? null;
+      const currentUnitIdx = getCurrentUnitIdx(rowState);
+      const currentUnitName = getCurrentUnitName(rowState);
+      const units = (rowState?.skuOptions ?? []).map((u, i) => ({ idx: i, name: u.unitName }));
+      if (!rowState?.loaded || !rowState.salePrices || !rowState.purchasePrices) {
+        return <Spin size="small" />;
+      }
+      return (
+        <UnitPriceExpandPanel
+          unitIdx={currentUnitIdx >= 0 ? currentUnitIdx : 0}
+          unitName={currentUnitName}
+          units={units}
+          onUnitChange={(newIdx) => {
+            const newUnit = rowState?.skuOptions?.[newIdx];
+            if (newUnit) actions.changeUnit(rowData.id, newUnit.unitId);
+          }}
+          brandIdx={0}
+          unitConversions={buildConversionRates(rowState)}
+          salePrices={rowState.salePrices}
+          onSalePricesChange={(prices) => actions.setSalePrices(rowData.id, prices)}
+          purchasePrices={rowState.purchasePrices}
+          onPurchasePricesChange={(prices) => actions.setPurchasePrices(rowData.id, prices)}
+          priceTypes={priceTypes}
+          onPriceTypesChange={onPriceTypesChange}
+          defaultTab={isSale ? 'sale' : 'purchase'}
+          pointCtx={{
+            specBrandId: rowData.specBrandId,
+            brandName: rowData.brandName,
+            categoryName: rowData.categoryName,
+            onPersisted: () => onPointPersisted?.(rowData),
+          }}
+          supplierCandidateCtx={{
+            categoryId: rowData.categoryId ?? undefined,
+            brandId: rowData.brandId || undefined,
+            unitId: rowState?.selectedUnitId ?? undefined,
+          }}
+          selectedSalePriceTypeId={isSale ? selectedRowKey ?? undefined : undefined}
+          onSaleSelect={isSale ? onSelect : undefined}
+          selectedPurchaseSupplierId={!isSale ? selectedRowKey ?? undefined : undefined}
+          onPurchaseSelect={!isSale ? onSelect : undefined}
+        />
+      );
+    },
+  };
+
+  return createRecordSetColumn<T>(spec, provider);
 }
 
 // ============================================================

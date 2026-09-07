@@ -110,6 +110,40 @@ const staff_documentFields: EntityFieldSpec[] = [
   { key: "updatedAt", title: "更新时间", dataIndex: "updatedAt", renderMode: "static", minWidth: 170, align: "left", order: 70 },
 ];
 
+const report_rangeFields: EntityFieldSpec[] = [
+  { key: "documentNo", title: "单据", dataIndex: "documentNo", renderMode: "text", minWidth: 150, align: "center", order: 10 },
+  { key: "customerName", title: "客户", dataIndex: "customerName", renderMode: "text", minWidth: 150, align: "center", order: 20 },
+  { key: "salesAmount", title: "销售额", dataIndex: "salesAmount", renderMode: "text", minWidth: 120, align: "center", order: 30 },
+  { key: "netProfit", title: "净利润", dataIndex: "netProfit", renderMode: "text", minWidth: 120, align: "center", order: 40 },
+];
+
+const report_marginFields: EntityFieldSpec[] = [
+  { key: "sales", title: "销售", dataIndex: "sales", renderMode: "text", minWidth: 120, align: "center", order: 10 },
+  { key: "cost", title: "成本", dataIndex: "cost", renderMode: "text", minWidth: 120, align: "center", order: 20 },
+  { key: "profit", title: "毛利", dataIndex: "profit", renderMode: "text", minWidth: 120, align: "center", order: 30 },
+  { key: "marginRate", title: "毛利率", dataIndex: "marginRate", renderMode: "text", minWidth: 120, align: "center", order: 40 },
+];
+
+const report_salespersonFields: EntityFieldSpec[] = [
+  { key: "sales", title: "销售额", dataIndex: "sales", renderMode: "text", minWidth: 120, align: "center", order: 10 },
+];
+
+const report_purchaseFields: EntityFieldSpec[] = [
+  { key: "totalAmount", title: "金额", dataIndex: "totalAmount", renderMode: "text", minWidth: 120, align: "center", order: 10 },
+];
+
+const report_arFields: EntityFieldSpec[] = [
+  { key: "outstanding", title: "未收", dataIndex: "outstanding", renderMode: "text", minWidth: 120, align: "center", order: 10 },
+];
+
+const report_turnoverFields: EntityFieldSpec[] = [
+  { key: "product", title: "产品", dataIndex: "productName", renderMode: "text", minWidth: 200, align: "left", order: 10 },
+];
+
+const report_refundFields: EntityFieldSpec[] = [
+  { key: "amount", title: "金额", dataIndex: "amount", renderMode: "text", minWidth: 120, align: "center", order: 10 },
+];
+
 const audit_logFields: EntityFieldSpec[] = [
   { key: "user", title: "操作人", dataIndex: "userId", renderMode: "text", minWidth: 140, align: "left", order: 10 },
   { key: "resourceType", title: "资源类型", dataIndex: "resourceType", renderMode: "text", minWidth: 130, align: "left", order: 30 },
@@ -150,40 +184,6 @@ const supplier_payableFields: EntityFieldSpec[] = [
   { key: "amount", title: "应付金额", dataIndex: "amount", renderMode: "text", minWidth: 110, align: "center", order: 40 },
   { key: "status", title: "状态", dataIndex: "status", renderMode: "static", minWidth: 90, align: "center", order: 50 },
   { key: "created_at", title: "生成时间", dataIndex: "created_at", renderMode: "static", minWidth: 150, align: "center", order: 60 },
-];
-
-const report_rangeFields: EntityFieldSpec[] = [
-  { key: "documentNo", title: "单据", dataIndex: "documentNo", renderMode: "text", minWidth: 150, align: "center", order: 10 },
-  { key: "customerName", title: "客户", dataIndex: "customerName", renderMode: "text", minWidth: 150, align: "center", order: 20 },
-  { key: "salesAmount", title: "销售额", dataIndex: "salesAmount", renderMode: "text", minWidth: 120, align: "center", order: 30 },
-  { key: "netProfit", title: "净利润", dataIndex: "netProfit", renderMode: "text", minWidth: 120, align: "center", order: 40 },
-];
-
-const report_marginFields: EntityFieldSpec[] = [
-  { key: "sales", title: "销售", dataIndex: "sales", renderMode: "text", minWidth: 120, align: "center", order: 10 },
-  { key: "cost", title: "成本", dataIndex: "cost", renderMode: "text", minWidth: 120, align: "center", order: 20 },
-  { key: "profit", title: "毛利", dataIndex: "profit", renderMode: "text", minWidth: 120, align: "center", order: 30 },
-  { key: "marginRate", title: "毛利率", dataIndex: "marginRate", renderMode: "text", minWidth: 120, align: "center", order: 40 },
-];
-
-const report_salespersonFields: EntityFieldSpec[] = [
-  { key: "sales", title: "销售额", dataIndex: "sales", renderMode: "text", minWidth: 120, align: "center", order: 10 },
-];
-
-const report_purchaseFields: EntityFieldSpec[] = [
-  { key: "totalAmount", title: "金额", dataIndex: "totalAmount", renderMode: "text", minWidth: 120, align: "center", order: 10 },
-];
-
-const report_arFields: EntityFieldSpec[] = [
-  { key: "outstanding", title: "未收", dataIndex: "outstanding", renderMode: "text", minWidth: 120, align: "center", order: 10 },
-];
-
-const report_turnoverFields: EntityFieldSpec[] = [
-  { key: "product", title: "产品", dataIndex: "productName", renderMode: "text", minWidth: 200, align: "left", order: 10 },
-];
-
-const report_refundFields: EntityFieldSpec[] = [
-  { key: "amount", title: "金额", dataIndex: "amount", renderMode: "text", minWidth: 120, align: "center", order: 10 },
 ];
 
 export const entityRelations: Record<string, EntityRelation> = {
@@ -258,41 +258,6 @@ export const entityRelations: Record<string, EntityRelation> = {
     fields: staff_documentFields,
     relations: [],
   },
-  audit_log: {
-    name: "audit_log",
-    label: "审计日志",
-    primaryKey: "id",
-    fields: audit_logFields,
-    relations: [],
-  },
-  auth_code: {
-    name: "auth_code",
-    label: "授权码",
-    primaryKey: "id",
-    fields: auth_codeFields,
-    relations: [],
-  },
-  access_request: {
-    name: "access_request",
-    label: "访问申请",
-    primaryKey: "id",
-    fields: access_requestFields,
-    relations: [],
-  },
-  admin_user: {
-    name: "admin_user",
-    label: "员工账号",
-    primaryKey: "id",
-    fields: admin_userFields,
-    relations: [],
-  },
-  supplier_payable: {
-    name: "supplier_payable",
-    label: "供应商应付",
-    primaryKey: "id",
-    fields: supplier_payableFields,
-    relations: [],
-  },
   report_range: {
     name: "report_range",
     label: "经营报表-区间单据",
@@ -340,6 +305,41 @@ export const entityRelations: Record<string, EntityRelation> = {
     label: "经营报表-退换货",
     primaryKey: "id",
     fields: report_refundFields,
+    relations: [],
+  },
+  audit_log: {
+    name: "audit_log",
+    label: "审计日志",
+    primaryKey: "id",
+    fields: audit_logFields,
+    relations: [],
+  },
+  auth_code: {
+    name: "auth_code",
+    label: "授权码",
+    primaryKey: "id",
+    fields: auth_codeFields,
+    relations: [],
+  },
+  access_request: {
+    name: "access_request",
+    label: "访问申请",
+    primaryKey: "id",
+    fields: access_requestFields,
+    relations: [],
+  },
+  admin_user: {
+    name: "admin_user",
+    label: "员工账号",
+    primaryKey: "id",
+    fields: admin_userFields,
+    relations: [],
+  },
+  supplier_payable: {
+    name: "supplier_payable",
+    label: "供应商应付",
+    primaryKey: "id",
+    fields: supplier_payableFields,
     relations: [],
   },
 };
@@ -432,6 +432,33 @@ export const entityCellSpecs: Record<string, GeneratedCellSpec[]> = {
     { key: "totalAmount", title: "金额摘要", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
     { key: "updatedAt", title: "更新时间", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
   ],
+  report_range: [
+    { key: "documentNo", title: "单据", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "customerName", title: "客户", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "salesAmount", title: "销售额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "netProfit", title: "净利润", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+  report_margin: [
+    { key: "sales", title: "销售", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "cost", title: "成本", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "profit", title: "毛利", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+    { key: "marginRate", title: "毛利率", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+  report_salesperson: [
+    { key: "sales", title: "销售额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+  report_purchase: [
+    { key: "totalAmount", title: "金额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+  report_ar: [
+    { key: "outstanding", title: "未收", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+  report_turnover: [
+    { key: "product", title: "产品", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
+  report_refund: [
+    { key: "amount", title: "金额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
+  ],
   audit_log: [
     { key: "user", title: "操作人", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
     { key: "resourceType", title: "资源类型", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
@@ -468,33 +495,6 @@ export const entityCellSpecs: Record<string, GeneratedCellSpec[]> = {
     { key: "amount", title: "应付金额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
     { key: "status", title: "状态", display: "enum-tag", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
     { key: "created_at", title: "生成时间", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_range: [
-    { key: "documentNo", title: "单据", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-    { key: "customerName", title: "客户", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-    { key: "salesAmount", title: "销售额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-    { key: "netProfit", title: "净利润", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_margin: [
-    { key: "sales", title: "销售", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-    { key: "cost", title: "成本", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-    { key: "profit", title: "毛利", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-    { key: "marginRate", title: "毛利率", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_salesperson: [
-    { key: "sales", title: "销售额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_purchase: [
-    { key: "totalAmount", title: "金额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_ar: [
-    { key: "outstanding", title: "未收", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_turnover: [
-    { key: "product", title: "产品", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
-  ],
-  report_refund: [
-    { key: "amount", title: "金额", display: "text", editEntry: "none", valueState: undefined, gate: undefined, hidden: undefined },
   ],
 };
 

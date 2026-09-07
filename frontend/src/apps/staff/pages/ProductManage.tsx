@@ -214,20 +214,23 @@ export default function ProductManage() {
     onError: useCallback((e: Error) => message.error((e as Error).message || '操作失败'), [message]),
   });
 
-  const getRowData = useCallback((record: SkuSearchRow): SkuPriceRowData | null => ({
-    id: record.id,
-    specBrandId: record.specBrandId,
-    specId: record.specId,
-    productId: record.productId,
-    brandName: record.brandName,
-    categoryName: record.categoryName,
-    categoryId: record.categoryId ? Number(record.categoryId) : null,
-    brandId: record.brandId,
-    defaultUnitId: record.defaultUnitId,
-    defaultUnitName: record.defaultUnitName,
-    retailPrice: record.retailPrice,
-    purchasePriceDefault: record.purchasePriceDefault,
-  }), []);
+  const getRowData = useCallback((record: SkuSearchRow | null | undefined): SkuPriceRowData | null => {
+    if (!record) return null;
+    return {
+      id: record.id,
+      specBrandId: record.specBrandId,
+      specId: record.specId,
+      productId: record.productId,
+      brandName: record.brandName,
+      categoryName: record.categoryName,
+      categoryId: record.categoryId ? Number(record.categoryId) : null,
+      brandId: record.brandId,
+      defaultUnitId: record.defaultUnitId,
+      defaultUnitName: record.defaultUnitName,
+      retailPrice: record.retailPrice,
+      purchasePriceDefault: record.purchasePriceDefault,
+    };
+  }, []);
 
   // flat 模式价格列（与旧平铺列表同一套），grouped 子表自带
   const skuPriceColumns = useMemo(

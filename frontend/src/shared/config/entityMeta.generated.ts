@@ -110,6 +110,19 @@ export const entityMeta: Record<string, EntityMeta> = {
     fields: [
     ],
   },
+  spec: {
+    key: "spec",
+    label: "品牌规格",
+    table: "spec",
+    layer: "row",
+    behavior: {"quickCreate":false,"deleteGuard":"随产品级联删除"},
+    fields: [
+      { key: "id", label: "规格ID", dataType: "int", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
+      { key: "productBrandId", label: "产品品牌ID", dataType: "int", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
+      { key: "specModel", label: "规格型号", dataType: "string", required: true, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
+      { key: "defaultUnitId", label: "默认单位ID", dataType: "int", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: undefined },
+    ],
+  },
   inventory: {
     key: "inventory",
     label: "库存",
@@ -173,49 +186,18 @@ export const entityMeta: Record<string, EntityMeta> = {
     fields: [
     ],
   },
-  audit_log: {
-    key: "audit_log",
-    label: "审计日志",
-    table: "audit_logs",
-    layer: "row",
+  document_line: {
+    key: "document_line",
+    label: "单据行（快照）",
+    table: "document_lines",
+    layer: "snapshot",
     behavior: undefined,
     fields: [
-    ],
-  },
-  auth_code: {
-    key: "auth_code",
-    label: "授权码",
-    table: "authorization_codes",
-    layer: "row",
-    behavior: undefined,
-    fields: [
-    ],
-  },
-  access_request: {
-    key: "access_request",
-    label: "访问申请",
-    table: "access_requests",
-    layer: "row",
-    behavior: undefined,
-    fields: [
-    ],
-  },
-  admin_user: {
-    key: "admin_user",
-    label: "员工账号",
-    table: "users",
-    layer: "row",
-    behavior: undefined,
-    fields: [
-    ],
-  },
-  supplier_payable: {
-    key: "supplier_payable",
-    label: "供应商应付",
-    table: "payables",
-    layer: "row",
-    behavior: undefined,
-    fields: [
+      { key: "productName", label: "产品名（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "product.name" },
+      { key: "brandName", label: "品牌（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "brand.name" },
+      { key: "categoryName", label: "分类（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "category.name" },
+      { key: "specModel", label: "规格（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "spec.specModel" },
+      { key: "unitName", label: "单位（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "unit.unitName" },
     ],
   },
   report_range: {
@@ -281,18 +263,49 @@ export const entityMeta: Record<string, EntityMeta> = {
     fields: [
     ],
   },
-  document_line: {
-    key: "document_line",
-    label: "单据行（快照）",
-    table: "document_lines",
-    layer: "snapshot",
+  audit_log: {
+    key: "audit_log",
+    label: "审计日志",
+    table: "audit_logs",
+    layer: "row",
     behavior: undefined,
     fields: [
-      { key: "productName", label: "产品名（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "product.name" },
-      { key: "brandName", label: "品牌（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "brand.name" },
-      { key: "categoryName", label: "分类（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "category.name" },
-      { key: "specModel", label: "规格（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "spec.specModel" },
-      { key: "unitName", label: "单位（快照）", dataType: "", required: false, unique: undefined, defaults: {}, confirmStrategy: undefined, searchLayer: "", gate: undefined, snapshotFrom: "unit.unitName" },
+    ],
+  },
+  auth_code: {
+    key: "auth_code",
+    label: "授权码",
+    table: "authorization_codes",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  access_request: {
+    key: "access_request",
+    label: "访问申请",
+    table: "access_requests",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  admin_user: {
+    key: "admin_user",
+    label: "员工账号",
+    table: "users",
+    layer: "row",
+    behavior: undefined,
+    fields: [
+    ],
+  },
+  supplier_payable: {
+    key: "supplier_payable",
+    label: "供应商应付",
+    table: "payables",
+    layer: "row",
+    behavior: undefined,
+    fields: [
     ],
   },
 };

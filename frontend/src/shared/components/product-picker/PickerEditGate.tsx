@@ -17,7 +17,7 @@ import type { DictRecordConfig } from '../DictRefField.js';
 import { dictConfigFor } from '../../config/recordDicts.js';
 import { useDebounce } from '../../hooks/useDebounce.js';
 import { useSuggest } from '../../hooks/useSuggest.js';
-import { allocPanelId, isClickOnRelatedPanel } from '../PanelTree.js';
+import { allocPanelId, isClickOnRelatedPanel, useStablePanelId } from '../PanelTree.js';
 import { armNativeInput } from '../../utils/armNativeInput.js';
 import { attachOutsideTapGuard } from '../../utils/outsideTapGuard.js';
 import { COL_WIDTHS } from '../table/colWidths.js';
@@ -162,7 +162,7 @@ export function PickerEditGateProvider({ children }: { children: ReactNode }) {
   // 只包输入框那一行：选用检索/字典检索都锚到这里，紧贴输入框展开，
   // 而不是锚到整个确认层内容（否则列表会弹到面板很下方，移动端上下距离过长）。
   const inputFieldRef = useRef<HTMLDivElement>(null);
-  const confirmPanelIdRef = useRef(allocPanelId());
+  const confirmPanelIdRef = useStablePanelId();
 
   const close = useCallback(() => {
     anchorRef.current?.classList.remove('ds-gate-source-active');

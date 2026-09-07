@@ -1,0 +1,43 @@
+- generic [active] [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - heading "三层配置预览 真源可视化 · 实时读源 · 零生成器" [level=1] [ref=f2e3]:
+      - text: 三层配置预览
+      - generic [ref=f2e4]: 真源可视化 · 实时读源 · 零生成器
+    - generic [ref=f2e5]:
+      - text: 独立文件夹
+      - code [ref=f2e6]: 配置预览/config-layer/
+      - text: （物理层 / 关系层 / 差异层 yml + 分层契约 + 概念纲领）。这些文件是唯一真相源；本页是一套固定的显示渲染框架——表格、列宽、分组、中文映射规则全部预置，只把真源数据套进去出视图，不改、不写、不产生任何配置数据。打开时一次性读取真源；改完文件刷新浏览器即最新（无监听、无轮询）。每块解读下面都能展开「📄 真实配置原文」对照验收。
+  - generic [ref=f2e7]:
+    - generic [ref=f2e8]:
+      - generic [ref=f2e9] [cursor=pointer]:
+        - generic [ref=f2e10]: 物理层
+        - code [ref=f2e11]: physical-layer.yml
+        - generic [ref=f2e12]: 客观全部原材料：34 张表（4 域：产品管理、供应商管理、客户管理、库存管理，其余域验证后接入）。表级配置（唯一/全文/索引）固定四键；字段级只留 检索.级别、缺省值。不表达业务组织。
+      - generic [ref=f2e13] [cursor=pointer]:
+        - generic [ref=f2e14]: 关系层
+        - code [ref=f2e15]: relation-layer.yml
+        - generic [ref=f2e16]:
+          - text: 按场景串通路：4 个关系体（
+          - generic [ref=f2e17]: 总览
+          - text: "=所有关系体通路一览；点关系体卡片再按层级分级查看）。每层 检索{模式,主字段}；通路位次由序号推导。"
+      - generic [ref=f2e18] [cursor=pointer]:
+        - generic [ref=f2e19]: 差异层
+        - code [ref=f2e20]: difference-layer.yml
+        - generic [ref=f2e21]: 仅 2 处有意偏离（补丁本，不是垃圾桶）。各条同时出现在所属表所在的关系体分级视图里。
+      - generic [ref=f2e22] [cursor=pointer]:
+        - generic [ref=f2e23]: 解释器覆盖
+        - code [ref=f2e24]: 概念纲领.md · §4.3/§5
+        - generic [ref=f2e25]: 哪些解释器解决了哪些方面的问题、哪些还没解决（消费端派生矩阵 + 诚实清单）。
+      - generic [ref=f2e26] [cursor=pointer]:
+        - generic [ref=f2e27]: 推导规则
+        - code [ref=f2e28]: 分层契约.md · §8.5
+        - generic [ref=f2e29]: 引擎该推导的全部规则（组合/补齐/关系层推导/多源推导，共 14 条）——做解释器时的逐条对账清单，防止漏、防止误加键。
+      - generic [ref=f2e30] [cursor=pointer]:
+        - generic [ref=f2e31]: 体检
+        - code [ref=f2e32]: 防污染 · 0 红门禁
+        - generic [ref=f2e33]: 机器语法 / 标记 / 引用存在性 实时校验，随真源刷新（原 gen-layer-map 能力折入）。
+    - navigation [ref=f2e34]
+    - text: ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸ ▸
+    - generic [ref=f2e35]:
+      - generic [ref=f2e36]: 配置层防污染体检（实时、零生成，随真源刷新）。原 gen-layer-map 的 0 红门禁能力现折入本区。
+      - generic [ref=f2e37]: ✓ 体检 0 红：机器语法 / 标记 / 引用存在性 全部通过。

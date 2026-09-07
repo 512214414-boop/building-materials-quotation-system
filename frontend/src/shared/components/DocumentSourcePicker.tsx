@@ -6,7 +6,7 @@ import { PickerDateBar, PickerHostTrigger, PickerOverlayInput, todayYmd } from '
 import { DOCUMENT_PICKER_MODEL, DOCUMENT_PICKER_TREE_VIEWS, DEFAULT_DOCUMENT_PICKER_VIEW } from '../config/pickerTree.js';
 import { formatCustomerInfo } from '../utils/customerInfo.js';
 import { listDocuments, type StaffDocumentListItem } from '../services/api/documentApi.js';
-import { allocPanelId } from './PanelTree.js';
+import { useStablePanelId } from './PanelTree.js';
 import type { RefundSourceDoc } from './SoldLinePicker.js';
 
 export interface DocumentSourcePickerProps {
@@ -265,7 +265,7 @@ export default function DocumentSourcePicker({
         open={hostedInGate ? !disabled : !disabled && panelOpen}
         anchorRef={(hostedInGate && extAnchor ? extAnchor : wrapRef) as RefObject<HTMLElement>}
         parentId={hostedInGate ? parentPanelId ?? null : null}
-        panelId={listPanelIdRef.current}
+        panelId={listPanelIdRef}
         onClose={() => {
           setPanelOpen(false);
           setBrowseOpen(false);

@@ -3,20 +3,21 @@
  * gen-entity-meta.mjs — 实体元模型真相源 → 前后端登记表（v2）
  *
  * 用法：
- *   node tools/gen-entity-meta.mjs            # 正常生成（写 4 处生成物）
- *   node tools/gen-entity-meta.mjs --check    # 对拍：不写盘，比对生成物是否与 yml 一致，不一致 exit 1
+ *   node tools/gen-entity-meta.mjs            # 正常生成（写 6 处生成物）
+ *   node tools/gen-entity-meta.mjs --check    # 对拍：不写盘，比对生成物是否与真相源一致，不一致 exit 1
  *
- * 输入：data-source/entity-meta.yml（唯一真相源）
+ * 输入：
+ *   data-source/entity-meta.yml（实体元模型真相源）
+ *   配置预览/config-layer/{physical,relation,difference}-layer.yml（v3 三层模型真相源）
  * 输出：
  *   ① frontend/src/shared/config/entityMeta.generated.ts
  *       - entityMeta（实体×字段：渲染/确认/检索/门禁/快照声明）
  *   ② backend/src/services/generated/entityMeta.generated.ts
- *       - REGISTRY_GENERATED（A/B 类建档实体 → RegistryDef）
- *       - SNAPSHOT_MAP（快照字段 → { entity, from }，解读器 resolveSnapshots）
- *       - AUDIT_ACTIONS（审计 action 目录）
- *       - INDICATORS（统计口径）
+ *       - REGISTRY_GENERATED / SNAPSHOT_MAP / AUDIT_ACTIONS / INDICATORS
  *   ③ frontend/src/shared/config/entityRelations.generated.ts（界面列 + 单元格三维规格）
- *   ④ 文档可视化/js/data/actions.generated.js（守卫动作数据）——已停产 2026-09-05：095 渲染器删除后全站无引用，不再生成（见 emit 段 ④ 注释）
+ *   ④ frontend/src/shared/config/fieldDefs.generated.ts（字段定义）
+ *   ⑤ frontend/src/shared/config/entityLayers.generated.ts（CRUD 视图分层）
+ *   ⑥ frontend/src/shared/config/entityLayerV3.generated.ts（v3 三层：物理/关系/差异）
  *
  * 规则：*.generated.ts 禁止手改；override 写旁边的 *.override.ts。改实体只改 yml 再重跑。
  *
@@ -41,6 +42,7 @@ const root = path.resolve(__dirname, '..');
 const srcFile = path.join(root, 'data-source', 'entity-meta.yml');
 const feOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityMeta.generated.ts');
 const beOut = path.join(root, 'backend', 'src', 'services', 'generated', 'entityMeta.generated.ts');
+const layerV3Out = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityLayerV3.generated.ts');
 
 // --check：对拍模式。正常模式行为逐字不变；对拍模式零写副作用（只读盘收集，末尾比对后 exit）。
 const CHECK = process.argv.includes('--check');
@@ -87,7 +89,11 @@ function firstDiff(expected, actual) {
 
 const srcText = fs.readFileSync(srcFile, 'utf8');
 const src = yaml.load(srcText);
-const entities = src.entities || {};
+// 层级骨架 → 扁平实体表：layers[].entities 是真相源（配置按层级组织），
+//   扁平化后供下游消费。既有 3 个产物由此生成，内容字节级不变（消费者零回归）。
+const entities = {};
+for (const layer of src.layers || []) Object.assign(entities, layer.entities || {});
+src.entities = entities; // 下游 vocabulary/L1 校验、fieldDefs 的层继承沿用同一张扁平表
 
 /**
  * 增长水位线阈值。当前 512 行 / 9 实体，留约 60% 余量。
@@ -638,6 +644,217 @@ for (const [field, def] of Object.entries(fieldDefs)) {
 fd += '};\n';
 emit(fdOut, fd);
 
+// ---------- ③-f 数据关系分层视图（用户诉求：按层级组织配置） ----------
+// 对应产品管理「配置应按层级组织」的诉求：层级本身即表达层级、每层含哪些表与字段、
+// 每层的增删规则（crud）、以及框架目前无法推导的额外差异（escape）。
+// 这是 yml 四列分层视图（层级 / 实体表+字段+FK / 去重 / 非框架差异）的机器可读版，
+// 人读可直接对应；加法产出，不改动既有 3 个产物。
+const layerOut = path.join(root, 'frontend', 'src', 'shared', 'config', 'entityLayers.generated.ts');
+let lo = '// 自动生成 · 禁止手改 · 来源 data-source/entity-meta.yml（node tools/gen-entity-meta.mjs）\n';
+lo += '// 元模型运行时 · 数据关系分层视图：层级本身表达层级，每层声明表/字段与增删规则。\n\n';
+lo += "import type { RecordSetSpec } from './entityRelations.types.js';\n\n";
+lo += 'export type CrudCreate = "open" | "gated" | "cascade" | "service";\n';
+lo += 'export type CrudDelete = "blocked-if-children" | "soft" | "cascade" | "service";\n';
+lo += 'export interface LayerCrud {\n';
+lo += '  create: CrudCreate;\n';
+lo += '  delete: CrudDelete;\n';
+lo += '  requiredParent: boolean;\n';
+lo += '  note?: string;\n';
+lo += '}\n';
+lo += 'export interface LayerEntityView {\n';
+lo += '  key: string;\n';
+lo += '  table: string;\n';
+lo += '  layer: string;\n';
+lo += '  primaryKey: string;\n';
+lo += '  fields: Array<{ key: string; label: string; unique?: string }>;\n';
+lo += '  relations: Array<{ field: string; to: string; type: string }>;\n';
+lo += '  recordSets?: Array<{ key: string; role: string; group?: string }>;\n';
+lo += '}\n';
+lo += 'export interface LayerView {\n';
+lo += '  id: string;\n';
+lo += '  title: string;\n';
+lo += '  depth: number;\n';
+lo += '  parent: string | null;\n';
+lo += '  crud: LayerCrud;\n';
+lo += '  entities: LayerEntityView[];\n';
+lo += '  escape?: string;\n';
+lo += '}\n\n';
+lo += 'export const entityLayers: LayerView[] = [\n';
+for (const L of src.layers || []) {
+  lo += '  {\n';
+  lo += `    id: ${JSON.stringify(L.id)},\n`;
+  lo += `    title: ${JSON.stringify(L.title)},\n`;
+  lo += `    depth: ${JSON.stringify(L.depth ?? 0)},\n`;
+  lo += `    parent: ${L.parent ? JSON.stringify(L.parent) : 'null'},\n`;
+  const crud = L.crud || {};
+  lo += `    crud: { create: ${JSON.stringify(crud.create ?? 'service')}, delete: ${JSON.stringify(crud.delete ?? 'service')}, requiredParent: ${!!crud.requiredParent}, note: ${crud.note ? JSON.stringify(crud.note) : 'undefined'} },\n`;
+  const ents = Object.entries(L.entities || {}).map(([k, e]) => {
+    const fields = Object.entries(e.fields || {}).map(
+      ([fk, f]) => `{ key: ${JSON.stringify(fk)}, label: ${JSON.stringify(f.label ?? '')}, unique: ${f.unique ? JSON.stringify(f.unique) : 'undefined'} }`,
+    );
+    const rels = (e.relations || []).map(
+      (r) => `{ field: ${JSON.stringify(r.field)}, to: ${JSON.stringify(r.to)}, type: ${JSON.stringify(r.type)} }`,
+    );
+    const rss = (e.recordSets || []).map(
+      (rs) => `{ key: ${JSON.stringify(rs.key)}, role: ${JSON.stringify(rs.role)}, group: ${rs.group ? JSON.stringify(rs.group) : 'undefined'} }`,
+    );
+    return `    { key: ${JSON.stringify(k)}, table: ${JSON.stringify(e.table ?? k)}, layer: ${JSON.stringify(e.layer ?? '')}, primaryKey: ${JSON.stringify(e.primaryKey ?? 'id')}, fields: [${fields.join(', ')}], relations: [${rels.join(', ')}]${rss.length ? `, recordSets: [${rss.join(', ')}]` : ''} }`;
+  });
+  lo += `    entities: [\n${ents.join(',\n')}\n    ],\n`;
+  lo += `    escape: ${L.escape ? JSON.stringify(L.escape) : 'undefined'},\n`;
+  lo += '  },\n';
+}
+lo += '];\n';
+emit(layerOut, lo);
+
+// ---------- ⑥ v3 三层模型（物理/关系/差异）：由 配置预览/config-layer/*.yml 生成 ----------
+// 与 ①②③④⑤ 同属「真相源→生成物」对拍体系：本段只读中文 layer yml，产出前端可消费的 TS 配置。
+// 双语桥接：配置里中文是给人看的，标识(英文)是给机器/数据库的；这里两者都落（biz=中文, id=标识）。
+{
+  const layerDir = path.join(root, '配置预览', 'config-layer');
+  const lyP = path.join(layerDir, 'physical-layer.yml');
+  const lyR = path.join(layerDir, 'relation-layer.yml');
+  const lyD = path.join(layerDir, 'difference-layer.yml');
+  if (fs.existsSync(lyP) && fs.existsSync(lyR) && fs.existsSync(lyD)) {
+    const physical = (yaml.load(fs.readFileSync(lyP, 'utf8')) || {})['表'] || {};
+    const relation = (yaml.load(fs.readFileSync(lyR, 'utf8')) || {})['关系体'] || {};
+    const diff = (yaml.load(fs.readFileSync(lyD, 'utf8')) || {})['差异'] || [];
+
+    const physEntries = Object.entries(physical).map(([biz, t]) => {
+      const tid = t['标识'] || '';
+      // 表级配置（2026-09-07 数组化）：唯一/全文/索引 = 表级数组声明，引擎直接读取，不再扫字段归拢组合
+      const tc = t['表级配置'] || {};
+      const fieldMap0 = t['字段'] || {};
+      const idOf = (k) => String((fieldMap0[String(k).trim()] || {})['标识'] || String(k).trim());
+      const uniqSingles = (tc['独立去重'] || []).map((k) => [idOf(k)]);   // 每项 = 单列唯一组[id]
+      const uniqGroups = (tc['联合去重'] || []).map((g) => g.map(idOf));  // 每组 = 组合唯一组[id,...]
+      const uniqSet = new Set([...uniqSingles.map((g) => g[0]), ...uniqGroups.flat()]);
+      const ftFieldIds = (tc['全文检索'] || []).map(idOf); // 表级全文键（1=单列 / 多个=组合全文索引，P12）
+      const idxFieldIds = (tc['索引'] || []).map(idOf);    // 表级普通索引键（1=单列 / 多个=组合 B-tree 索引，P13）
+      const ftSet = new Set(ftFieldIds); const idxSet = new Set(idxFieldIds);
+      const fieldMap = Object.entries(fieldMap0).map(([fbiz, f]) => {
+        const fid = f['标识'] || fbiz;
+        const parts = [`biz: ${JSON.stringify(fbiz)}`, `id: ${JSON.stringify(fid)}`, `type: ${JSON.stringify(f['类型'] || '')}`];
+        if (uniqSet.has(fid)) parts.push('uniq: true');
+        if (ftSet.has(fid)) parts.push('fulltext: true');
+        if (idxSet.has(fid)) parts.push('index: true');
+        // 字段级缺省已废除（v3 P7）：复读 DB @default = 第二份真相；兜底走被引用表的 defaultRow
+        // 检索级别（P8）：字段配正整数 = 参与本表检索匹配；1级=主索引 / 2级=子索引补充…；可同级重复
+        const lvl = f['检索'] && f['检索']['级别'];
+        if (lvl !== undefined && lvl !== null && lvl !== '') parts.push(`searchLevel: ${Number(lvl)}`);   // 字段级固定结构：空槽=未配置，不产出
+        return `      ${JSON.stringify(fid)}: { ${parts.join(', ')} }`;
+      }).join(',\n');
+      const uniqAll = [...uniqSingles, ...uniqGroups]; const uk = uniqAll.length ? `, uniqueKeys: ${JSON.stringify(uniqAll)}` : '';
+      const ftk = ftFieldIds.length ? `, fulltextKeys: ${JSON.stringify(ftFieldIds)}` : '';
+      const idxk = idxFieldIds.length ? `, indexKeys: ${JSON.stringify(idxFieldIds)}` : '';
+      // defaultRow = 本表世界里的兜底成员（如 分类: 未分类）——外键引用本表留空时引擎按它查/建行取 id
+      const drRow = tc['缺省行'] !== undefined ? tc['缺省行'] : t['缺省行'];
+      const dr = drRow !== undefined ? `, defaultRow: ${JSON.stringify(drRow)}` : '';
+      return `    ${JSON.stringify(tid)}: { biz: ${JSON.stringify(biz)}, id: ${JSON.stringify(tid)}${uk}${ftk}${idxk}${dr}, fields: {\n${fieldMap}\n    } }`;
+    }).join(',\n');
+
+    const relEntries = Object.entries(relation).map(([name, b]) => {
+      const levels = (b['层级'] || []).map((lv) => {
+        const sr = lv['检索'] || {};
+        return `      { seq: ${lv['序号']}, title: ${JSON.stringify(lv['标题'])}, tables: ${JSON.stringify(lv['表'] || [])}, search: { mode: ${JSON.stringify(sr['模式'] || '')}, primary: ${JSON.stringify(sr['主字段'] || '')} } }`;
+      }).join(',\n');
+      // path 由层级标题串联推导（配置禁写「通路」键，见 O1）
+      const pathDerived = (b['层级'] || []).map((l) => l['标题']).join(' → ');
+      return `    ${JSON.stringify(name)}: { name: ${JSON.stringify(name)}, path: ${JSON.stringify(pathDerived)}, crossCuts: ${JSON.stringify(b['横切字典'] || [])}, levels: [\n${levels}\n    ] }`;
+    }).join(',\n');
+
+    const diffEntries = diff.map((d) => {
+      const target = d['对象'] || '';
+      const props = Object.entries(d).filter(([k]) => k !== '对象')
+        .map(([k, v]) => `${JSON.stringify(k)}: ${JSON.stringify(v)}`).join(', ');
+      return `    { target: ${JSON.stringify(target)}, props: { ${props} } }`;
+    }).join(',\n');
+
+    const header = `// ════════════════════════════════════════════════════════════════════
+// entityLayerV3.generated.ts — 由 配置预览/config-layer/{physical,relation,difference}-layer.yml 生成
+// 禁止手改；改 yml 后跑 node tools/gen-entity-meta.mjs 重新生成。
+// v3 三层模型（物理层 / 关系层 / 差异层）。双语桥接：biz=中文业务名，id=标识(英文机器名)。
+// 表达即业务事实（2026-09-06 定稿）：兜底成员 = 表级 defaultRow（如 分类 defaultRow: 未分类），字段级缺省已废除；
+// uniqueKeys 由字段级「独立去重: 是 / 联合去重: N」提取推导（单列组[id] / 组合组[id,...]，互斥双键）；path 由层级标题串联推导。
+// fulltextKeys 由「全文检索: 是」提取（1=单列 / >1=组合 FULLTEXT）；indexKeys 由「索引: 是」提取（1=单列 / >1=组合 B-tree）。
+// v7 顶层定调：物理层 = 表结构与索引唯一业务描述源 → 结构解释器据此幂等输出建表/建索引 SQL；
+// searchLevel 是应用层规则（喂业务检索引擎），不进建表输出。库自动行为（主键聚簇/外键列/唯一自带）解释器补齐，配置零书写。
+// ════════════════════════════════════════════════════════════════════
+
+export type SearchTier = '主' | '次' | '辅'; // 兼容旧消费者（历史检索档位）；新消费一律用 PhysicalField.searchLevel
+
+export interface PhysicalField {
+  /** 业务中文名，如 产品名称 */
+  biz: string;
+  /** 机器名(标识)，如 name */
+  id: string;
+  /** 类型描述，如 文本 / 外键→分类.编号 */
+  type: string;
+  /** 参与本表唯一判定（物理层 独立去重: 是 或 联合去重: N）。表内 uniq 字段被提取为 uniqueKeys */
+  uniq?: boolean;
+  /** 本列内容需全文级检索能力（物理层 全文检索: 是）。表内 fulltext 字段被提取为 fulltextKeys → 建表 FULLTEXT(组合)索引 */
+  fulltext?: boolean;
+  /** 该列需要普通 B-tree 索引（物理层 索引: 是，人工决策：业务常按它精确过滤/排序/关联）。表内 index 字段被提取为 indexKeys */
+  index?: boolean;
+  /** 检索级别（正整数）：配了=参与本表检索匹配；1级=主索引 / 2级=子索引补充…；可同级重复。属应用层规则，喂检索引擎，不进建表输出 */
+  searchLevel?: number;
+}
+
+export interface PhysicalTable {
+  /** 业务中文名，如 产品 */
+  biz: string;
+  /** 机器名(标识)，如 product */
+  id: string;
+  /** 本表唯一键（由 uniq 字段提取推导）：长度 1 = 该列全局唯一；>1 = 联合唯一 */
+  uniqueKeys: string[];
+  /** 本表全文索引字段集（由 fulltext 字段提取推导）：长度 1 = 单列全文索引；>1 = 组合全文索引（建表出 FULLTEXT） */
+  fulltextKeys?: string[];
+  /** 本表普通索引字段集（由 index 字段提取推导，人工决策）：长度 1 = 单列 B-tree 索引；>1 = 组合 B-tree 索引（建表出 CREATE INDEX） */
+  indexKeys?: string[];
+  /** 本表兜底成员行名（如 分类 → 未分类）：外键引用本表留空时引擎按本值查/建行取 id 填引用 */
+  defaultRow?: string;
+  /** 字段，按 标识(id) 索引 */
+  fields: Record<string, PhysicalField>;
+}
+
+export interface RelationLevel {
+  seq: number;
+  title: string;
+  tables: string[];
+  search: { mode: string; primary: string };
+}
+
+export interface RelationBody {
+  name: string;
+  /** 通路（推导：层级标题串联，配置禁写「通路」键） */
+  path: string;
+  crossCuts: string[];
+  levels: RelationLevel[];
+}
+
+export interface DifferenceOverride {
+  target: string;
+  props: Record<string, string>;
+}
+
+export const physicalLayer: Record<string, PhysicalTable> = {
+${physEntries}
+};
+
+export const relationLayer: Record<string, RelationBody> = {
+${relEntries}
+};
+
+export const differenceLayer: DifferenceOverride[] = [
+${diffEntries}
+];
+`;
+    emit(layerV3Out, header);
+  } else {
+    console.warn('⚠ 跳过 v3 三层生成：配置预览/config-layer/*.yml 不全（物理/关系/差异三件套需同时存在）');
+  }
+}
+
 // ---------- ④ 文档可视化动作守卫数据：已停产（2026-09-05） ----------
 // 095 渲染器删除后 DOC_VIZ.actionMeta 全站无引用（check-docs 确认死内容）。
 // 唯一真相源仍是 entity-meta.yml 的 actions 段；前端消费走 actions.generated.js 的
@@ -672,6 +889,9 @@ if (CHECK) {
 console.log(`✓ 生成完成：${Object.keys(entities).length} 实体 + ${(src.auditActions || []).length} 审计 + ${(src.indicators || []).length} 指标 + ${Object.keys(src.actions || {}).length} 动作 →`);
 console.log(`  前端 ${path.relative(root, feOut)}`);
 console.log(`  前端 ${path.relative(root, relOut)}`);
+console.log(`  前端 ${path.relative(root, fdOut)}`);
+console.log(`  前端 ${path.relative(root, layerOut)}`);
+console.log(`  前端 ${path.relative(root, layerV3Out)}`);
 console.log(`  后端 ${path.relative(root, beOut)}`);
 
 // ---------- ⑤ 增长水位线：到点提醒评估，不阻断生成 ----------
